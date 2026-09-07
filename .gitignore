@@ -1,0 +1,23 @@
+# JavaScript dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment files (keep templates versioned)
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system metadata
+.DS_Store
+.idea/
+
+# Tauri-generated build files
+src-tauri/target/
+src-tauri/gen/

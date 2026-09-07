@@ -1,0 +1,129 @@
+import { ChevronRight, FileText, Folder, FolderOpen } from 'lucide-react'
+import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
+
+import type { MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
+
+type FileSidebarProps = {
+  copy: {
+    changeFolder: string
+    chooseFolder: string
+    currentFolder: string
+    empty: string
+    emptyFolder: string
+    recent: string
+    recentLabel: string
+  }
+  folder: string | null
+  onChooseFolder: () => void
+  onOpenFile: (path: string) => void
+  onOpenFolder: (path: string) => void
+  onWidthChange: (width: number) => void
+  recentFiles: string[]
+  recentFolders: string[]
+  tree: MarkdownTreeNode | null
+  width: number
+}
+
+export function FileSidebar({ copy, folder, onChooseFolder, onOpenFile, onOpenFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+
+    const initialWidth = sidebarRef.current?.getBoundingClientRect().width ?? width
+    const initialX = event.clientX
+    let nextWidth = initialWidth
+
+    const applyWidth = (clientX: number) => {
+      nextWidth = Math.min(520, Math.max(180, Math.round(initialWidth + clientX - initialX)))
+      sidebarRef.current?.style.setProperty('width', `${nextWidth}px`)
+      document.querySelector<HTMLElement>('.app-shell')?.style.setProperty('--sidebar-width', `${nextWidth}px`)
+    }
+    const onPointerMove = (moveEvent: PointerEvent) => applyWidth(moveEvent.clientX)
+    const stopResize = () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      onWidthChange(nextWidth)
+    }
+
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', stopResize)
+  }
+
+  return (
+    <aside
+      ref={sidebarRef}
+      className="file-sidebar"
+      aria-label={copy.currentFolder}
+      style={{ width }}
+    >
+      <header className="file-sidebar__header">
+        <span className="file-sidebar__header-icon" aria-hidden="true">
+          <FolderOpen size={15} strokeWidth={1.8} />
+        </span>
+        <span className="file-sidebar__header-copy">
+          <span className="file-sidebar__eyebrow">{copy.currentFolder}</span>
+          <strong className="file-sidebar__title">{folder ? fileName(folder) : copy.emptyFolder}</strong>
+        </span>
+        <button
+          aria-label={copy.changeFolder}
+          className="file-sidebar__change-folder"
+          title={copy.changeFolder}
+          type="button"
+          onClick={onChooseFolder}
+        >
+          <FolderOpen aria-hidden="true" size={14} strokeWidth={1.8} />
+          <span>{copy.changeFolder}</span>
+        </button>
+      </header>
+      {(recentFiles.length > 0 || recentFolders.length > 0) ? (
+        <section className="file-sidebar__recent" aria-label={copy.recentLabel}>
+          <span>{copy.recent}</span>
+          {recentFiles.map((path) => <button key={path} title={path} type="button" onClick={() => onOpenFile(path)}>{fileName(path)}</button>)}
+          {recentFolders.map((path) => <button key={path} title={path} type="button" onClick={() => onOpenFolder(path)}>{fileName(path)}</button>)}
+        </section>
+      ) : null}
+      {tree ? (
+        <div className="file-sidebar__tree">
+          {tree.children.map((child) => <TreeBranch key={child.path} node={child} depth={0} onOpenFile={onOpenFile} />)}
+        </div>
+      ) : (
+        <div className="file-sidebar__empty">
+          <p>{copy.empty}</p>
+          <button type="button" onClick={onChooseFolder}>
+            <FolderOpen aria-hidden="true" size={14} strokeWidth={1.7} />
+            {copy.chooseFolder}
+          </button>
+        </div>
+      )}
+      <div aria-hidden="true" className="file-sidebar__resize-handle" onPointerDown={startResize} />
+    </aside>
+  )
+}
+
+function fileName(path: string) {
+  return path.split(/[\\/]/).at(-1) ?? path
+}
+
+function TreeBranch({ node, depth, onOpenFile }: { depth: number; node: MarkdownTreeNode; onOpenFile: (path: string) => void }) {
+  if (!node.isDirectory) {
+    return (
+      <button className="file-sidebar__file" title={node.path} type="button" style={{ paddingLeft: 14 + depth * 14 }} onClick={() => onOpenFile(node.path)}>
+        <FileText aria-hidden="true" size={13} strokeWidth={1.6} />
+        <span>{node.name}</span>
+      </button>
+    )
+  }
+
+  return (
+    <details className="file-sidebar__directory" open>
+      <summary title={node.path} style={{ paddingLeft: 10 + depth * 14 }}>
+        <ChevronRight aria-hidden="true" size={12} strokeWidth={1.8} />
+        <Folder aria-hidden="true" size={13} strokeWidth={1.6} />
+        <span>{node.name}</span>
+      </summary>
+      {node.children.map((child) => <TreeBranch key={child.path} node={child} depth={depth + 1} onOpenFile={onOpenFile} />)}
+    </details>
+  )
+}

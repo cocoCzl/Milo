@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Milo",
+  "version": "0.1.0",
+  "identifier": "io.github.milo.editor",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Milo",
+        "width": 1080,
+        "height": 760,
+        "minWidth": 720,
+        "minHeight": 520,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: data: blob: http: https:; style-src 'self' 'unsafe-inline'; font-src 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "targets": ["dmg"],
+    "category": "Productivity",
+    "shortDescription": "A local-first Markdown editor",
+    "longDescription": "Milo is a free, local-first Markdown editor for focused writing.",
+    "licenseFile": "../LICENSE",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "mimeType": "text/markdown",
+        "name": "Markdown document",
+        "role": "Editor"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}
