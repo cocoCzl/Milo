@@ -49,7 +49,7 @@ A document containing syntax Milo cannot reliably round-trip in the current rele
 _Avoid_: partially supported document, best-effort edit
 
 **Appearance Preference**:
-The persisted choice to follow the operating-system appearance or force Milo into light or dark mode. It applies immediately and is stored in the settings JSON file.
+The persisted choice to follow the operating-system appearance or force Milo into light, dark, or warm mode. `system` resolves to light or dark from macOS; warm is always independent of the operating system. It applies immediately and is stored in the settings JSON file.
 _Avoid_: theme pack, skin
 
 **System Typography**:

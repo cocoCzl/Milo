@@ -9,12 +9,14 @@ describe('FileSidebar', () => {
 
     render(
       <FileSidebar
+        activeFile={null}
         copy={{
           changeFolder: 'Change folder',
           chooseFolder: 'Choose folder',
           currentFolder: 'Current folder',
           empty: 'Open a folder.',
           emptyFolder: 'No folder selected',
+          files: 'Files',
           recent: 'Recent',
           recentLabel: 'Recent files and folders',
         }}

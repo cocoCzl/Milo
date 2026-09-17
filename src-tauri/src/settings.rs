@@ -1,16 +1,41 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{fs, io::Write, path::{Path, PathBuf}};
 use tauri::{AppHandle, Manager};
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
-const CURRENT_SETTINGS_VERSION: u8 = 3;
+const CURRENT_SETTINGS_VERSION: u8 = 4;
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AppearancePreference {
     System,
     Light,
     Dark,
+    Warm,
+}
+
+impl Default for AppearancePreference {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
+// Appearance is intentionally decoded independently from the enclosing
+// settings struct. A future/invalid appearance value must not erase unrelated
+// persisted state such as recent files or the startup session.
+impl<'de> Deserialize<'de> for AppearancePreference {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer).unwrap_or(serde_json::Value::Null);
+        Ok(match value.as_str() {
+            Some("light") => Self::Light,
+            Some("dark") => Self::Dark,
+            Some("warm") => Self::Warm,
+            _ => Self::System,
+        })
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -70,7 +95,7 @@ impl ApplicationSettings {
         self.settings_version = CURRENT_SETTINGS_VERSION;
         self.document_zoom = self.document_zoom.clamp(80, 160);
         self.interface_zoom = self.interface_zoom.clamp(90, 140);
-        self.sidebar_width = self.sidebar_width.clamp(180, 520);
+        self.sidebar_width = self.sidebar_width.clamp(220, 420);
         self.recent_files.truncate(12);
         self.recent_folders.truncate(8);
         self.startup_session.open_document_paths.retain(|path| is_markdown_document_path(path));
@@ -238,6 +263,68 @@ mod tests {
         let restored = read_settings(&settings_path).unwrap();
         assert_eq!(restored.document_zoom, 100);
         assert_eq!(restored.interface_zoom, 120);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn version_three_settings_keep_all_existing_fields_when_upgraded() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-settings-v3-migration-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let settings_path = directory.join("settings.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            &settings_path,
+            r#"{"settingsVersion":3,"appearance":"dark","locale":"zh-CN","documentZoom":130,"interfaceZoom":125,"currentFolder":"/tmp/milo","recentFiles":["/tmp/milo/a.md"],"recentFolders":["/tmp/milo"],"sidebarVisible":false,"sidebarWidth":300,"startupSession":{"activeDocumentPath":"/tmp/milo/a.md","openDocumentPaths":["/tmp/milo/a.md"]}}"#,
+        ).unwrap();
+
+        let migrated = read_settings(&settings_path).unwrap();
+        assert_eq!(migrated.settings_version, CURRENT_SETTINGS_VERSION);
+        assert!(matches!(migrated.appearance, AppearancePreference::Dark));
+        assert_eq!(migrated.recent_files, vec!["/tmp/milo/a.md"]);
+        assert_eq!(migrated.recent_folders, vec!["/tmp/milo"]);
+        assert_eq!(migrated.startup_session.active_document_path.as_deref(), Some("/tmp/milo/a.md"));
+        assert_eq!(migrated.sidebar_width, 300);
+        assert!(!migrated.sidebar_visible);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn unknown_appearance_falls_back_without_resetting_other_settings() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-settings-appearance-fallback-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let settings_path = directory.join("settings.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            &settings_path,
+            r#"{"settingsVersion":3,"appearance":"future-theme","locale":"en","documentZoom":130,"interfaceZoom":125,"currentFolder":"/tmp/milo","recentFiles":["/tmp/milo/a.md"],"recentFolders":["/tmp/milo"],"sidebarVisible":false,"sidebarWidth":300,"startupSession":{"activeDocumentPath":"/tmp/milo/a.md","openDocumentPaths":["/tmp/milo/a.md"]}}"#,
+        ).unwrap();
+
+        let restored = read_settings(&settings_path).unwrap();
+        assert!(matches!(restored.appearance, AppearancePreference::System));
+        assert_eq!(restored.recent_files, vec!["/tmp/milo/a.md"]);
+        assert_eq!(restored.startup_session.open_document_paths, vec!["/tmp/milo/a.md"]);
+        assert_eq!(restored.document_zoom, 130);
+        assert_eq!(restored.sidebar_width, 300);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn warm_appearance_round_trips() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-settings-warm-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let settings_path = directory.join("settings.json");
+        let mut settings = ApplicationSettings::default();
+        settings.appearance = AppearancePreference::Warm;
+
+        write_settings(&settings_path, &settings).unwrap();
+        let restored = read_settings(&settings_path).unwrap();
+        assert!(matches!(restored.appearance, AppearancePreference::Warm));
         fs::remove_dir_all(directory).unwrap();
     }
 

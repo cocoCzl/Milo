@@ -6,6 +6,7 @@ import {
   clampSidebarWidth,
   defaultApplicationSettings,
   loadApplicationSettings,
+  normalizeAppearancePreference,
   saveApplicationSettings,
   type ApplicationSettings,
   type AppearancePreference,
@@ -105,7 +106,8 @@ function normalizeSettings(settings: ApplicationSettings): ApplicationSettings {
   const merged = { ...defaultApplicationSettings, ...settings }
   return {
     ...merged,
-    settingsVersion: 3,
+    settingsVersion: 4,
+    appearance: normalizeAppearancePreference(merged.appearance),
     documentZoom: clampDocumentZoom(merged.documentZoom),
     interfaceZoom: clampInterfaceZoom(merged.interfaceZoom),
     sidebarWidth: clampSidebarWidth(merged.sidebarWidth),

@@ -28,7 +28,7 @@ describe('useApplicationSettings', () => {
     const hook = renderHook(() => useApplicationSettings())
 
     await waitFor(() => expect(hook.result.current.settings).toEqual({
-      settingsVersion: 3, appearance: 'light', locale: 'en', documentZoom: 125, interfaceZoom: 120,
+      settingsVersion: 4, appearance: 'light', locale: 'en', documentZoom: 125, interfaceZoom: 120,
       currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 240,
       startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
     }))
@@ -46,12 +46,23 @@ describe('useApplicationSettings', () => {
     })
 
     expect(hook.result.current.settings).toEqual({
-      settingsVersion: 3, appearance: 'dark', locale: 'zh-CN', documentZoom: 160, interfaceZoom: 140,
+      settingsVersion: 4, appearance: 'dark', locale: 'zh-CN', documentZoom: 160, interfaceZoom: 140,
       currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 240,
       startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
     })
     await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({
       appearance: 'dark', locale: 'zh-CN', documentZoom: 160, interfaceZoom: 140,
     })))
+  })
+
+  it('persists the independent warm appearance preference', async () => {
+    const hook = renderHook(() => useApplicationSettings())
+
+    await act(async () => {
+      hook.result.current.setAppearance('warm')
+    })
+
+    expect(hook.result.current.settings.appearance).toBe('warm')
+    await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({ appearance: 'warm' })))
   })
 })

@@ -1,8 +1,10 @@
 import { FilePlus2, Focus, FolderOpen, FolderTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, Settings2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { FileSidebar } from '../components/FileSidebar'
 import { IconButton } from '../components/IconButton'
+import { ModeSwitch } from '../components/ModeSwitch'
+import { OutlineToggle } from '../components/OutlineToggle'
 import { MilkdownEditor } from '../editor/milkdown/MilkdownEditor'
 import { browseMarkdownFolder, pickMarkdownFolder, type MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
 import { initialLaunchMarkdownFile } from '../file-system/launchFile'
@@ -12,6 +14,11 @@ import { useNativeCommandListener } from '../hooks/useNativeCommandListener'
 import { type InterfaceLocale } from '../settings/applicationSettings'
 import { useApplicationSettings } from '../settings/useApplicationSettings'
 import { useEffectiveColorScheme } from '../settings/useEffectiveColorScheme'
+import type { PresentationMode } from './presentationMode'
+
+type DocumentViewState = {
+  scrollTop: number
+}
 
 export function App() {
   const { isLoading, setAppearance, setDocumentZoom, setInterfaceZoom, setLocale, setStartupSession, settings, settingsError, updateWorkspaceSettings } = useApplicationSettings()
@@ -25,10 +32,113 @@ export function App() {
   const [folderError, setFolderError] = useState<string | null>(null)
   const [startupSessionRestored, setStartupSessionRestored] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
+  const [presentationModes, setPresentationModes] = useState<Record<number, PresentationMode>>({})
+  const [documentViewStates, setDocumentViewStates] = useState<Record<DocumentTab['id'], DocumentViewState>>({})
+  const [outlineOpen, setOutlineOpen] = useState<Record<number, boolean>>({})
+  const [outlineLayout, setOutlineLayout] = useState<'inline' | 'drawer'>('drawer')
   const didRestoreStartupSession = useRef(false)
   const didOpenLaunchFile = useRef(false)
   const preferencesRef = useRef<HTMLDivElement>(null)
+  const documentStageRef = useRef<HTMLElement>(null)
+  const previousActiveTabIdRef = useRef<DocumentTab['id'] | null>(null)
+  const documentViewStatesRef = useRef<Record<DocumentTab['id'], DocumentViewState>>({})
+  const outlineToggleRef = useRef<HTMLButtonElement>(null)
+  const [outlineDrawerMount, setOutlineDrawerMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
+  const activePresentationMode = presentationModes[session.activeTabId] ?? 'edit'
+  const activeDocumentIsProtected = session.document.protectionReason !== null
+
+  const saveDocumentScroll = useCallback((tabId: DocumentTab['id'], scrollTop: number, publish = false) => {
+    const viewState = { scrollTop: Math.max(0, scrollTop) }
+    documentViewStatesRef.current = {
+      ...documentViewStatesRef.current,
+      [tabId]: viewState,
+    }
+    if (!publish) return
+    setDocumentViewStates((current) => (
+      current[tabId]?.scrollTop === viewState.scrollTop
+        ? current
+        : { ...current, [tabId]: viewState }
+    ))
+  }, [])
+
+  const selectTab = useCallback((tabId: DocumentTab['id']) => {
+    const stage = documentStageRef.current
+    const currentTabId = previousActiveTabIdRef.current ?? session.activeTabId
+    if (stage) saveDocumentScroll(currentTabId, stage.scrollTop, true)
+    session.selectTab(tabId)
+  }, [saveDocumentScroll, session])
+
+  useEffect(() => {
+    const documentStage = documentStageRef.current
+    if (!documentStage) return
+    const update = () => setOutlineLayout((current) => {
+      // This is the actual column left after the resizable sidebar, rather
+      // than the browser viewport.  It needs room for the editor rail, a
+      // readable article and the inline navigation column.
+      const next = documentStage.clientWidth >= 1150 ? 'inline' : 'drawer'
+      return current === next ? current : next
+    })
+    update()
+    if (!window.ResizeObserver) return undefined
+    const observer = new ResizeObserver(update)
+    observer.observe(documentStage)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (outlineLayout !== 'inline') return
+    setOutlineOpen((current) => Object.keys(current).length === 0 ? current : {})
+  }, [outlineLayout])
+
+  useEffect(() => {
+    const stage = documentStageRef.current
+    if (!stage) return undefined
+    const rememberScroll = () => {
+      const tabId = previousActiveTabIdRef.current
+      if (tabId !== null) saveDocumentScroll(tabId, stage.scrollTop)
+    }
+    stage.addEventListener('scroll', rememberScroll, { passive: true })
+    return () => stage.removeEventListener('scroll', rememberScroll)
+  }, [saveDocumentScroll])
+
+  // All document panels deliberately share one physical scroll root so the
+  // workspace has one stable scrollbar.  Its offset, however, is view state:
+  // it belongs to the active tab and must never leak to the next document.
+  // A layout effect observes the previous tab id after React has swapped the
+  // visible panel, but before paint.  At that point the stage still contains
+  // the previous offset, so it can be saved under the correct tab id and the
+  // incoming tab's offset can be restored without a visible jump.
+  useLayoutEffect(() => {
+    const stage = documentStageRef.current
+    const nextTabId = session.activeTabId
+    const previousTabId = previousActiveTabIdRef.current
+
+    if (!stage) {
+      previousActiveTabIdRef.current = nextTabId
+      return
+    }
+
+    if (previousTabId === null) {
+      previousActiveTabIdRef.current = nextTabId
+      return
+    }
+
+    if (previousTabId === nextTabId) return
+
+    // Prefer the value cached by the passive scroll listener.  React may have
+    // already hidden a much taller outgoing document, in which case the
+    // browser can clamp the shared stage before this layout effect runs.
+    const previousScrollTop = documentViewStatesRef.current[previousTabId]?.scrollTop ?? stage.scrollTop
+    saveDocumentScroll(previousTabId, previousScrollTop, true)
+
+    const nextScrollTop = documentViewStatesRef.current[nextTabId]?.scrollTop
+      ?? documentViewStates[nextTabId]?.scrollTop
+      ?? 0
+    const maxScrollTop = Math.max(0, stage.scrollHeight - stage.clientHeight)
+    stage.scrollTop = Math.min(maxScrollTop, Math.max(0, nextScrollTop))
+    previousActiveTabIdRef.current = nextTabId
+  }, [documentViewStates, saveDocumentScroll, session.activeTabId])
   const appStyle = {
     '--editor-font-size': `${Number((16 * (settings.documentZoom / 100)).toFixed(2))}px`,
     '--ui-font-lg': `${Number((13 * (settings.interfaceZoom / 100)).toFixed(2))}px`,
@@ -198,21 +308,63 @@ export function App() {
     }
   }, [preferencesOpen])
 
+  useEffect(() => {
+    const closeOutlineOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || focusMode || outlineLayout !== 'drawer' || !outlineOpen[session.activeTabId]) return
+      setOutlineOpen((current) => ({ ...current, [session.activeTabId]: false }))
+      queueMicrotask(() => outlineToggleRef.current?.focus())
+    }
+    window.addEventListener('keydown', closeOutlineOnEscape)
+    return () => window.removeEventListener('keydown', closeOutlineOnEscape)
+  }, [focusMode, outlineLayout, outlineOpen, session.activeTabId])
+
   return (
     <main
-      className={`app-shell${settings.sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}`}
+      className={`app-shell${settings.sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' ? ' app-shell--inline-outline' : ''}`}
       aria-label={copy.appLabel}
       data-appearance={settings.appearance}
+      data-theme={colorScheme}
       data-color-scheme={colorScheme}
       lang={locale}
       style={appStyle}
     >
       <header className="window-bar">
-        <div className="window-bar__brand" aria-label="Milo">
-          <span className="window-bar__mark" aria-hidden="true">M</span>
-          <span>Milo</span>
-        </div>
+        <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
+          {session.tabs.map((tab) => (
+            <div key={tab.id} className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab.id === session.activeTabId}
+                aria-controls={`document-panel-${tab.id}`}
+                onClick={() => selectTab(tab.id)}
+              >
+                <span className="document-tab__dirty" aria-hidden="true">{tab.document.isDirty ? '•' : ''}</span>
+                <span className="document-tab__title">{displayDocumentTitle(tab, copy)}</span>
+              </button>
+              <button
+                className="document-tab__close"
+                type="button"
+                aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
+                onClick={() => session.requestCloseTab(tab.id)}
+              >
+                <X aria-hidden="true" size={13} strokeWidth={1.8} />
+              </button>
+            </div>
+          ))}
+        </nav>
         <div className="window-bar__actions">
+          <ModeSwitch
+            disabled={activeDocumentIsProtected}
+            editLabel={copy.edit}
+            mode={activePresentationMode}
+            readLabel={copy.read}
+            onChange={(mode) => setPresentationModes((current) => ({ ...current, [session.activeTabId]: mode }))}
+          />
+          {!focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
+            <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[session.activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [session.activeTabId]: !current[session.activeTabId] }))} />
+          ) : null}
+          <span className="window-bar__divider" aria-hidden="true" />
           <IconButton label={copy.newDocument} onClick={session.createNewDocument}>
             <FilePlus2 aria-hidden="true" size={16} strokeWidth={1.7} />
           </IconButton>
@@ -230,7 +382,7 @@ export function App() {
           >
             {settings.sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
           </IconButton>
-          <IconButton label={copy.enterFocusMode} onClick={() => setFocusMode(true)}>
+          <IconButton label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
             <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
           </IconButton>
           <span className="window-bar__divider" aria-hidden="true" />
@@ -261,6 +413,7 @@ export function App() {
                       <option value="system">{copy.system}</option>
                       <option value="light">{copy.light}</option>
                       <option value="dark">{copy.dark}</option>
+                      <option value="warm">{copy.warm}</option>
                     </select>
                   </label>
                   <label>
@@ -303,46 +456,24 @@ export function App() {
           </div>
         </div>
       </header>
-      {settings.sidebarVisible ? (
-        <FileSidebar
-          copy={copy.sidebar}
-          folder={settings.currentFolder}
-          tree={folderTree}
-          width={settings.sidebarWidth}
-          onChooseFolder={() => void chooseCurrentFolder()}
-          onOpenFile={(path) => void openSidebarFile(path)}
-          onOpenFolder={setCurrentFolder}
-          onWidthChange={(sidebarWidth) => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarWidth })}
-          recentFiles={settings.recentFiles}
-          recentFolders={settings.recentFolders}
-        />
-      ) : null}
-      {folderError ? <div className="folder-error" role="status">{folderError}</div> : null}
-      <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
-        {session.tabs.map((tab) => (
-          <div key={tab.id} className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab.id === session.activeTabId}
-              aria-controls={`document-panel-${tab.id}`}
-              onClick={() => session.selectTab(tab.id)}
-            >
-              <span className="document-tab__dirty" aria-hidden="true">{tab.document.isDirty ? '•' : ''}</span>
-              <span className="document-tab__title">{displayDocumentTitle(tab, copy)}</span>
-            </button>
-            <button
-              className="document-tab__close"
-              type="button"
-              aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
-              onClick={() => session.requestCloseTab(tab.id)}
-            >
-              <X aria-hidden="true" size={13} strokeWidth={1.8} />
-            </button>
-          </div>
-        ))}
-      </nav>
-      <section className="document-stage" aria-label={copy.currentDocument}>
+      <section className="app-workspace">
+        {settings.sidebarVisible ? (
+          <FileSidebar
+            copy={copy.sidebar}
+            folder={settings.currentFolder}
+            activeFile={session.document.path}
+            tree={folderTree}
+            width={settings.sidebarWidth}
+            onChooseFolder={() => void chooseCurrentFolder()}
+            onOpenFile={(path) => void openSidebarFile(path)}
+            onOpenFolder={setCurrentFolder}
+            onWidthChange={(sidebarWidth) => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarWidth })}
+            recentFiles={settings.recentFiles}
+            recentFolders={settings.recentFolders}
+          />
+        ) : null}
+        {folderError ? <div className="folder-error" role="status">{folderError}</div> : null}
+        <section className="document-stage" aria-label={copy.currentDocument} ref={documentStageRef}>
         {session.tabs.map((tab) => (
           <DocumentPanel
             key={tab.id}
@@ -350,6 +481,9 @@ export function App() {
             copy={copy}
             title={displayDocumentTitle(tab, copy)}
             active={tab.id === session.activeTabId}
+            outlineLayout={outlineLayout}
+            outlineOpen={!focusMode && outlineLayout === 'drawer' && (outlineOpen[tab.id] ?? false)}
+            presentationMode={presentationModes[tab.id] ?? 'edit'}
             onMarkdownChange={session.updateMarkdown}
             onPasteImage={(image) => session.pasteImage(image, tab.id)}
             onReload={() => void session.reloadExternalChange(tab.id)}
@@ -357,9 +491,19 @@ export function App() {
             onOverwrite={() => void session.overwriteExternalChange(tab.id)}
             onSaveAs={() => void session.saveAsDocument(tab.id)}
             onRetry={() => void session.retrySave(tab.id)}
+            onCloseOutline={() => {
+              setOutlineOpen((current) => ({ ...current, [tab.id]: false }))
+              queueMicrotask(() => outlineToggleRef.current?.focus())
+            }}
+            outlineDrawerMount={outlineDrawerMount}
           />
         ))}
+        </section>
       </section>
+      {/* Drawer content must live outside the scrolling document stage.  WebKit
+          otherwise keeps it in the accessibility tree but can clip its fixed
+          layer behind the editor's scroll surface. */}
+      <div ref={setOutlineDrawerMount} className="outline-drawer-layer" />
       {closingTab ? (
         <section className="close-confirmation" role="alertdialog" aria-labelledby="close-confirmation-title">
           <strong id="close-confirmation-title">{copy.closeConfirmation(displayDocumentTitle(closingTab, copy))}</strong>
@@ -399,11 +543,11 @@ function resolveLocale(locale: InterfaceLocale): 'en' | 'zh-CN' {
 function interfaceCopy(locale: 'en' | 'zh-CN') {
   return locale === 'zh-CN'
     ? {
-        appLabel: 'Milo Markdown 编辑器', appearance: '外观', dark: '深色', decreaseInterfaceSize: '缩小界面字体', decreaseZoom: '缩小正文字体', increaseInterfaceSize: '放大界面字体', increaseZoom: '放大正文字体', interfaceSize: '界面字号',
+        appLabel: 'Milo Markdown 编辑器', appearance: '外观', dark: '深色', decreaseInterfaceSize: '缩小界面字体', decreaseZoom: '缩小正文字体', increaseInterfaceSize: '放大界面字体', increaseZoom: '放大正文字体', interfaceSize: '界面字号', warm: '米色',
         closeConfirmation: (title: string) => `关闭“${title}”？`, closeDocument: (title: string) => `关闭 ${title}`,
         currentDocument: '当前文档', discardChanges: '放弃更改', externalChange: '外部更改',
         externalChangesDetected: '检测到外部更改', folderBrowseFailed: '无法读取这个文件夹。',
-        enterFocusMode: '进入专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', openFolder: '打开文件夹',
+        edit: '编辑', read: '阅读', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', openFolder: '打开文件夹',
         keepEditing: '继续编辑', lastSaveFailed: '上次保存失败。请保持文档打开、另存为，或放弃内存中的更改。', notSaved: '尚未保存',
         language: '语言', light: '浅色', newDocument: '新建文档', openDocument: '打开文档',
         openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置',
@@ -418,11 +562,11 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         editorLabel: (title: string) => `${title} Markdown 文档`,
         sidebar: {
           changeFolder: '更换', chooseFolder: '选择文件夹', currentFolder: '当前文件夹', empty: '打开一个文件夹，在这里浏览 Markdown 文件。', emptyFolder: '还没有选择文件夹',
-          recent: '最近使用', recentLabel: '最近使用的文件和文件夹',
+          files: '文件', recent: '最近使用', recentLabel: '最近使用的文件和文件夹',
         },
         editor: {
           apply: '应用', blockquote: '引用', bold: '粗体', bulletList: '项目符号列表', cancel: '取消', codeBlock: '代码块',
-          copy: '复制', cut: '剪切', divider: '分隔线', formattingToolbar: '格式工具栏', heading1: '一级标题', heading2: '二级标题', heading3: '三级标题',
+          copy: '复制', cut: '剪切', divider: '分隔线', formattingToolbar: '格式工具栏', heading1: '一级标题', heading2: '二级标题', heading3: '三级标题', closeOutline: '关闭大纲',
           inlineCode: '行内代码', italic: '斜体', link: '链接', linkAddress: '链接地址', orderedList: '编号列表', paragraph: '正文',
           paste: '粘贴', selectAll: '全选', strike: '删除线', table: '表格', textStyle: '文本样式',
           addColumnLeft: '在左侧添加列', addColumnRight: '在右侧添加列', addRowAbove: '在上方添加行', addRowBelow: '在下方添加行',
@@ -433,11 +577,11 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         },
       }
     : {
-        appLabel: 'Milo Markdown editor', appearance: 'Appearance', dark: 'Dark', decreaseInterfaceSize: 'Decrease interface size', decreaseZoom: 'Decrease document size', increaseInterfaceSize: 'Increase interface size', increaseZoom: 'Increase document size', interfaceSize: 'Interface size',
+        appLabel: 'Milo Markdown editor', appearance: 'Appearance', dark: 'Dark', decreaseInterfaceSize: 'Decrease interface size', decreaseZoom: 'Decrease document size', increaseInterfaceSize: 'Increase interface size', increaseZoom: 'Increase document size', interfaceSize: 'Interface size', warm: 'Warm',
         closeConfirmation: (title: string) => `Close “${title}”?`, closeDocument: (title: string) => `Close ${title}`,
         currentDocument: 'Current document', discardChanges: 'Discard changes', externalChange: 'External change',
         externalChangesDetected: 'External changes detected', folderBrowseFailed: 'Could not browse this folder.',
-        enterFocusMode: 'Enter focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', openFolder: 'Open folder',
+        edit: 'Edit', read: 'Read', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', openFolder: 'Open folder',
         keepEditing: 'Keep editing', lastSaveFailed: 'The last save failed. Keep the document open, save it elsewhere, or discard the in-memory changes.', notSaved: 'Not saved',
         language: 'Language', light: 'Light', newDocument: 'New document', openDocument: 'Open document',
         openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences',
@@ -452,11 +596,11 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         editorLabel: (title: string) => `${title} Markdown document`,
         sidebar: {
           changeFolder: 'Change', chooseFolder: 'Choose folder', currentFolder: 'Current folder', empty: 'Open a folder to browse Markdown files here.', emptyFolder: 'No folder selected',
-          recent: 'Recent', recentLabel: 'Recent files and folders',
+          files: 'Files', recent: 'Recent', recentLabel: 'Recent files and folders',
         },
         editor: {
           apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',
-          copy: 'Copy', cut: 'Cut', divider: 'Divider', formattingToolbar: 'Formatting toolbar', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3',
+          copy: 'Copy', cut: 'Cut', divider: 'Divider', formattingToolbar: 'Formatting toolbar', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3', closeOutline: 'Close outline',
           inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', orderedList: 'Numbered list', paragraph: 'Body text',
           paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', textStyle: 'Text style',
           addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',
@@ -482,6 +626,11 @@ type DocumentPanelProps = {
   onRetain: () => void
   onRetry: () => void
   onSaveAs: () => void
+  onCloseOutline: () => void
+  outlineDrawerMount: HTMLElement | null
+  outlineLayout: 'inline' | 'drawer'
+  outlineOpen: boolean
+  presentationMode: PresentationMode
   tab: DocumentTab
   title: string
 }
@@ -496,6 +645,11 @@ function DocumentPanel({
   onRetain,
   onRetry,
   onSaveAs,
+  onCloseOutline,
+  outlineDrawerMount,
+  outlineLayout,
+  outlineOpen,
+  presentationMode,
   tab,
   title,
 }: DocumentPanelProps) {
@@ -530,15 +684,20 @@ function DocumentPanel({
           <pre className="protected-document__source">{`${document.frontMatter}${document.markdown}`}</pre>
         </section>
       ) : (
-        <MilkdownEditor
-          key={`${document.id}:${document.editorVersion}`}
+        <DocumentEditorWorkspace
+          active={active}
           ariaLabel={copy.editorLabel(title)}
           copy={copy.editor}
-          initialMarkdown={document.markdown}
+          document={document}
           documentPath={document.path}
+          onCloseOutline={onCloseOutline}
           onMarkdownChange={onMarkdownChange}
           onPasteImage={onPasteImage}
+          outlineDrawerMount={outlineDrawerMount}
+          outlineLayout={outlineLayout}
+          outlineOpen={active && outlineOpen}
           placeholder={copy.editor.startWriting}
+          presentationMode={presentationMode}
         />
       )}
       {notice ? <div className="document-notice" role="status">{notice}</div> : null}
@@ -569,6 +728,49 @@ function DocumentPanel({
         </div>
       ) : null}
     </section>
+  )
+}
+
+type DocumentEditorWorkspaceProps = {
+  active: boolean
+  ariaLabel: string
+  copy: ReturnType<typeof interfaceCopy>['editor']
+  document: DocumentTab['document']
+  documentPath: string | null
+  onCloseOutline: () => void
+  onMarkdownChange: (markdown: string) => void
+  onPasteImage: (image: import('../file-system/nativeMarkdownFile').PastedImage) => Promise<string | null>
+  outlineDrawerMount: HTMLElement | null
+  outlineLayout: 'inline' | 'drawer'
+  outlineOpen: boolean
+  placeholder: string
+  presentationMode: PresentationMode
+}
+
+function DocumentEditorWorkspace({ active, ariaLabel, copy, document, documentPath, onCloseOutline, onMarkdownChange, onPasteImage, outlineDrawerMount, outlineLayout, outlineOpen, placeholder, presentationMode }: DocumentEditorWorkspaceProps) {
+  const [inlineOutlineMount, setInlineOutlineMount] = useState<HTMLElement | null>(null)
+  const outlineMount = outlineLayout === 'inline' ? inlineOutlineMount : outlineDrawerMount
+
+  return (
+    <div className={`document-editor-workspace document-editor-workspace--${outlineLayout}`}>
+      <MilkdownEditor
+        key={`${document.id}:${document.editorVersion}`}
+        active={active}
+        ariaLabel={ariaLabel}
+        copy={copy}
+        documentPath={documentPath}
+        initialMarkdown={document.markdown}
+        onCloseOutline={onCloseOutline}
+        onMarkdownChange={onMarkdownChange}
+        onPasteImage={onPasteImage}
+        outlineLayout={outlineLayout}
+        outlineMount={outlineMount}
+        outlineOpen={outlineOpen}
+        placeholder={placeholder}
+        presentationMode={presentationMode}
+      />
+      <div ref={setInlineOutlineMount} className="document-editor-workspace__outline" />
+    </div>
   )
 }
 

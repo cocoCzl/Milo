@@ -1,6 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
-export type AppearancePreference = 'system' | 'light' | 'dark'
+export type AppearancePreference = 'system' | 'light' | 'dark' | 'warm'
+export type ResolvedTheme = 'light' | 'dark' | 'warm'
 export type InterfaceLocale = 'system' | 'en' | 'zh-CN'
 
 export type StartupSession = {
@@ -23,7 +24,7 @@ export type ApplicationSettings = {
 }
 
 export const defaultApplicationSettings: ApplicationSettings = {
-  settingsVersion: 3,
+  settingsVersion: 4,
   appearance: 'system',
   locale: 'system',
   documentZoom: 100,
@@ -63,5 +64,11 @@ export function clampInterfaceZoom(zoom: number): number {
 }
 
 export function clampSidebarWidth(width: number): number {
-  return Math.min(520, Math.max(180, Math.round(width)))
+  return Math.min(420, Math.max(220, Math.round(width)))
+}
+
+export function normalizeAppearancePreference(value: unknown): AppearancePreference {
+  return value === 'light' || value === 'dark' || value === 'warm' || value === 'system'
+    ? value
+    : 'system'
 }

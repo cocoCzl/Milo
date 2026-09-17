@@ -33,7 +33,9 @@ import { deleteColumn, deleteRow } from '@milkdown/prose/tables'
 import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
 import { callCommand } from '@milkdown/utils'
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { createPortal } from 'react-dom'
 import type { PastedImage } from '../../file-system/nativeMarkdownFile'
+import type { PresentationMode } from '../../app/presentationMode'
 import { isExternalHttpUrl, openExternalLink } from '../../file-system/externalLink'
 import { EditorContextMenu, type EditorContextMenuCopy } from './EditorContextMenu'
 import { EditorOutline, type EditorHeading } from './EditorOutline'
@@ -53,6 +55,7 @@ type EditorMenu = {
 }
 
 type MilkdownEditorProps = {
+  active?: boolean
   ariaLabel?: string
   copy?: Partial<EditorCopy>
   documentPath?: string | null
@@ -60,6 +63,11 @@ type MilkdownEditorProps = {
   onMarkdownChange?: (markdown: string) => void
   onPasteImage?: (image: PastedImage) => Promise<string | null>
   placeholder?: string
+  presentationMode?: PresentationMode
+  outlineLayout?: 'inline' | 'drawer'
+  outlineMount?: HTMLElement | null
+  outlineOpen?: boolean
+  onCloseOutline?: () => void
 }
 
 type EditorCopy = EditorToolbarCopy & EditorContextMenuCopy & {
@@ -68,6 +76,7 @@ type EditorCopy = EditorToolbarCopy & EditorContextMenuCopy & {
   addRowAbove: string
   addRowBelow: string
   codeBlockLanguage: string
+  closeOutline: string
   deleteColumn: string
   deleteRow: string
   loadImage: string
@@ -87,7 +96,7 @@ const defaultEditorCopy: EditorCopy = {
   inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', orderedList: 'Numbered list', paragraph: 'Body text',
   paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', textStyle: 'Text style',
   addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',
-  codeBlockLanguage: 'Code block language', deleteColumn: 'Delete column', deleteRow: 'Delete row', loadImage: 'Load image',
+  codeBlockLanguage: 'Code block language', closeOutline: 'Close outline', deleteColumn: 'Delete column', deleteRow: 'Delete row', loadImage: 'Load image',
   loadImageError: 'Could not load image — try again', loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
   loadingImage: 'Loading image…', noOutline: 'Headings will appear here.', outline: 'Outline', plainText: 'Plain text', startWriting: 'Start with a thought…',
   startWritingHint: 'Just type — Milo keeps the Markdown for you.',
@@ -167,7 +176,115 @@ const exitHeadingAsParagraph: Command = (state, dispatch) => {
   })
 }
 
+const headingScrollOffset = 24
+// WebKit may report a fractional residual after a scroll is clamped at the
+// end of a long document.  Treat the final few pixels as the bottom so the
+// last visible heading, rather than its predecessor, wins the active state.
+const scrollBottomTolerance = 8
+const headingActivationTolerance = 2
+
+type PendingHeadingNavigation = {
+  pos: number
+}
+
+function headingScrollTop(stage: HTMLElement, heading: HTMLElement): number {
+  const stageRect = stage.getBoundingClientRect()
+  const headingRect = heading.getBoundingClientRect()
+  const maxScrollTop = Math.max(0, stage.scrollHeight - stage.clientHeight)
+  const targetTop = stage.scrollTop + headingRect.top - stageRect.top - headingScrollOffset
+  return Math.min(maxScrollTop, Math.max(0, targetTop))
+}
+
+type HeadingDomCache = {
+  doc: EditorState['doc']
+  elementsById: ReadonlyMap<string, HTMLElement>
+}
+
+// Milkdown's built-in heading-id plugin assigns a unique `id` to every
+// non-empty heading.  Unlike `nodeDOM(position)`, that id survives the
+// ProseMirror block-boundary ambiguity seen in WKWebView.  It is also more
+// reliable than pairing heading nodes and DOM elements by their list indexes:
+// an editor extension may add a heading-like DOM node without changing the
+// document model.  Navigation therefore resolves the active editor's current
+// heading through the same unique id used in the outline model.
+const headingDomCaches = new WeakMap<EditorView, HeadingDomCache>()
+
+function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLElement> {
+  const cached = headingDomCaches.get(editorView)
+  if (
+    cached?.doc === editorView.state.doc
+    && Array.from(cached.elementsById.values()).every((element) => editorView.dom.contains(element))
+  ) return cached.elementsById
+
+  const elementsById = new Map<string, HTMLElement>()
+  editorView.dom.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]').forEach((element) => {
+    if (element.id && !elementsById.has(element.id)) elementsById.set(element.id, element)
+  })
+
+  headingDomCaches.set(editorView, { doc: editorView.state.doc, elementsById })
+  return elementsById
+}
+
+function headingElement(editorView: EditorView, heading: EditorHeading): HTMLElement | null {
+  const node = editorView.state.doc.nodeAt(heading.pos)
+  if (
+    node?.type.name !== 'heading'
+    || node.textContent.trim() !== heading.text
+    || Number(node.attrs.level) !== heading.level
+    || node.attrs.id !== heading.id
+  ) {
+    return null
+  }
+
+  const element = headingElementsById(editorView).get(heading.id)
+  if (!element) return null
+  if (element.tagName.toLowerCase() !== `h${heading.level}` || element.textContent?.trim() !== heading.text) {
+    return null
+  }
+  return element
+}
+
+function headingAtSelection(state: EditorState, headingsByPosition: ReadonlyMap<number, EditorHeading>): number | null {
+  for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
+    if (state.selection.$from.node(depth).type.name !== 'heading') continue
+    const position = state.selection.$from.before(depth)
+    return headingsByPosition.has(position) ? position : null
+  }
+  return null
+}
+
+function activeHeadingFromScroll(
+  headings: EditorHeading[],
+  getElement: (pos: number) => HTMLElement | null,
+  stage: HTMLElement,
+): number | null {
+  if (headings.length === 0) return null
+
+  const stageRect = stage.getBoundingClientRect()
+  const remainingScroll = Math.max(0, stage.scrollHeight - stage.clientHeight - stage.scrollTop)
+  // The final document padding and WebKit fractional layout mean strict
+  // equality with maxScrollTop is not dependable.  Once the remaining travel
+  // is visually negligible, use the last heading actually intersecting the
+  // article viewport so the final chapters can become active.
+  const bottomThreshold = Math.max(scrollBottomTolerance, Math.min(48, stage.clientHeight * 0.08))
+  const isAtBottom = remainingScroll <= bottomThreshold
+  const activationLine = stageRect.top + headingScrollOffset + headingActivationTolerance
+  let current = headings[0].pos
+  let lastVisible: number | null = null
+
+  for (const heading of headings) {
+    const element = getElement(heading.pos)
+    if (!element) continue
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom > stageRect.top && rect.top < stageRect.bottom) lastVisible = heading.pos
+    if (!isAtBottom && rect.top <= activationLine) current = heading.pos
+  }
+
+  return isAtBottom ? lastVisible ?? headings[headings.length - 1].pos : current
+}
+
 export function MilkdownEditor({
+  active = true,
   ariaLabel = 'Untitled Markdown document',
   copy,
   documentPath = null,
@@ -175,6 +292,11 @@ export function MilkdownEditor({
   onMarkdownChange,
   onPasteImage,
   placeholder,
+  presentationMode = 'edit',
+  outlineLayout = 'inline',
+  outlineMount = null,
+  outlineOpen = false,
+  onCloseOutline,
 }: MilkdownEditorProps) {
   const editorCopy = useMemo(() => ({ ...defaultEditorCopy, ...copy }), [copy])
   const editorRootRef = useRef<HTMLDivElement>(null)
@@ -185,6 +307,7 @@ export function MilkdownEditor({
   const documentPathRef = useRef(documentPath)
   const onMarkdownChangeRef = useRef(onMarkdownChange)
   const onPasteImageRef = useRef(onPasteImage)
+  const presentationModeRef = useRef<PresentationMode>(presentationMode)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<EditorMenu | null>(null)
   const [isReady, setIsReady] = useState(false)
@@ -192,12 +315,18 @@ export function MilkdownEditor({
   const [linkEditorOpen, setLinkEditorOpen] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
   const [toolbarState, setToolbarState] = useState<EditorToolbarState>(defaultToolbarState)
+  const [activeHeadingPosition, setActiveHeadingPosition] = useState<number | null>(null)
+  const headingsByPositionRef = useRef(new Map<number, EditorHeading>())
+  const pendingNavigationRef = useRef<PendingHeadingNavigation | null>(null)
 
   onMarkdownChangeRef.current = onMarkdownChange
   onPasteImageRef.current = onPasteImage
+  presentationModeRef.current = presentationMode
   ariaLabelRef.current = ariaLabel
   copyRef.current = editorCopy
   documentPathRef.current = documentPath
+
+  headingsByPositionRef.current = new Map(headings.map((heading) => [heading.pos, heading]))
 
   useEffect(() => {
     const editorRoot = editorRootRef.current
@@ -233,7 +362,7 @@ export function MilkdownEditor({
         ])
         ctx.update(nodeViewCtx, (views) => [
           ...views,
-          ['code_block', createCodeBlockNodeView(copyRef)] as [string, NodeViewConstructor],
+          ['code_block', createCodeBlockNodeView(copyRef, presentationModeRef)] as [string, NodeViewConstructor],
           ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
         ])
         ctx.get(listenerCtx).markdownUpdated((updateCtx, markdown) => {
@@ -252,7 +381,14 @@ export function MilkdownEditor({
           if (!editorView.state) return
           queueMicrotask(() => {
             const currentView = selectionCtx.get(editorViewCtx)
-            if (!disposed && currentView.state) setToolbarState(readToolbarState(currentView.state))
+            if (!disposed && currentView.state) {
+              setToolbarState(readToolbarState(currentView.state))
+              // Selection is only a secondary signal.  It closes the small
+              // click-to-scroll race in edit mode; scrolling itself remains
+              // the source of truth whenever the user moves the document.
+              const selectedHeading = headingAtSelection(currentView.state, headingsByPositionRef.current)
+              if (selectedHeading !== null) setActiveHeadingPosition(selectedHeading)
+            }
           })
           setContextMenu(null)
         })
@@ -298,6 +434,24 @@ export function MilkdownEditor({
   }, [ariaLabel])
 
   useEffect(() => {
+    if (!isReady) return
+
+    editorRef.current?.action((ctx) => {
+      const editorView = ctx.get(editorViewCtx)
+      editorView.setProps({ ...editorView.props, editable: () => presentationModeRef.current === 'edit' })
+      editorView.dom.setAttribute('aria-readonly', String(presentationMode === 'read'))
+    })
+    editorRootRef.current?.querySelectorAll<HTMLButtonElement>('.code-block-card__language-trigger').forEach((trigger) => {
+      trigger.disabled = presentationMode === 'read'
+    })
+    if (presentationMode === 'read') {
+      editorRootRef.current?.querySelectorAll<HTMLElement>('.code-block-card__language-menu').forEach((menu) => { menu.hidden = true })
+      setContextMenu(null)
+      setLinkEditorOpen(false)
+    }
+  }, [isReady, presentationMode])
+
+  useEffect(() => {
     if (!contextMenu) return
 
     const closeOnOutsidePress = (event: PointerEvent) => {
@@ -325,6 +479,7 @@ export function MilkdownEditor({
   }, [])
 
   const pasteImage = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+    if (presentationModeRef.current !== 'edit') return
     const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'))
     if (!image || !onPasteImageRef.current) return
     event.preventDefault()
@@ -362,15 +517,107 @@ export function MilkdownEditor({
     return readToolbarState(editorView.state).blockType
   }), [])
 
-  const selectHeading = useCallback((heading: EditorHeading) => {
+  const headingElementForPosition = useCallback((pos: number): HTMLElement | null => (
     editorRef.current?.action((ctx) => {
+      const heading = headingsByPositionRef.current.get(pos)
+      return heading ? headingElement(ctx.get(editorViewCtx), heading) : null
+    }) ?? null
+  ), [])
+
+  const navigateToHeading = useCallback((requestedHeading: EditorHeading): boolean => {
+    if (!active) return false
+    // A portal can outlive a document refresh for one React commit.  Resolve
+    // the click through the current editor's position map, never an array
+    // index, and refuse a stale heading identity rather than navigating a
+    // different chapter.
+    const heading = headingsByPositionRef.current.get(requestedHeading.pos)
+    if (!heading || heading.key !== requestedHeading.key) return false
+
+    const navigated = editorRef.current?.action((ctx) => {
       const editorView = ctx.get(editorViewCtx)
-      const position = Math.min(heading.position + 1, editorView.state.doc.content.size)
-      const selection = TextSelection.near(editorView.state.doc.resolve(position))
-      editorView.dispatch(editorView.state.tr.setSelection(selection).scrollIntoView())
-      editorView.focus()
-    })
-  }, [])
+      const headingNode = headingElement(editorView, heading)
+      const stage = editorRootRef.current?.closest<HTMLElement>('.document-stage')
+      if (!headingNode) return false
+
+      // Measure against the real document scroll root. Outline navigation is
+      // intentionally scroll-only in both presentation modes. Moving the
+      // editable selection here makes WKWebView reveal its caret afterwards,
+      // which can overwrite the target position (most visibly near a long
+      // document's final headings). A click in the outline is navigation, not
+      // an edit operation.
+      let targetTop: number | null = null
+      if (stage) {
+        targetTop = headingScrollTop(stage, headingNode)
+        // Register the target before mutating the scroll container. Near the
+        // document bottom several final headings can be visible at the same
+        // time, while `maxScrollTop` prevents the requested heading from
+        // reaching the activation line. The explicit outline choice remains
+        // authoritative until the user deliberately scrolls again.
+        pendingNavigationRef.current = { pos: heading.pos }
+      } else if (typeof headingNode.scrollIntoView === 'function') {
+        pendingNavigationRef.current = null
+      }
+
+      if (stage && targetTop !== null) {
+        // Element#scrollTo with an options dictionary intermittently no-ops
+        // in the current macOS WKWebView after an outline button has taken
+        // focus.  The scrollTop property targets the same real scroll root
+        // and is synchronous, which makes the destination deterministic.
+        stage.scrollTop = targetTop
+      } else if (typeof headingNode.scrollIntoView === 'function') {
+        headingNode.scrollIntoView({ block: 'start', behavior: 'auto' })
+      }
+      return true
+    }) ?? false
+
+    if (navigated) {
+      // Do not release this simply after a paint frame: a clamped bottom
+      // navigation can never make an earlier final heading win a pure
+      // viewport-based calculation. Input listeners below release it on the
+      // next intentional user navigation.
+      setActiveHeadingPosition(heading.pos)
+    }
+    return navigated
+  }, [active])
+
+  useEffect(() => {
+    if (!active || !isReady) return
+    const stage = editorRootRef.current?.closest<HTMLElement>('.document-stage')
+    if (!stage) return
+    let frame = 0
+    const updateActiveHeading = () => {
+      frame = 0
+      const pending = pendingNavigationRef.current
+
+      if (pending) {
+        setActiveHeadingPosition((previous) => previous === pending.pos ? previous : pending.pos)
+        return
+      }
+
+      const current = activeHeadingFromScroll(headings, headingElementForPosition, stage)
+      setActiveHeadingPosition((previous) => previous === current ? previous : current)
+    }
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(updateActiveHeading) }
+    const cancelPendingNavigation = () => { pendingNavigationRef.current = null }
+    updateActiveHeading()
+    stage.addEventListener('scroll', onScroll, { passive: true })
+    stage.addEventListener('wheel', cancelPendingNavigation, { passive: true })
+    stage.addEventListener('touchstart', cancelPendingNavigation, { passive: true })
+    stage.addEventListener('pointerdown', cancelPendingNavigation, { passive: true })
+    stage.addEventListener('keydown', cancelPendingNavigation)
+    return () => {
+      stage.removeEventListener('scroll', onScroll)
+      stage.removeEventListener('wheel', cancelPendingNavigation)
+      stage.removeEventListener('touchstart', cancelPendingNavigation)
+      stage.removeEventListener('pointerdown', cancelPendingNavigation)
+      stage.removeEventListener('keydown', cancelPendingNavigation)
+      // This editor can remain mounted while its document panel is hidden.
+      // Its click lock is meaningful only for the currently visible tab; do
+      // not let a previous tab's bottom-navigation choice survive a switch.
+      pendingNavigationRef.current = null
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [active, headingElementForPosition, headings, isReady])
 
   const runEditorCommand = useCallback(<T,>(command: CmdKey<T>, payload?: T) => {
     syncEditorSelectionFromDOM()
@@ -454,6 +701,7 @@ export function MilkdownEditor({
   }, [focusEditor])
 
   const openEditorMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (presentationModeRef.current !== 'edit') return
     const target = event.target
     const editor = editorRef.current
     if (!editor || !(target instanceof Element) || !target.closest('.ProseMirror')) return
@@ -513,6 +761,7 @@ export function MilkdownEditor({
   }, [runTableCommand, runTableProseCommand])
 
   const toggleTaskItem = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (presentationModeRef.current !== 'edit') return
     const target = event.target
 
     if (!(target instanceof HTMLElement)) {
@@ -559,34 +808,48 @@ export function MilkdownEditor({
       ref={editorRootRef}
       aria-busy={!isReady}
       aria-label={ariaLabel}
-      className="milkdown-editor"
+      className={`milkdown-editor${presentationMode === 'read' ? ' milkdown-editor--read' : ''}`}
       onClickCapture={openLinkOnCommandClick}
       onClick={toggleTaskItem}
       onContextMenu={openEditorMenu}
       onPasteCapture={pasteImage}
     >
-      <EditorToolbar
-        copy={editorCopy}
-        linkEditorOpen={linkEditorOpen}
-        linkUrl={linkUrl}
-        state={toolbarState}
-        onApplyLink={applyLink}
-        onBlockChange={changeBlockType}
-        onCancelLink={() => setLinkEditorOpen(false)}
-        onCommand={runToolbarCommand}
-        onLinkUrlChange={setLinkUrl}
-      />
-      <EditorOutline
-        emptyLabel={editorCopy.noOutline}
-        headings={headings}
-        label={editorCopy.outline}
-        onSelect={selectHeading}
-      />
+      {presentationMode === 'edit' ? (
+        <EditorToolbar
+          copy={editorCopy}
+          linkEditorOpen={linkEditorOpen}
+          linkUrl={linkUrl}
+          state={toolbarState}
+          onApplyLink={applyLink}
+          onBlockChange={changeBlockType}
+          onCancelLink={() => setLinkEditorOpen(false)}
+          onCommand={runToolbarCommand}
+          onLinkUrlChange={setLinkUrl}
+        />
+      ) : null}
+      {outlineMount && (outlineLayout === 'inline' || outlineOpen) ? createPortal(
+        <>
+          {outlineOpen && outlineLayout === 'drawer' ? <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} /> : null}
+          <EditorOutline
+            activePosition={activeHeadingPosition}
+            closeLabel={editorCopy.closeOutline}
+            drawer={outlineLayout === 'drawer'}
+            emptyLabel={editorCopy.noOutline}
+            headings={headings}
+            label={editorCopy.outline}
+            onClose={onCloseOutline}
+            onSelect={(heading) => {
+              if (navigateToHeading(heading) && outlineLayout === 'drawer') onCloseOutline?.()
+            }}
+          />
+        </>,
+        outlineMount,
+      ) : null}
       <span aria-hidden="true" className="milkdown-editor__empty-state">
         <span className="milkdown-editor__placeholder">{placeholder ?? editorCopy.startWriting}</span>
         <span className="milkdown-editor__hint">{editorCopy.startWritingHint}</span>
       </span>
-      {contextMenu ? (
+      {presentationMode === 'edit' && contextMenu ? (
         <EditorContextMenu
           ref={contextMenuRef}
           copy={editorCopy}
@@ -645,13 +908,21 @@ function readHeadings(state: EditorState): EditorHeading[] {
   state.doc.descendants((node, position) => {
     if (node.type.name !== 'heading') return
     const text = node.textContent.trim()
-    if (text) headings.push({ level: Number(node.attrs.level) || 1, position, text })
+    const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
+    // The Milkdown heading-id plugin fills this during editor initialization.
+    // If it has not completed yet, do not expose a navigable heading that
+    // could resolve to a different DOM node; the next document update supplies
+    // the stable id and publishes it to the outline.
+    if (text && id) headings.push({ id, key: id, level: Number(node.attrs.level) || 1, pos: position, text })
   })
 
   return headings
 }
 
-function createCodeBlockNodeView(copyRef: MutableRefObject<EditorCopy>): NodeViewConstructor {
+function createCodeBlockNodeView(
+  copyRef: MutableRefObject<EditorCopy>,
+  presentationModeRef: MutableRefObject<PresentationMode>,
+): NodeViewConstructor {
   return (node, editorView, getPos) => {
     const card = document.createElement('section')
     const header = document.createElement('header')
@@ -689,6 +960,7 @@ function createCodeBlockNodeView(copyRef: MutableRefObject<EditorCopy>): NodeVie
       label.textContent = copyRef.current.codeBlock
       languageTrigger.textContent = selectedLabel
       languageTrigger.setAttribute('aria-label', `${copyRef.current.codeBlockLanguage}: ${selectedLabel}`)
+      languageTrigger.disabled = presentationModeRef.current !== 'edit'
       copyButton.setAttribute('aria-label', copyRef.current.copy)
       copyButton.title = copyRef.current.copy
 
@@ -705,6 +977,7 @@ function createCodeBlockNodeView(copyRef: MutableRefObject<EditorCopy>): NodeVie
       optionButton.setAttribute('role', 'option')
       optionButton.textContent = optionLabel
       optionButton.addEventListener('click', () => {
+        if (presentationModeRef.current !== 'edit') return
         const position = getPos()
         if (typeof position === 'number') {
           editorView.dispatch(editorView.state.tr.setNodeAttribute(position, 'language', option.value))
@@ -715,6 +988,7 @@ function createCodeBlockNodeView(copyRef: MutableRefObject<EditorCopy>): NodeVie
     }
 
     languageTrigger.addEventListener('click', () => {
+      if (presentationModeRef.current !== 'edit') return
       const isOpening = languageMenu.hidden
       languageMenu.hidden = !isOpening
       languageTrigger.setAttribute('aria-expanded', String(isOpening))

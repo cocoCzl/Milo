@@ -4,12 +4,14 @@ import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import type { MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
 
 type FileSidebarProps = {
+  activeFile: string | null
   copy: {
     changeFolder: string
     chooseFolder: string
     currentFolder: string
     empty: string
     emptyFolder: string
+    files: string
     recent: string
     recentLabel: string
   }
@@ -24,7 +26,7 @@ type FileSidebarProps = {
   width: number
 }
 
-export function FileSidebar({ copy, folder, onChooseFolder, onOpenFile, onOpenFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
+export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onOpenFile, onOpenFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null)
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -36,7 +38,7 @@ export function FileSidebar({ copy, folder, onChooseFolder, onOpenFile, onOpenFo
     let nextWidth = initialWidth
 
     const applyWidth = (clientX: number) => {
-      nextWidth = Math.min(520, Math.max(180, Math.round(initialWidth + clientX - initialX)))
+      nextWidth = Math.min(420, Math.max(220, Math.round(initialWidth + clientX - initialX)))
       sidebarRef.current?.style.setProperty('width', `${nextWidth}px`)
       document.querySelector<HTMLElement>('.app-shell')?.style.setProperty('--sidebar-width', `${nextWidth}px`)
     }
@@ -80,14 +82,15 @@ export function FileSidebar({ copy, folder, onChooseFolder, onOpenFile, onOpenFo
       {(recentFiles.length > 0 || recentFolders.length > 0) ? (
         <section className="file-sidebar__recent" aria-label={copy.recentLabel}>
           <span>{copy.recent}</span>
-          {recentFiles.map((path) => <button key={path} title={path} type="button" onClick={() => onOpenFile(path)}>{fileName(path)}</button>)}
-          {recentFolders.map((path) => <button key={path} title={path} type="button" onClick={() => onOpenFolder(path)}>{fileName(path)}</button>)}
+          {recentFiles.map((path) => <button aria-current={path === activeFile ? 'page' : undefined} key={path} title={path} type="button" onClick={() => onOpenFile(path)}><FileText aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span></button>)}
+          {recentFolders.map((path) => <button key={path} title={path} type="button" onClick={() => onOpenFolder(path)}><Folder aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span></button>)}
         </section>
       ) : null}
       {tree ? (
-        <div className="file-sidebar__tree">
-          {tree.children.map((child) => <TreeBranch key={child.path} node={child} depth={0} onOpenFile={onOpenFile} />)}
-        </div>
+        <section className="file-sidebar__tree" aria-label={copy.files}>
+          <span className="file-sidebar__section-label">{copy.files}</span>
+          {tree.children.map((child) => <TreeBranch activeFile={activeFile} key={child.path} node={child} depth={0} onOpenFile={onOpenFile} />)}
+        </section>
       ) : (
         <div className="file-sidebar__empty">
           <p>{copy.empty}</p>
@@ -106,10 +109,10 @@ function fileName(path: string) {
   return path.split(/[\\/]/).at(-1) ?? path
 }
 
-function TreeBranch({ node, depth, onOpenFile }: { depth: number; node: MarkdownTreeNode; onOpenFile: (path: string) => void }) {
+function TreeBranch({ activeFile, node, depth, onOpenFile }: { activeFile: string | null; depth: number; node: MarkdownTreeNode; onOpenFile: (path: string) => void }) {
   if (!node.isDirectory) {
     return (
-      <button className="file-sidebar__file" title={node.path} type="button" style={{ paddingLeft: 14 + depth * 14 }} onClick={() => onOpenFile(node.path)}>
+      <button aria-current={node.path === activeFile ? 'page' : undefined} className="file-sidebar__file" title={node.path} type="button" style={{ paddingLeft: 14 + depth * 14 }} onClick={() => onOpenFile(node.path)}>
         <FileText aria-hidden="true" size={13} strokeWidth={1.6} />
         <span>{node.name}</span>
       </button>
@@ -123,7 +126,7 @@ function TreeBranch({ node, depth, onOpenFile }: { depth: number; node: Markdown
         <Folder aria-hidden="true" size={13} strokeWidth={1.6} />
         <span>{node.name}</span>
       </summary>
-      {node.children.map((child) => <TreeBranch key={child.path} node={child} depth={depth + 1} onOpenFile={onOpenFile} />)}
+      {node.children.map((child) => <TreeBranch activeFile={activeFile} key={child.path} node={child} depth={depth + 1} onOpenFile={onOpenFile} />)}
     </details>
   )
 }
