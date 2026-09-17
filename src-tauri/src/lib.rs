@@ -1,6 +1,8 @@
 mod file_system;
 mod settings;
 
+const LINK_P0_DIAGNOSTIC_LOG: &str = "/tmp/milo-link-p0.jsonl";
+
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     Emitter, Manager,
@@ -68,6 +70,8 @@ pub fn run() {
             file_system::write_image_asset,
             settings::load_application_settings,
             settings::save_application_settings,
+            append_link_p0_diagnostic_log,
+            clear_link_p0_diagnostic_log,
             initial_launch_markdown_file
         ])
         .build(tauri::generate_context!())
@@ -83,6 +87,38 @@ pub fn run() {
             }
         }
     });
+}
+
+#[tauri::command]
+fn clear_link_p0_diagnostic_log() -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    {
+        std::fs::write(LINK_P0_DIAGNOSTIC_LOG, "")
+            .map_err(|error| format!("Could not clear diagnostic log: {error}"))
+    }
+    #[cfg(not(debug_assertions))]
+    Err("Link P0 diagnostics are only available in development builds.".to_owned())
+}
+
+#[tauri::command]
+fn append_link_p0_diagnostic_log(entry: String) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    {
+        if entry.len() > 1_000_000 {
+            return Err("Diagnostic entry exceeds the development safety limit.".to_owned());
+        }
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(LINK_P0_DIAGNOSTIC_LOG)
+            .map_err(|error| format!("Could not open diagnostic log: {error}"))?;
+        file.write_all(entry.as_bytes())
+            .and_then(|_| file.write_all(b"\n"))
+            .map_err(|error| format!("Could not write diagnostic log: {error}"))
+    }
+    #[cfg(not(debug_assertions))]
+    Err("Link P0 diagnostics are only available in development builds.".to_owned())
 }
 
 #[tauri::command]

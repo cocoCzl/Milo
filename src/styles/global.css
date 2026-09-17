@@ -936,6 +936,16 @@ button:focus-visible,
   pointer-events: auto;
 }
 
+/* This portal is a viewport coordinate space. ProseMirror's coordsAtPos uses
+   viewport CSS pixels too, including Milo's font-based zoom settings. */
+.contextual-overlay-layer {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  pointer-events: none;
+  isolation: isolate;
+}
+
 .document-editor-workspace--inline .document-editor-workspace__outline {
   position: sticky;
   top: var(--space-4);
@@ -1337,6 +1347,81 @@ button:focus-visible,
   cursor: not-allowed;
   opacity: 0.45;
 }
+
+.selection-toolbar {
+  position: fixed;
+  z-index: 1;
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px;
+  color: var(--text-secondary);
+  pointer-events: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif;
+}
+
+.selection-toolbar--measuring {
+  top: -9999px;
+  left: -9999px;
+  visibility: hidden;
+}
+
+.selection-toolbar button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  place-items: center;
+}
+
+.selection-toolbar button svg { width: 15px; height: 15px; stroke-width: 1.9; }
+
+.selection-toolbar button:hover,
+.selection-toolbar button:focus-visible { color: var(--text-primary); background: var(--bg-hover); }
+
+.selection-toolbar button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+
+.selection-toolbar__divider { width: 1px; height: 18px; margin: 0 2px; background: var(--border-subtle); }
+
+.editor-link-popover--contextual {
+  position: fixed;
+  z-index: 2;
+  right: auto;
+  width: min(360px, calc(100vw - 16px));
+  pointer-events: auto;
+}
+
+.editor-link-popover--contextual:has(label) {
+  flex-direction: column;
+  align-items: stretch;
+  width: min(330px, calc(100vw - 24px));
+  padding: var(--space-4);
+}
+
+.editor-link-popover--contextual label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--ui-font-sm);
+}
+
+.editor-link-popover--contextual label input { width: 100%; }
+
+.editor-link-popover--contextual:has(label) button { align-self: flex-end; }
+
+.editor-link-popover--contextual > svg { flex: 0 0 auto; color: var(--text-tertiary); }
+
+.editor-link-popover--contextual button svg { display: block; }
 
 .editor-outline {
   display: flex;
@@ -1895,7 +1980,20 @@ button:focus-visible,
 
 .milkdown .ProseMirror a {
   color: var(--accent);
+  cursor: pointer;
+  text-decoration-line: underline;
   text-decoration-color: var(--accent);
+  text-underline-offset: 0.15em;
+}
+
+/* Inline code normally owns its muted foreground color.  Preserve its code
+   treatment, but let a surrounding link remain visibly and interactively a
+   link instead of looking like an unchanged code token. */
+.milkdown .ProseMirror a code {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: currentcolor;
   text-underline-offset: 0.15em;
 }
 
@@ -2271,6 +2369,12 @@ button:focus-visible,
 }
 
 .app-shell[data-color-scheme="dark"] .milkdown .ProseMirror a {
+  color: #9eb9df;
+  text-decoration-line: underline;
+  text-decoration-color: #637b9c;
+}
+
+.app-shell[data-color-scheme="dark"] .milkdown .ProseMirror a code {
   color: #9eb9df;
   text-decoration-color: #637b9c;
 }

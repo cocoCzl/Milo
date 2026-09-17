@@ -19,7 +19,9 @@ describe('external links', () => {
 
   it('only hands HTTP(S) links to the system opener', async () => {
     expect(isExternalHttpUrl('https://milo.example')).toBe(true)
+    expect(isExternalHttpUrl('https://')).toBe(false)
     expect(isExternalHttpUrl('file:///private/note.md')).toBe(false)
+    expect(isExternalHttpUrl('javascript:alert(1)')).toBe(false)
 
     await openExternalLink('https://milo.example')
     await openExternalLink('javascript:alert(1)')

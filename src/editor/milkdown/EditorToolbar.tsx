@@ -57,25 +57,15 @@ export type EditorToolbarState = {
 
 type EditorToolbarProps = {
   copy: EditorToolbarCopy
-  linkEditorOpen: boolean
-  linkUrl: string
-  onApplyLink: () => void
   onBlockChange: (blockType: EditorBlockType) => void
-  onCancelLink: () => void
   onCommand: (command: EditorToolbarCommand) => void
-  onLinkUrlChange: (url: string) => void
   state: EditorToolbarState
 }
 
 export function EditorToolbar({
   copy,
-  linkEditorOpen,
-  linkUrl,
-  onApplyLink,
   onBlockChange,
-  onCancelLink,
   onCommand,
-  onLinkUrlChange,
   state,
 }: EditorToolbarProps) {
   const [blockMenuOpen, setBlockMenuOpen] = useState(false)
@@ -161,26 +151,6 @@ export function EditorToolbar({
         <ToolbarButton label={copy.divider} onClick={() => onCommand('divider')}><Minus /></ToolbarButton>
         <ToolbarButton label={copy.table} onClick={() => onCommand('table')}><Table2 /></ToolbarButton>
       </div>
-      {linkEditorOpen ? (
-        <form
-          className="editor-link-popover"
-          onSubmit={(event) => {
-            event.preventDefault()
-            onApplyLink()
-          }}
-        >
-          <input
-            autoFocus
-            aria-label={copy.linkAddress}
-            placeholder="https://"
-            type="url"
-            value={linkUrl}
-            onChange={(event) => onLinkUrlChange(event.target.value)}
-          />
-          <button type="submit" disabled={!linkUrl.trim()}>{copy.apply}</button>
-          <button type="button" onClick={onCancelLink}>{copy.cancel}</button>
-        </form>
-      ) : null}
     </div>
   )
 }

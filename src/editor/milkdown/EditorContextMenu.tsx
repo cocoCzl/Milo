@@ -1,4 +1,4 @@
-import { Bold, ClipboardPaste, Copy, Italic, MousePointer2, Scissors } from 'lucide-react'
+import { Bold, ClipboardPaste, Copy, Italic, Link2, MousePointer2, Scissors } from 'lucide-react'
 import { forwardRef } from 'react'
 
 export type EditorContextMenuCopy = {
@@ -12,6 +12,9 @@ export type EditorContextMenuCopy = {
   deleteColumn: string
   deleteRow: string
   italic: string
+  addLink: string
+  editLink: string
+  insertLink: string
   paste: string
   selectAll: string
 }
@@ -20,7 +23,8 @@ type EditorContextMenuProps = {
   copy: EditorContextMenuCopy
   hasSelection: boolean
   inTable: boolean
-  onCommand: (command: 'cut' | 'copy' | 'paste' | 'select-all' | 'bold' | 'italic') => void
+  linkLabel: string
+  onCommand: (command: 'cut' | 'copy' | 'paste' | 'select-all' | 'bold' | 'italic' | 'link') => void
   onTableCommand: (command: 'row-before' | 'row-after' | 'column-before' | 'column-after' | 'delete-row' | 'delete-column') => void
   position: { left: number; top: number }
 }
@@ -29,6 +33,7 @@ export const EditorContextMenu = forwardRef<HTMLDivElement, EditorContextMenuPro
   copy,
   hasSelection,
   inTable,
+  linkLabel,
   onCommand,
   onTableCommand,
   position,
@@ -48,6 +53,7 @@ export const EditorContextMenu = forwardRef<HTMLDivElement, EditorContextMenuPro
       <span className="editor-context-menu__divider" aria-hidden="true" />
       <MenuButton icon={<Bold />} label={copy.bold} shortcut="⌘B" onClick={() => onCommand('bold')} />
       <MenuButton icon={<Italic />} label={copy.italic} shortcut="⌘I" onClick={() => onCommand('italic')} />
+      <MenuButton icon={<Link2 />} label={linkLabel} shortcut="⌘K" onClick={() => onCommand('link')} />
       <span className="editor-context-menu__divider" aria-hidden="true" />
       <MenuButton icon={<MousePointer2 />} label={copy.selectAll} shortcut="⌘A" onClick={() => onCommand('select-all')} />
       {inTable ? (

@@ -2,7 +2,12 @@ import { isTauri } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 export function isExternalHttpUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url)
+  try {
+    const parsed = new URL(url)
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && Boolean(parsed.hostname)
+  } catch {
+    return false
+  }
 }
 
 export async function openExternalLink(url: string): Promise<void> {
