@@ -1,6 +1,7 @@
 import { Bold, Code2, Italic, Link2, Strikethrough } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { MutableRefObject } from 'react'
+import { TextSelection } from '@milkdown/prose/state'
 import type { ContextualEditorStore } from './contextualEditorStore'
 
 export type SelectionToolbarCopy = {
@@ -52,13 +53,19 @@ export function SelectionToolbar({ active, containsInteractionTarget, copy, dism
   const rootRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef(0)
   const [position, setPosition] = useState<Position>(null)
-  const selected = snapshot.state && snapshot.from !== snapshot.to
+  const selected = Boolean(
+    snapshot.state
+    && snapshot.state.selection instanceof TextSelection
+    && !snapshot.state.selection.empty
+    && snapshot.state.selection.$from.parent.inlineContent
+    && snapshot.state.selection.$to.parent.inlineContent,
+  )
   const key = selected ? selectionKey(snapshot.from, snapshot.to) : null
   const visible = Boolean(active && selected && key !== dismissedSelectionRef.current && position)
 
   useLayoutEffect(() => {
     const view = snapshot.view
-    if (!active || !view || snapshot.from === snapshot.to) {
+    if (!active || !view || !selected) {
       setPosition(null)
       return undefined
     }
@@ -116,7 +123,7 @@ export function SelectionToolbar({ active, containsInteractionTarget, copy, dism
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
       frameRef.current = 0
     }
-  }, [active, snapshot.from, snapshot.state, snapshot.to, snapshot.view])
+  }, [active, selected, snapshot.from, snapshot.state, snapshot.to, snapshot.view])
 
   useEffect(() => {
     if (!active) return undefined

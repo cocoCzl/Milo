@@ -1,4 +1,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MilkdownEditor } from './MilkdownEditor'
@@ -7,6 +10,12 @@ afterEach(cleanup)
 
 function longOutlineMarkdown() {
   return Array.from({ length: 20 }, (_, index) => `## ${index + 1}. Chapter ${index + 1}\n\nContent for chapter ${index + 1}.`).join('\n\n')
+}
+
+async function openBlockMenu(overlayMount: HTMLElement) {
+  const handle = await within(overlayMount).findByRole('button', { name: 'Add block' })
+  fireEvent.click(handle)
+  return within(overlayMount)
 }
 
 function setStageGeometry(
@@ -577,52 +586,182 @@ describe('MilkdownEditor', () => {
     expect(getByText('从一个想法开始…')).toBeVisible()
   })
 
-  it('offers discoverable formatting controls that edit the WYSIWYG document', async () => {
-    const { container } = render(<MilkdownEditor initialMarkdown="Write here" />)
-    const queries = within(container)
+  it('uses one contextual Block Handle and menu instead of the fixed toolbar', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown="Write here" contextualOverlayMount={overlayMount} />)
 
-    await waitFor(() => expect(container.querySelector('.ProseMirror')).toBeInTheDocument())
-    expect(container.querySelector('.milkdown-editor')?.matches(
-      ':has(.ProseMirror > p:only-child > br.ProseMirror-trailingBreak:only-child)',
-    )).toBe(false)
-    fireEvent.click(queries.getByRole('button', { name: 'Text style' }))
-    fireEvent.click(queries.getByRole('menuitemradio', { name: 'Heading 1' }))
+    await waitFor(() => expect(within(overlayMount).getByRole('button', { name: 'Add block' })).toBeVisible())
+    expect(container.querySelector('.editor-toolbar')).not.toBeInTheDocument()
+    expect(overlayMount.querySelectorAll('.block-handle')).toHaveLength(1)
+
+    fireEvent.click(within(overlayMount).getByRole('button', { name: 'Add block' }))
+    fireEvent.click(within(overlayMount).getByRole('menuitemradio', { name: 'Heading 1' }))
     await waitFor(() => expect(container.querySelector('h1')).toHaveTextContent('Write here'))
-    expect(queries.getByRole('button', { name: 'Text style' })).toHaveAttribute(
-      'title',
-      'Text style — Heading 1',
-    )
-
-    fireEvent.click(queries.getByRole('button', { name: 'Table' }))
-    await waitFor(() => expect(container.querySelector('table')).toBeInTheDocument())
+    overlayMount.remove()
   })
 
-  it('applies a heading style to the empty paragraph being typed in', async () => {
-    const { container } = render(<MilkdownEditor initialMarkdown="" />)
-    const queries = within(container)
+  it('retains Block Handle ownership when the pointer crosses from the editor into its portaled button', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown="Write here" contextualOverlayMount={overlayMount} />)
+    const editorRoot = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.milkdown-editor')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const handle = await within(overlayMount).findByRole('button', { name: 'Add block' })
 
-    await waitFor(() => expect(container.querySelector('.ProseMirror')).toBeInTheDocument())
-    fireEvent.click(queries.getByRole('button', { name: 'Text style' }))
-    fireEvent.click(queries.getByRole('menuitemradio', { name: 'Heading 1' }))
+    fireEvent(editorRoot, new MouseEvent('pointerleave', { clientX: 166, clientY: 112, relatedTarget: handle }))
+    await waitFor(() => expect(within(overlayMount).getByRole('button', { name: 'Add block' })).toBe(handle))
+    for (let move = 0; move < 20; move += 1) fireEvent.pointerMove(handle, { clientX: 166, clientY: 112 })
+    expect(overlayMount.querySelectorAll('.block-handle')).toHaveLength(1)
+
+    fireEvent.click(handle)
+    const menu = await within(overlayMount).findByRole('menu', { name: 'Add block' })
+    for (let move = 0; move < 20; move += 1) fireEvent.pointerMove(menu, { clientX: 180, clientY: 112 })
+    expect(overlayMount.querySelector('.block-handle')).toBe(handle)
+    expect(overlayMount.querySelector('.block-menu')).toBe(menu)
+    overlayMount.remove()
+  })
+
+  it('applies Block Menu changes to the empty paragraph being typed in', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown="" contextualOverlayMount={overlayMount} />)
+
+    await waitFor(() => expect(within(overlayMount).getByRole('button', { name: 'Add block' })).toBeVisible())
+    fireEvent.click(within(overlayMount).getByRole('button', { name: 'Add block' }))
+    fireEvent.click(within(overlayMount).getByRole('menuitemradio', { name: 'Heading 1' }))
 
     await waitFor(() => expect(container.querySelector('.ProseMirror > h1')).toBeInTheDocument())
-    expect(queries.getByRole('button', { name: 'Text style' })).toHaveAttribute(
-      'title',
-      'Text style — Heading 1',
+    overlayMount.remove()
+  })
+
+  it('keeps Block Menu transformations in the existing editor history for Undo and Redo', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown="Write here" contextualOverlayMount={overlayMount} />)
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+
+    const menu = await openBlockMenu(overlayMount)
+    fireEvent.click(menu.getByRole('menuitemradio', { name: 'Heading 1' }))
+    await waitFor(() => expect(editor.querySelector('h1')).toHaveTextContent('Write here'))
+
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(editor.querySelector('p')).toHaveTextContent('Write here'))
+
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(editor.querySelector('h1')).toHaveTextContent('Write here'))
+    overlayMount.remove()
+  })
+
+  it.each([
+    ['paragraph', '# Write here', 'Body text', (root: HTMLElement) => expect(root.querySelector('p')).toHaveTextContent('Write here')],
+    ['heading 1', 'Write here', 'Heading 1', (root: HTMLElement) => expect(root.querySelector('h1')).toHaveTextContent('Write here')],
+    ['heading 2', 'Write here', 'Heading 2', (root: HTMLElement) => expect(root.querySelector('h2')).toHaveTextContent('Write here')],
+    ['heading 3', 'Write here', 'Heading 3', (root: HTMLElement) => expect(root.querySelector('h3')).toHaveTextContent('Write here')],
+    ['quote', 'Write here', 'Quote', (root: HTMLElement) => expect(root.querySelector('blockquote')).toHaveTextContent('Write here')],
+    ['bullet list', 'Write here', 'Bulleted list', (root: HTMLElement) => expect(root.querySelector('ul')).toHaveTextContent('Write here')],
+    ['ordered list', 'Write here', 'Numbered list', (root: HTMLElement) => expect(root.querySelector('ol')).toHaveTextContent('Write here')],
+    ['code block', 'Write here', 'Code block', (root: HTMLElement) => expect(root.querySelector('pre')).toHaveTextContent('Write here')],
+    ['table', 'Write here', 'Table', (root: HTMLElement) => expect(root.querySelector('table')).toBeInTheDocument()],
+    ['divider', 'Write here', 'Divider', (root: HTMLElement) => expect(root.querySelector('hr')).toBeInTheDocument()],
+  ])('applies %s through the locked Block Menu target without HTML pollution', async (_name, markdown, label, assertion) => {
+    const directory = mkdtempSync(join(tmpdir(), 'milo-block-menu-'))
+    const file = join(directory, 'BLOCK_TEST.md')
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    writeFileSync(file, markdown, 'utf8')
+    const onMarkdownChange = vi.fn((next: string) => writeFileSync(file, next, 'utf8'))
+    const { container } = render(
+      <MilkdownEditor initialMarkdown={markdown} contextualOverlayMount={overlayMount} onMarkdownChange={onMarkdownChange} />,
     )
+
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    onMarkdownChange.mockClear()
+    const menu = await openBlockMenu(overlayMount)
+    fireEvent.click(menu.getByRole(label === 'Table' || label === 'Divider' ? 'menuitem' : 'menuitemradio', { name: label }))
+
+    await waitFor(() => assertion(editor))
+    await waitFor(() => expect(onMarkdownChange).toHaveBeenCalled())
+    const saved = readFileSync(file, 'utf8')
+    expect(saved).not.toContain('<br')
+    expect(saved).not.toMatch(/^\\$/m)
+    expect(saved).not.toMatch(/<[^>]+>/)
+    overlayMount.remove()
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  it('keeps Block Menu open on its frozen block and cancels without document or disk changes', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'milo-block-menu-cancel-'))
+    const file = join(directory, 'BLOCK_TEST.md')
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const baseline = 'First block\n\nSecond block'
+    writeFileSync(file, baseline, 'utf8')
+    const onMarkdownChange = vi.fn((next: string) => writeFileSync(file, next, 'utf8'))
+    const { container } = render(
+      <MilkdownEditor editorId="block-test-tab" initialMarkdown={baseline} contextualOverlayMount={overlayMount} onMarkdownChange={onMarkdownChange} />,
+    )
+    await waitFor(() => expect(container.querySelector('.ProseMirror')).toBeInTheDocument())
+    onMarkdownChange.mockClear()
+    const menu = await openBlockMenu(overlayMount)
+    const firstMenu = menu.getByRole('menu', { name: 'Add block' })
+    const frozenTop = firstMenu.style.top
+    fireEvent.pointerMove(container.querySelector('.milkdown-editor')!, { clientX: 0, clientY: 300 })
+    expect(menu.getByRole('menu', { name: 'Add block' }).style.top).toBe(frozenTop)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(overlayMount.querySelector('.block-menu')).not.toBeInTheDocument())
+    expect(onMarkdownChange).not.toHaveBeenCalled()
+    expect(readFileSync(file, 'utf8')).toBe(baseline)
+    overlayMount.remove()
+    rmSync(directory, { recursive: true, force: true })
+  })
+
+  it('keeps Block Handle and Selection Toolbar mutually exclusive across edit, read, and inactive states', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container, rerender } = render(
+      <MilkdownEditor initialMarkdown="Select this text" contextualOverlayMount={overlayMount} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    await waitFor(() => expect(within(overlayMount).getByRole('button', { name: 'Add block' })).toBeVisible())
+    const text = editor.querySelector('p')!.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 6)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent.mouseUp(editor)
+
+    await waitFor(() => expect(within(overlayMount).getByRole('toolbar', { name: 'Formatting' })).toBeVisible())
+    expect(within(overlayMount).queryByRole('button', { name: 'Add block' })).not.toBeInTheDocument()
+
+    rerender(<MilkdownEditor initialMarkdown="Select this text" contextualOverlayMount={overlayMount} presentationMode="read" />)
+    await waitFor(() => expect(within(overlayMount).queryByRole('button', { name: 'Add block' })).not.toBeInTheDocument())
+    rerender(<MilkdownEditor active={false} initialMarkdown="Select this text" contextualOverlayMount={overlayMount} />)
+    expect(within(overlayMount).queryByRole('button', { name: 'Add block' })).not.toBeInTheDocument()
+    overlayMount.remove()
   })
 
   it('starts a body paragraph when Enter is pressed in a heading', async () => {
-    const { container } = render(<MilkdownEditor initialMarkdown="" />)
-    const queries = within(container)
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown="" contextualOverlayMount={overlayMount} />)
 
     const editor = await waitFor(() => {
       const element = container.querySelector<HTMLElement>('.ProseMirror')
       expect(element).toBeInTheDocument()
       return element
     })
-    fireEvent.click(queries.getByRole('button', { name: 'Text style' }))
-    fireEvent.click(queries.getByRole('menuitemradio', { name: 'Heading 1' }))
+    await waitFor(() => expect(within(overlayMount).getByRole('button', { name: 'Add block' })).toBeVisible())
+    fireEvent.click(within(overlayMount).getByRole('button', { name: 'Add block' }))
+    fireEvent.click(within(overlayMount).getByRole('menuitemradio', { name: 'Heading 1' }))
     await waitFor(() => expect(container.querySelector('.ProseMirror > h1')).toBeInTheDocument())
 
     fireEvent.keyDown(editor!, { key: 'Enter' })
@@ -634,11 +773,8 @@ describe('MilkdownEditor', () => {
       expect(paragraph).toBeInTheDocument()
       expect(selection?.anchorNode === paragraph || paragraph?.contains(selection?.anchorNode ?? null)).toBe(true)
       expect(selection?.anchorOffset).toBe(0)
-      expect(queries.getByRole('button', { name: 'Text style' })).toHaveAttribute(
-        'title',
-        'Text style — Body text',
-      )
     })
+    overlayMount.remove()
   })
 
   it('keeps existing heading text in the heading when Enter creates the body block', async () => {
@@ -668,8 +804,8 @@ describe('MilkdownEditor', () => {
   })
 
   it('formats the block under the visible cursor instead of the previous heading', async () => {
-    const { container } = render(<MilkdownEditor initialMarkdown={'# 标题\n\n正文'} />)
-    const queries = within(container)
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown={'# 标题\n\n正文'} contextualOverlayMount={overlayMount} />)
 
     const editor = await waitFor(() => {
       const element = container.querySelector<HTMLElement>('.ProseMirror')
@@ -685,13 +821,15 @@ describe('MilkdownEditor', () => {
     window.getSelection()?.removeAllRanges()
     window.getSelection()?.addRange(range)
 
-    fireEvent.click(queries.getByRole('button', { name: 'Text style' }))
-    fireEvent.click(queries.getByRole('menuitemradio', { name: 'Heading 2' }))
+    await waitFor(() => expect(within(overlayMount).getByRole('button', { name: 'Add block' })).toBeVisible())
+    fireEvent.click(within(overlayMount).getByRole('button', { name: 'Add block' }))
+    fireEvent.click(within(overlayMount).getByRole('menuitemradio', { name: 'Heading 2' }))
 
     await waitFor(() => {
       expect(editor!.querySelector('h1')).toHaveTextContent('标题')
       expect(editor!.querySelector('h2')).toHaveTextContent('正文')
     })
+    overlayMount.remove()
   })
 
   it('builds a clickable document outline from headings', async () => {

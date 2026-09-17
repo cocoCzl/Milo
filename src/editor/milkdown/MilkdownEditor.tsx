@@ -23,19 +23,16 @@ import { createPortal } from 'react-dom'
 import type { PastedImage } from '../../file-system/nativeMarkdownFile'
 import type { PresentationMode } from '../../app/presentationMode'
 import { isExternalHttpUrl, openExternalLink } from '../../file-system/externalLink'
+import { BlockHandle } from './BlockHandle'
+import { BlockMenu, type BlockMenuCopy } from './BlockMenu'
+import { isValidBlockTarget, type BlockMenuCommand, type BlockTarget } from './blockControls'
 import { EditorContextMenu, type EditorContextMenuCopy } from './EditorContextMenu'
-import { EditorLinkPopover, type LinkPopoverMode } from './EditorLinkPopover'
+import { EditorLinkPopover, type EditorLinkPopoverCopy, type LinkPopoverMode } from './EditorLinkPopover'
 import { EditorOutline, type EditorHeading } from './EditorOutline'
 import { ContextualEditorStore, createContextualEditorPlugin } from './contextualEditorStore'
-import { createEditorCommands, isValidEditorSelectionSnapshot, type EditorBlockKind, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
-import { SelectionToolbar } from './SelectionToolbar'
-import {
-  EditorToolbar,
-  type EditorBlockType,
-  type EditorToolbarCommand,
-  type EditorToolbarCopy,
-  type EditorToolbarState,
-} from './EditorToolbar'
+import { createEditorCommands, isValidEditorSelectionSnapshot, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
+import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
+import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 
 type EditorMenu = {
   hasSelection: boolean
@@ -50,6 +47,7 @@ type MilkdownEditorProps = {
   active?: boolean
   ariaLabel?: string
   copy?: Partial<EditorCopy>
+  editorId?: string
   documentPath?: string | null
   initialMarkdown: string
   onMarkdownChange?: (markdown: string) => void
@@ -63,7 +61,7 @@ type MilkdownEditorProps = {
   onCloseOutline?: () => void
 }
 
-type EditorCopy = EditorToolbarCopy & EditorContextMenuCopy & {
+type EditorCopy = BlockMenuCopy & EditorContextMenuCopy & EditorLinkPopoverCopy & SelectionToolbarCopy & {
   addColumnLeft: string
   addColumnRight: string
   addRowAbove: string
@@ -90,18 +88,13 @@ const defaultEditorCopy: EditorCopy = {
   apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',
   copy: 'Copy', cut: 'Cut', divider: 'Divider', formattingToolbar: 'Formatting', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3',
   inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', orderedList: 'Numbered list', paragraph: 'Body text',
-  paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', textStyle: 'Text style',
+  paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', addBlock: 'Add block',
   addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',
   codeBlockLanguage: 'Code block language', closeOutline: 'Close outline', deleteColumn: 'Delete column', deleteRow: 'Delete row', loadImage: 'Load image',
   loadImageError: 'Could not load image — try again', loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
   loadingImage: 'Loading image…', noOutline: 'Headings will appear here.', outline: 'Outline', plainText: 'Plain text', startWriting: 'Start with a thought…',
   removeLink: 'Remove link', insert: 'Insert', linkText: 'Link text', addLink: 'Add link', editLink: 'Edit link', insertLink: 'Insert link…',
   startWritingHint: 'Just type — Milo keeps the Markdown for you.',
-}
-
-const defaultToolbarState: EditorToolbarState = {
-  blockType: 'paragraph', bold: false, bulletList: false, emphasis: false, hasSelection: false,
-  inlineCode: false, link: false, orderedList: false, strike: false,
 }
 
 const languageOptions = [
@@ -344,6 +337,7 @@ export function MilkdownEditor({
   active = true,
   ariaLabel = 'Untitled Markdown document',
   copy,
+  editorId = 'standalone-editor',
   documentPath = null,
   initialMarkdown,
   onMarkdownChange,
@@ -377,7 +371,7 @@ export function MilkdownEditor({
   const [linkUrl, setLinkUrl] = useState('')
   const [linkSelection, setLinkSelection] = useState<EditorSelectionSnapshot | null>(null)
   const [linkAnchor, setLinkAnchor] = useState<{ left: number; top: number } | null>(null)
-  const [toolbarState, setToolbarState] = useState<EditorToolbarState>(defaultToolbarState)
+  const [blockMenuTarget, setBlockMenuTarget] = useState<BlockTarget | null>(null)
   const [activeHeadingPosition, setActiveHeadingPosition] = useState<number | null>(null)
   const headingsByPositionRef = useRef(new Map<number, EditorHeading>())
   const pendingNavigationRef = useRef<PendingHeadingNavigation | null>(null)
@@ -493,7 +487,7 @@ export function MilkdownEditor({
           queueMicrotask(() => {
             const currentView = selectionCtx.get(editorViewCtx)
             if (!disposed && currentView.state) {
-              setToolbarState(readToolbarState(currentView.state))
+              if (!currentView.state.selection.empty) setBlockMenuTarget(null)
               // Selection is only a secondary signal.  It closes the small
               // click-to-scroll race in edit mode; scrolling itself remains
               // the source of truth whenever the user moves the document.
@@ -506,6 +500,7 @@ export function MilkdownEditor({
       })
       .use(commonmark)
       .use(gfm)
+      .use(miloEmptyTableCellSerializer)
       .use(prism)
       .use(history)
       .use(listener)
@@ -527,7 +522,6 @@ export function MilkdownEditor({
       proseMirror?.focus()
       editor.action((ctx) => {
         const editorState = ctx.get(editorViewCtx).state
-        setToolbarState(readToolbarState(editorState))
         setHeadings(readHeadings(editorState))
       })
       setIsReady(true)
@@ -657,16 +651,9 @@ export function MilkdownEditor({
     editorRootRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus()
   }, [])
 
-  const refreshToolbarState = useCallback(() => {
-    const editor = editorRef.current
-    if (!editor) return
-    setToolbarState(editor.action((ctx) => readToolbarState(ctx.get(editorViewCtx).state)))
-  }, [])
-
   const syncEditorSelectionFromDOM = useCallback(() => editorRef.current?.action((ctx) => {
     const editorView = ctx.get(editorViewCtx)
     syncProseMirrorSelectionFromDOM(editorView)
-    return readToolbarState(editorView.state).blockType
   }), [])
 
   // WebKit can defer ProseMirror's DOM-selection synchronization until after
@@ -808,10 +795,9 @@ export function MilkdownEditor({
     if (!accepted) return false
     const applied = editor.action(callCommand(command, payload))
     if (!applied) return false
-    refreshToolbarState()
     focusEditor()
     return true
-  }, [focusEditor, refreshToolbarState, restoreSelection, syncEditorSelectionFromDOM])
+  }, [focusEditor, restoreSelection, syncEditorSelectionFromDOM])
 
   const runProseCommand = useCallback((command: Command, selection?: EditorSelectionSnapshot) => {
     const editor = editorRef.current
@@ -823,10 +809,9 @@ export function MilkdownEditor({
       return command(editorView.state, editorView.dispatch)
     })
     if (!applied) return false
-    refreshToolbarState()
     focusEditor()
     return true
-  }, [focusEditor, refreshToolbarState, restoreSelection])
+  }, [focusEditor, restoreSelection])
 
   const editorCommands: EditorCommands = useMemo(() => createEditorCommands({
     runMilkdown: runEditorCommand,
@@ -846,10 +831,6 @@ export function MilkdownEditor({
     if (applied) event.preventDefault()
   }, [captureEditorSelection, editorCommands])
 
-  const changeBlockType = useCallback((blockType: EditorBlockType) => {
-    editorCommands.setBlockKind(blockType as EditorBlockKind)
-  }, [editorCommands])
-
   const openLinkEditor = useCallback((mode: LinkPopoverMode, selection: EditorSelectionSnapshot | null, href = '', anchor: { left: number; top: number } | null = null) => {
     const view = contextualStoreRef.current?.getSnapshot().view
     let resolvedAnchor = anchor
@@ -868,6 +849,7 @@ export function MilkdownEditor({
     setLinkText(mode === 'insert' ? '' : selection?.text ?? '')
     setLinkUrl(href)
     setLinkAnchor(resolvedAnchor)
+    setBlockMenuTarget(null)
     setLinkEditorOpen(true)
   }, [])
 
@@ -905,24 +887,6 @@ export function MilkdownEditor({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [active, captureEditorSelection, openInsertLinkEditor, openSelectionLinkEditor, presentationMode])
-
-  const runToolbarCommand = useCallback((command: EditorToolbarCommand) => {
-    switch (command) {
-      case 'bold': editorCommands.toggleBold(); break
-      case 'italic': editorCommands.toggleItalic(); break
-      case 'strike': editorCommands.toggleStrike(); break
-      case 'inline-code': editorCommands.toggleInlineCode(); break
-      case 'bullet-list': editorCommands.toggleBulletList(); break
-      case 'ordered-list': editorCommands.toggleOrderedList(); break
-      case 'blockquote': editorCommands.setQuote(); break
-      case 'link': {
-        openSelectionLinkEditor()
-        break
-      }
-      case 'divider': editorCommands.insertDivider(); break
-      case 'table': editorCommands.insertTable(); break
-    }
-  }, [editorCommands, openSelectionLinkEditor])
 
   const cancelLinkEditor = useCallback(() => {
     setLinkEditorOpen(false)
@@ -980,6 +944,37 @@ export function MilkdownEditor({
     target instanceof Node
     && (editorRootRef.current?.contains(target) || contextualOverlayMount?.contains(target) || false)
   ), [contextualOverlayMount])
+
+  const closeBlockMenu = useCallback(() => setBlockMenuTarget(null), [])
+
+  const runBlockMenuCommand = useCallback((command: BlockMenuCommand, target: BlockTarget) => {
+    const valid = active && presentationModeRef.current === 'edit' && editorRef.current?.action((ctx) => {
+      const state = ctx.get(editorViewCtx).state
+      return isValidBlockTarget(state, editorId, target)
+    })
+    if (!valid) {
+      closeBlockMenu()
+      return
+    }
+
+    switch (command) {
+      case 'paragraph': editorCommands.setParagraph(target.selection); break
+      case 'heading-1': editorCommands.setHeading1(target.selection); break
+      case 'heading-2': editorCommands.setHeading2(target.selection); break
+      case 'heading-3': editorCommands.setHeading3(target.selection); break
+      case 'blockquote': editorCommands.setQuote(target.selection); break
+      case 'bullet-list': editorCommands.toggleBulletList(target.selection); break
+      case 'ordered-list': editorCommands.toggleOrderedList(target.selection); break
+      case 'code-block': editorCommands.setCodeBlock(target.selection); break
+      case 'table': editorCommands.insertTable(target.selection); break
+      case 'divider': editorCommands.insertDivider(target.selection); break
+    }
+    closeBlockMenu()
+  }, [active, closeBlockMenu, editorCommands, editorId])
+
+  useEffect(() => {
+    if (!active || presentationMode !== 'edit' || linkEditorOpen) closeBlockMenu()
+  }, [active, closeBlockMenu, linkEditorOpen, presentationMode])
 
   useEffect(() => {
     if (!linkEditorOpen) return undefined
@@ -1136,14 +1131,6 @@ export function MilkdownEditor({
         if (!event.defaultPrevented) pasteImage(event)
       }}
     >
-      {presentationMode === 'edit' ? (
-        <EditorToolbar
-          copy={editorCopy}
-          state={toolbarState}
-          onBlockChange={changeBlockType}
-          onCommand={runToolbarCommand}
-        />
-      ) : null}
       {contextualOverlayMount && active && presentationMode === 'edit' ? createPortal(
         <>
           <SelectionToolbar
@@ -1151,7 +1138,7 @@ export function MilkdownEditor({
             containsInteractionTarget={containsContextualInteraction}
             copy={editorCopy}
             dismissedSelectionRef={dismissedSelectionRef}
-            interactionOpen={linkEditorOpen}
+            interactionOpen={linkEditorOpen || Boolean(blockMenuTarget)}
             store={contextualStoreRef.current!}
             onCommand={(command) => {
               if (command === 'bold') editorCommands.toggleBold()
@@ -1161,6 +1148,23 @@ export function MilkdownEditor({
             }}
             onLink={openSelectionLinkEditor}
           />
+          <BlockHandle
+            active={active}
+            editorId={editorId}
+            interactionOpen={linkEditorOpen}
+            label={editorCopy.addBlock}
+            menuTarget={blockMenuTarget}
+            store={contextualStoreRef.current!}
+            onOpenMenu={setBlockMenuTarget}
+          />
+          {blockMenuTarget ? (
+            <BlockMenu
+              copy={editorCopy}
+              target={blockMenuTarget}
+              onClose={closeBlockMenu}
+              onCommand={runBlockMenuCommand}
+            />
+          ) : null}
           {linkEditorOpen && linkSelection ? (
             <EditorLinkPopover
               canRemove={linkCanRemove}
@@ -1217,44 +1221,6 @@ export function MilkdownEditor({
       ) : null}
     </div>
   )
-}
-
-function readToolbarState(state: EditorState): EditorToolbarState {
-  const { selection } = state
-  let blockType: EditorBlockType = 'paragraph'
-  let bulletList = false
-  let orderedList = false
-
-  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
-    const node = selection.$from.node(depth)
-    if (node.type.name === 'heading') {
-      const level = Number(node.attrs.level)
-      if (level >= 1 && level <= 3) blockType = `heading-${level}` as EditorBlockType
-    }
-    if (node.type.name === 'code_block') blockType = 'code-block'
-    if (node.type.name === 'blockquote') blockType = 'blockquote'
-    if (node.type.name === 'bullet_list') bulletList = true
-    if (node.type.name === 'ordered_list') orderedList = true
-  }
-
-  const hasMark = (name: string) => {
-    const mark = state.schema.marks[name]
-    if (!mark) return false
-    if (selection.empty) return Boolean(mark.isInSet(state.storedMarks ?? selection.$from.marks()))
-    return state.doc.rangeHasMark(selection.from, selection.to, mark)
-  }
-
-  return {
-    blockType,
-    bold: hasMark('strong'),
-    bulletList,
-    emphasis: hasMark('emphasis'),
-    hasSelection: !selection.empty,
-    inlineCode: hasMark('inlineCode'),
-    link: hasMark('link'),
-    orderedList,
-    strike: hasMark('strike_through'),
-  }
 }
 
 function readHeadings(state: EditorState): EditorHeading[] {

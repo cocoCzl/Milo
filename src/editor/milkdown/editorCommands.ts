@@ -1,6 +1,5 @@
 import {
   createCodeBlockCommand,
-  insertHrCommand,
   liftListItemCommand,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
@@ -13,7 +12,7 @@ import {
 } from '@milkdown/preset-commonmark'
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { lift } from '@milkdown/prose/commands'
-import type { Command, EditorState } from '@milkdown/prose/state'
+import { TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
 import type { CmdKey } from '@milkdown/core'
 import { isExternalHttpUrl } from '../../file-system/externalLink'
 
@@ -132,7 +131,27 @@ export function createEditorCommands(runner: EditorCommandRunner) {
     setCodeBlock: (selection?: EditorSelectionSnapshot) => setBlockKind('code-block', selection),
     toggleBulletList,
     toggleOrderedList,
-    insertDivider: (selection?: EditorSelectionSnapshot) => runner.runMilkdown(insertHrCommand.key, undefined, selection),
+    // Milkdown's stock insert-HR command adds a temporary empty paragraph for
+    // its caret. That paragraph serializes as HTML `<br />`. Insert the same
+    // schema node directly at the current textblock boundary instead: one
+    // normal ProseMirror history transaction, no synthetic block.
+    insertDivider: (selection?: EditorSelectionSnapshot) => runner.runProse((state, dispatch) => {
+      const hr = state.schema.nodes.hr
+      if (!hr) return false
+      let depth = state.selection.$from.depth
+      while (depth > 0 && !state.selection.$from.node(depth).isTextblock) depth -= 1
+      if (!depth) return false
+      const blockPosition = state.selection.$from.before(depth)
+      const block = state.selection.$from.node(depth)
+      const divider = hr.create()
+      let transaction = block.content.size === 0
+        ? state.tr.replaceWith(blockPosition, blockPosition + block.nodeSize, divider)
+        : state.tr.insert(blockPosition, divider)
+      const cursor = TextSelection.near(transaction.doc.resolve(Math.min(blockPosition + divider.nodeSize, transaction.doc.content.size)), 1)
+      transaction = transaction.setSelection(cursor).scrollIntoView()
+      dispatch?.(transaction)
+      return true
+    }, selection),
     insertTable: (selection?: EditorSelectionSnapshot) => runner.runMilkdown(insertTableCommand.key, { row: 3, col: 3 }, selection),
   }
 }

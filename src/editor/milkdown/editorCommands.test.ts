@@ -126,8 +126,9 @@ describe('editorCommands', () => {
     commands.insertDivider()
     commands.insertTable()
 
-    expect(host.runMilkdown).toHaveBeenCalledTimes(10)
+    expect(host.runMilkdown).toHaveBeenCalledTimes(9)
     const calls = host.runMilkdown.mock.calls as unknown as Array<[unknown, unknown, unknown]>
-    expect(calls[9][1]).toEqual({ row: 3, col: 3 })
+    expect(calls[8][1]).toEqual({ row: 3, col: 3 })
+    expect(host.runProse).toHaveBeenCalledWith(expect.any(Function), undefined)
   })
 })
