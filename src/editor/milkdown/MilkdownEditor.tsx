@@ -33,6 +33,7 @@ import { EditorOutline, type EditorHeading } from './EditorOutline'
 import { ContextualEditorStore, createContextualEditorPlugin } from './contextualEditorStore'
 import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
 import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
+import { createSafariCompositionHardbreakPlugin, miloSafariCompositionHardbreakSchema } from './safariCompositionHardbreak'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 import { miloTableAlignmentSchema } from './tableAlignment'
 
@@ -397,6 +398,7 @@ export function MilkdownEditor({
         ctx.set(defaultValueCtx, initialMarkdownRef.current)
         ctx.update(prosePluginsCtx, (plugins) => [
           createContextualEditorPlugin(contextualStoreRef.current!),
+          createSafariCompositionHardbreakPlugin(),
           new Plugin({
             props: {
               handleKeyDown: (editorView, event) => {
@@ -464,6 +466,7 @@ export function MilkdownEditor({
         })
       })
       .use(commonmark)
+      .use(miloSafariCompositionHardbreakSchema)
       // Milkdown's GFM preset registers a Safari table-cell IME workaround
       // globally. Its widget contaminates ordinary paragraph composition in
       // WKWebView, so retain every other GFM component by identity and omit
