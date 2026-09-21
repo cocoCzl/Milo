@@ -1,21 +1,30 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   pickMarkdownFile: vi.fn(),
   pickMarkdownSavePath: vi.fn(),
+  recoverAndReadMarkdownFile: vi.fn(),
   readMarkdownFile: vi.fn(),
+  usesMacOSSafeSaveV2: vi.fn(),
   watchMarkdownFile: vi.fn(),
   writeImageAsset: vi.fn(),
   writeMarkdownFile: vi.fn(),
+  writeMarkdownFileSafely: vi.fn(),
 }))
 
 vi.mock('../file-system/nativeMarkdownFile', () => ({
   pickMarkdownFile: mocks.pickMarkdownFile,
   pickMarkdownSavePath: mocks.pickMarkdownSavePath,
+  recoverAndReadMarkdownFile: mocks.recoverAndReadMarkdownFile,
   readMarkdownFile: mocks.readMarkdownFile,
+  usesMacOSSafeSaveV2: mocks.usesMacOSSafeSaveV2,
   writeImageAsset: mocks.writeImageAsset,
   writeMarkdownFile: mocks.writeMarkdownFile,
+  writeMarkdownFileSafely: mocks.writeMarkdownFileSafely,
 }))
 
 vi.mock('../file-system/nativeFileWatcher', () => ({
@@ -41,7 +50,13 @@ describe('useDocumentSession', () => {
       lineEnding: 'lf' as const,
       hasBom: false,
     }))
+    mocks.recoverAndReadMarkdownFile.mockImplementation(async (requestedPath) => mocks.readMarkdownFile(requestedPath))
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(false)
     mocks.writeMarkdownFile.mockImplementation(async (document) => {
+      fileOnDisk = document.markdown
+      return { ...document }
+    })
+    mocks.writeMarkdownFileSafely.mockImplementation(async (document) => {
       fileOnDisk = document.markdown
       return { ...document }
     })
@@ -67,11 +82,21 @@ describe('useDocumentSession', () => {
     return session
   }
 
+  function updateActive(session: { result: { current: ReturnType<typeof useDocumentSession> } }, markdown: string) {
+    const tab = session.result.current.tabs.find((item) => item.id === session.result.current.activeTabId)!
+    session.result.current.updateMarkdown({ tabId: tab.id, documentId: tab.document.id, path: tab.document.path }, markdown)
+  }
+
+  function originFor(session: { result: { current: ReturnType<typeof useDocumentSession> } }, tabId: number) {
+    const tab = session.result.current.tabs.find((item) => item.id === tabId)!
+    return { tabId: tab.id, documentId: tab.document.id, path: tab.document.path }
+  }
+
   it('auto-saves a changed saved document, but never writes an unsaved document', async () => {
     const unsaved = renderHook(() => useDocumentSession())
 
     act(() => {
-      unsaved.result.current.updateMarkdown('# Draft')
+      updateActive(unsaved, '# Draft')
     })
     expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
     unsaved.unmount()
@@ -79,7 +104,7 @@ describe('useDocumentSession', () => {
     const session = await openSavedDocument()
     vi.useFakeTimers()
     act(() => {
-      session.result.current.updateMarkdown('# After')
+      updateActive(session, '# After')
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1100)
@@ -94,11 +119,73 @@ describe('useDocumentSession', () => {
     vi.useRealTimers()
   })
 
+  it('creates a new macOS document through Safe Save without using the atomic replacement writer', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    mocks.pickMarkdownSavePath.mockResolvedValue('/tmp/new.md')
+    const session = renderHook(() => useDocumentSession())
+
+    act(() => updateActive(session, '# New'))
+    await act(async () => { await session.result.current.saveDocument() })
+
+    expect(mocks.writeMarkdownFileSafely).toHaveBeenCalledWith(
+      { path: '/tmp/new.md', markdown: '# New', lineEnding: 'lf', hasBom: false },
+      null,
+    )
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+    expect(session.result.current.document.isDirty).toBe(false)
+  })
+
+  it('recovers an ordinary macOS document before load and autosaves it with the persisted disk version', async () => {
+    const safePath = '/tmp/ordinary.md'
+    mocks.pickMarkdownFile.mockResolvedValue(safePath)
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: '# Before\n',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+
+    const session = await openSavedDocument()
+    vi.useFakeTimers()
+    act(() => updateActive(session, '# After\n'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(mocks.recoverAndReadMarkdownFile).toHaveBeenCalledWith(safePath)
+    expect(mocks.writeMarkdownFileSafely).toHaveBeenCalledWith(
+      { path: safePath, markdown: '# After\n', lineEnding: 'lf', hasBom: false },
+      { path: safePath, markdown: '# Before\n', lineEnding: 'lf', hasBom: false },
+    )
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+    expect(session.result.current.document.isDirty).toBe(false)
+  })
+
+  it('keeps a macOS document dirty and enters the conflict flow when Rust rejects an external change', async () => {
+    const safePath = '/tmp/ordinary.md'
+    mocks.pickMarkdownFile.mockResolvedValue(safePath)
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: '# Before\n',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+    mocks.writeMarkdownFileSafely.mockRejectedValueOnce('Safe Save external change conflict: disk content no longer matches the session version.')
+    const session = await openSavedDocument()
+
+    act(() => updateActive(session, '# Local'))
+    await act(async () => { await session.result.current.saveDocument() })
+
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.externalChange).toBe('pending')
+    expect(session.result.current.error).toBeNull()
+  })
+
   it('ignores its own watcher event, reloads clean changes, and pauses a dirty conflict', async () => {
     const session = await openSavedDocument()
 
     act(() => {
-      session.result.current.updateMarkdown('# Local')
+      updateActive(session, '# Local')
     })
     await act(async () => {
       await session.result.current.saveDocument()
@@ -116,7 +203,7 @@ describe('useDocumentSession', () => {
     })
 
     act(() => {
-      session.result.current.updateMarkdown('# Keep this local')
+      updateActive(session, '# Keep this local')
     })
     fileOnDisk = '# External conflict'
     act(() => notifyChange?.())
@@ -138,7 +225,7 @@ describe('useDocumentSession', () => {
     const session = await openSavedDocument()
 
     act(() => {
-      session.result.current.updateMarkdown('# Local')
+      updateActive(session, '# Local')
     })
     fileOnDisk = '# External'
     act(() => notifyChange?.())
@@ -151,7 +238,7 @@ describe('useDocumentSession', () => {
     expect(session.result.current.document.isDirty).toBe(false)
 
     act(() => {
-      session.result.current.updateMarkdown('# Recoverable local text')
+      updateActive(session, '# Recoverable local text')
     })
     mocks.writeMarkdownFile.mockRejectedValueOnce(new Error('Disk full'))
     await act(async () => {
@@ -201,13 +288,13 @@ describe('useDocumentSession', () => {
       session.result.current.selectTab(firstTab.id)
     })
     act(() => {
-      session.result.current.updateMarkdown('# First local')
+      updateActive(session, '# First local')
     })
     act(() => {
       session.result.current.selectTab(secondTab.id)
     })
     act(() => {
-      session.result.current.updateMarkdown('# Second local')
+      updateActive(session, '# Second local')
     })
 
     expect(session.result.current.tabs.find((tab) => tab.id === firstTab.id)?.document.markdown).toBe('# First local')
@@ -223,6 +310,138 @@ describe('useDocumentSession', () => {
 
     expect(session.result.current.tabs.find((tab) => tab.id === firstTab.id)).toBeUndefined()
     expect(session.result.current.tabs.find((tab) => tab.id === secondTab.id)?.document.markdown).toBe('# Second local')
+  })
+
+  it('routes a delayed editor callback to its origin, not the tab selected meanwhile', async () => {
+    const paths = ['/tmp/origin-a.md', '/tmp/origin-b.md']
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: requestedPath === paths[0] ? 'A0' : 'B0',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+    const session = renderHook(() => useDocumentSession())
+    await act(async () => {
+      await session.result.current.openDocumentAtPath(paths[0])
+      await session.result.current.openDocumentAtPath(paths[1])
+    })
+    const tabA = session.result.current.tabs.find((tab) => tab.document.path === paths[0])!
+    const tabB = session.result.current.tabs.find((tab) => tab.document.path === paths[1])!
+    const originA = originFor(session, tabA.id)
+
+    act(() => session.result.current.selectTab(tabB.id))
+    act(() => session.result.current.updateMarkdown(originA, 'A1'))
+
+    expect(session.result.current.tabs.find((tab) => tab.id === tabA.id)?.document.markdown).toBe('A1')
+    expect(session.result.current.tabs.find((tab) => tab.id === tabB.id)?.document.markdown).toBe('B0')
+  })
+
+  it('autosaves the originating file after a tab switch and preserves byte-for-byte isolation on disk', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'milo-origin-autosave-'))
+    const paths = [join(directory, 'A.md'), join(directory, 'B.md')]
+    writeFileSync(paths[0], 'A0\n', 'utf8')
+    writeFileSync(paths[1], 'B0\n', 'utf8')
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: readFileSync(requestedPath, 'utf8'),
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+    mocks.writeMarkdownFile.mockImplementation(async (document) => {
+      writeFileSync(document.path, document.markdown, 'utf8')
+      return { ...document }
+    })
+    const session = renderHook(() => useDocumentSession())
+    try {
+      await act(async () => {
+        await session.result.current.openDocumentAtPath(paths[0])
+        await session.result.current.openDocumentAtPath(paths[1])
+      })
+      const tabA = session.result.current.tabs.find((tab) => tab.document.path === paths[0])!
+      const tabB = session.result.current.tabs.find((tab) => tab.document.path === paths[1])!
+      vi.useFakeTimers()
+      act(() => session.result.current.updateMarkdown(originFor(session, tabA.id), 'A1'))
+      act(() => session.result.current.selectTab(tabB.id))
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+      expect(readFileSync(paths[0], 'utf8')).toBe('A1')
+      expect(readFileSync(paths[1], 'utf8')).toBe('B0\n')
+      expect(session.result.current.tabs.find((tab) => tab.id === tabB.id)?.document.markdown).toBe('B0\n')
+    } finally {
+      vi.useRealTimers()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('ignores stale callbacks and cancels pending autosave after their origin tab closes', async () => {
+    const paths = ['/tmp/closed-a.md', '/tmp/closed-b.md']
+    const disk = new Map([[paths[0], 'A0'], [paths[1], 'B0']])
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({ path: requestedPath, markdown: disk.get(requestedPath)!, lineEnding: 'lf' as const, hasBom: false }))
+    mocks.writeMarkdownFile.mockImplementation(async (document) => {
+      disk.set(document.path, document.markdown)
+      return { ...document }
+    })
+    const session = renderHook(() => useDocumentSession())
+    await act(async () => {
+      await session.result.current.openDocumentAtPath(paths[0])
+      await session.result.current.openDocumentAtPath(paths[1])
+    })
+    const tabA = session.result.current.tabs.find((tab) => tab.document.path === paths[0])!
+    const tabB = session.result.current.tabs.find((tab) => tab.document.path === paths[1])!
+    const originA = originFor(session, tabA.id)
+    vi.useFakeTimers()
+    act(() => session.result.current.updateMarkdown(originA, 'A1'))
+    act(() => session.result.current.requestCloseTab(tabA.id))
+    act(() => session.result.current.discardAndCloseTab())
+    act(() => session.result.current.updateMarkdown(originA, 'stale A'))
+    await act(async () => {
+      await expect(session.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originA)).resolves.toBeNull()
+    })
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+    vi.useRealTimers()
+
+    expect(disk.get(paths[0])).toBe('A0')
+    expect(disk.get(paths[1])).toBe('B0')
+    expect(mocks.writeImageAsset).not.toHaveBeenCalled()
+    expect(session.result.current.tabs.find((tab) => tab.id === tabB.id)?.document.markdown).toBe('B0')
+  })
+
+  it('keeps two real Markdown files isolated through interleaved delayed updates and autosaves', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'milo-origin-interleaved-'))
+    const paths = [join(directory, 'A.md'), join(directory, 'B.md')]
+    writeFileSync(paths[0], 'A0', 'utf8')
+    writeFileSync(paths[1], 'B0', 'utf8')
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({ path: requestedPath, markdown: readFileSync(requestedPath, 'utf8'), lineEnding: 'lf' as const, hasBom: false }))
+    mocks.writeMarkdownFile.mockImplementation(async (document) => {
+      writeFileSync(document.path, document.markdown, 'utf8')
+      return { ...document }
+    })
+    const session = renderHook(() => useDocumentSession())
+    try {
+      await act(async () => {
+        await session.result.current.openDocumentAtPath(paths[0])
+        await session.result.current.openDocumentAtPath(paths[1])
+      })
+      const tabA = session.result.current.tabs.find((tab) => tab.document.path === paths[0])!
+      const tabB = session.result.current.tabs.find((tab) => tab.document.path === paths[1])!
+      const originA = originFor(session, tabA.id)
+      const originB = originFor(session, tabB.id)
+
+      vi.useFakeTimers()
+      act(() => session.result.current.updateMarkdown(originA, 'A1'))
+      act(() => session.result.current.updateMarkdown(originB, 'B1'))
+      act(() => session.result.current.updateMarkdown(originA, 'A2'))
+      act(() => session.result.current.updateMarkdown(originB, 'B2'))
+      await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+      expect(readFileSync(paths[0], 'utf8')).toBe('A2')
+      expect(readFileSync(paths[1], 'utf8')).toBe('B2')
+    } finally {
+      vi.useRealTimers()
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
 
   it('opens a tree file once, then activates its existing tab', async () => {
@@ -283,14 +502,14 @@ describe('useDocumentSession', () => {
     mocks.pickMarkdownSavePath.mockResolvedValue(null)
 
     await act(async () => {
-      await expect(unsaved.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' })).resolves.toBeNull()
+      await expect(unsaved.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originFor(unsaved, unsaved.result.current.activeTabId))).resolves.toBeNull()
     })
     expect(mocks.writeImageAsset).not.toHaveBeenCalled()
     unsaved.unmount()
 
     const session = await openSavedDocument()
     await act(async () => {
-      await expect(session.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' })).resolves.toBe('assets/image.png')
+      await expect(session.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originFor(session, session.result.current.activeTabId))).resolves.toBe('assets/image.png')
     })
     expect(mocks.writeImageAsset).toHaveBeenCalledWith(path, { bytes: [137, 80], mimeType: 'image/png' })
   })

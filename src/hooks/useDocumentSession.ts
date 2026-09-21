@@ -7,15 +7,26 @@ import {
   type LineEnding,
   pickMarkdownFile,
   pickMarkdownSavePath,
-  readMarkdownFile,
+  recoverAndReadMarkdownFile,
   type PastedImage,
+  usesMacOSSafeSaveV2,
   writeImageAsset,
   writeMarkdownFile,
+  writeMarkdownFileSafely,
 } from '../file-system/nativeMarkdownFile'
 
 type DocumentActivity = 'idle' | 'opening' | 'saving'
 type SaveFeedback = 'idle' | 'pending' | 'saving' | 'saved'
 type ExternalChange = 'pending' | 'retained'
+
+const emptyDocumentTab: DocumentTab = {
+  id: 0,
+  document: {
+    id: 0, path: null, title: '', markdown: '', lineEnding: 'lf', hasBom: false,
+    frontMatter: '', isDirty: false, protectionReason: null, persistedMarkdown: null, editorVersion: 0, revision: 0,
+  },
+  activity: 'idle', error: null, externalChange: null, notice: null, saveFeedback: 'idle',
+}
 
 export type DocumentSession = {
   id: number
@@ -40,6 +51,15 @@ export type DocumentTab = {
   externalChange: ExternalChange | null
   notice: string | null
   saveFeedback: SaveFeedback
+}
+
+// This identity is created at the event source and travels with every
+// asynchronous operation.  Nothing that originates in an editor may select
+// its destination from the currently visible tab later.
+export type DocumentOrigin = {
+  tabId: number
+  documentId: number
+  path: string | null
 }
 
 let documentId = 0
@@ -80,9 +100,21 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     setTabs(nextTabs)
   }, [])
 
-  const getTab = useCallback((id = activeTabIdRef.current) => (
+  const getTab = useCallback((id: number) => (
     tabsRef.current.find((tab) => tab.id === id) ?? null
   ), [])
+
+  const originForTab = useCallback((tab: DocumentTab): DocumentOrigin => ({
+    tabId: tab.id,
+    documentId: tab.document.id,
+    path: tab.document.path,
+  }), [])
+
+  const getOriginTab = useCallback((origin: DocumentOrigin) => {
+    const tab = getTab(origin.tabId)
+    if (!tab || tab.document.id !== origin.documentId) return null
+    return tab
+  }, [getTab])
 
   const selectTab = useCallback((id: number) => {
     if (getTab(id)) setActiveTabId(id)
@@ -97,19 +129,19 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     return nextTab
   }, [])
 
-  const updateMarkdown = useCallback((markdown: string) => {
-    const id = activeTabIdRef.current
-    const tab = getTab(id)
-    if (!tab || tab.document.protectionReason || tab.document.markdown === markdown) return
+  const updateMarkdown = useCallback((origin: DocumentOrigin, markdown: string) => {
+    const tab = getOriginTab(origin)
+    const ignored = !tab || Boolean(tab.document.protectionReason) || tab.document.markdown === markdown
+    if (ignored) return
 
-    replaceTab(id, (current) => ({
+    replaceTab(origin.tabId, (current) => ({
       ...current,
       document: { ...current.document, markdown, isDirty: true, revision: current.document.revision + 1 },
       externalChange: null,
       notice: null,
       saveFeedback: current.document.path ? 'pending' : 'idle',
     }))
-  }, [getTab, replaceTab])
+  }, [getOriginTab, replaceTab])
 
   const createNewDocument = useCallback(() => {
     appendTab(createUntitledDocument())
@@ -123,7 +155,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     }
 
     try {
-      const file = await readMarkdownFile(path)
+      const file = await recoverAndReadMarkdownFile(path)
       const duplicateTab = tabsRef.current.find((tab) => tab.document.path === file.path)
       if (duplicateTab) {
         setActiveTabId(duplicateTab.id)
@@ -158,7 +190,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     const uniquePaths = [...new Set(startupSession.openDocumentPaths)]
     const restoredDocuments: Array<DocumentSession | null> = await Promise.all(uniquePaths.map(async (path) => {
       try {
-        const file = await readMarkdownFile(path)
+        const file = await recoverAndReadMarkdownFile(path)
         const inspected = inspectMarkdownDocument(file.markdown)
         documentId += 1
         return {
@@ -183,24 +215,40 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   }, [])
 
   const saveToPath = useCallback(async (
-    id: number,
+    origin: DocumentOrigin,
     path: string,
     allowExternalOverwrite = false,
+    expectedRevision?: number,
   ): Promise<boolean> => {
-    const savedTab = getTab(id)
-    if (!savedTab || savedTab.document.protectionReason) return false
+    const savedTab = getOriginTab(origin)
+    if (
+      !savedTab
+      || savedTab.document.protectionReason
+      || (expectedRevision !== undefined && (
+        savedTab.document.revision !== expectedRevision
+        || savedTab.document.path !== path
+        || origin.path !== path
+      ))
+    ) return false
     const savedSnapshot = savedTab.document
+    const safeSaveEnabled = usesMacOSSafeSaveV2()
+    let expectedDisk = savedSnapshot.path !== path || savedSnapshot.persistedMarkdown === null ? null : {
+      path,
+      markdown: savedSnapshot.persistedMarkdown,
+      lineEnding: savedSnapshot.lineEnding,
+      hasBom: savedSnapshot.hasBom,
+    }
 
     if (!allowExternalOverwrite && (savedTab.externalChange || (savedSnapshot.path === path && savedSnapshot.persistedMarkdown !== null))) {
       if (savedSnapshot.path === path && savedSnapshot.persistedMarkdown !== null) {
         try {
-          const onDisk = await readMarkdownFile(path)
+          const onDisk = await recoverAndReadMarkdownFile(path)
           if (onDisk.markdown !== savedSnapshot.persistedMarkdown) {
-            replaceTab(id, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
+            if (getOriginTab(origin)) replaceTab(origin.tabId, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
             return false
           }
         } catch {
-          replaceTab(id, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
+          if (getOriginTab(origin)) replaceTab(origin.tabId, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
           return false
         }
       } else {
@@ -208,13 +256,31 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       }
     }
 
-    replaceTab(id, (tab) => ({ ...tab, activity: 'saving', error: null, saveFeedback: 'saving' }))
+    if (!getOriginTab(origin)) return false
+    if (safeSaveEnabled && allowExternalOverwrite) {
+      try {
+        expectedDisk = await recoverAndReadMarkdownFile(path)
+      } catch {
+        if (getOriginTab(origin)) replaceTab(origin.tabId, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
+        return false
+      }
+    }
+    replaceTab(origin.tabId, (tab) => ({ ...tab, activity: 'saving', error: null, saveFeedback: 'saving' }))
     const serializedMarkdown = composeMarkdownDocument(savedSnapshot.frontMatter, savedSnapshot.markdown)
 
     try {
-      const savedFile = await writeMarkdownFile({ path, markdown: serializedMarkdown, lineEnding: savedSnapshot.lineEnding, hasBom: savedSnapshot.hasBom })
-      selfWritesRef.current.set(id, { path: savedFile.path, markdown: serializedMarkdown })
-      replaceTab(id, (tab) => ({
+      const savedFile = safeSaveEnabled
+        ? await writeMarkdownFileSafely(
+          { path, markdown: serializedMarkdown, lineEnding: savedSnapshot.lineEnding, hasBom: savedSnapshot.hasBom },
+          expectedDisk,
+        )
+        : await writeMarkdownFile({ path, markdown: serializedMarkdown, lineEnding: savedSnapshot.lineEnding, hasBom: savedSnapshot.hasBom })
+      const latestTab = getOriginTab(origin)
+      if (!latestTab) {
+        return false
+      }
+      selfWritesRef.current.set(origin.tabId, { path: savedFile.path, markdown: serializedMarkdown })
+      replaceTab(origin.tabId, (tab) => ({
         ...tab,
         activity: 'idle',
         document: {
@@ -226,40 +292,47 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       }))
       return true
     } catch (reason) {
-      replaceTab(id, (tab) => ({ ...tab, activity: 'idle', error: readableError(reason, 'Could not save this Markdown file.'), saveFeedback: 'idle' }))
+      const externalConflict = safeSaveEnabled && String(reason).includes('Safe Save external change conflict')
+      if (getOriginTab(origin)) replaceTab(origin.tabId, (tab) => ({
+        ...tab,
+        activity: 'idle',
+        error: externalConflict ? null : readableError(reason, 'Could not save this Markdown file.'),
+        externalChange: externalConflict ? 'pending' : tab.externalChange,
+        saveFeedback: 'idle',
+      }))
       return false
     }
-  }, [getTab, replaceTab])
+  }, [getOriginTab, replaceTab])
 
   const saveAsDocument = useCallback(async (id = activeTabIdRef.current) => {
     const tab = getTab(id)
     if (!tab || tab.document.protectionReason) return false
     const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
     const path = await pickMarkdownSavePath(defaultPath)
-    return path ? saveToPath(id, path) : false
-  }, [getTab, saveToPath])
+    return path ? saveToPath(originForTab(tab), path) : false
+  }, [getTab, originForTab, saveToPath])
 
   const saveDocument = useCallback(async (id = activeTabIdRef.current) => {
     const tab = getTab(id)
     if (!tab || tab.document.protectionReason) return false
-    return tab.document.path ? saveToPath(id, tab.document.path) : saveAsDocument(id)
-  }, [getTab, saveAsDocument, saveToPath])
+    return tab.document.path ? saveToPath(originForTab(tab), tab.document.path) : saveAsDocument(id)
+  }, [getTab, originForTab, saveAsDocument, saveToPath])
 
-  const pasteImage = useCallback(async (image: PastedImage, id = activeTabIdRef.current): Promise<string | null> => {
-    let tab = getTab(id)
+  const pasteImage = useCallback(async (image: PastedImage, origin: DocumentOrigin): Promise<string | null> => {
+    let tab = getOriginTab(origin)
     if (!tab || tab.document.protectionReason) return null
-    if (!tab.document.path && !await saveDocument(id)) return null
-    tab = getTab(id)
+    if (!tab.document.path && !await saveDocument(origin.tabId)) return null
+    tab = getOriginTab(origin)
     if (!tab?.document.path) return null
 
     try {
       const asset = await writeImageAsset(tab.document.path, image)
       return asset.relativePath
     } catch (reason) {
-      replaceTab(id, (current) => ({ ...current, error: readableError(reason, 'Could not paste this image asset.') }))
+      if (getOriginTab(origin)) replaceTab(origin.tabId, (current) => ({ ...current, error: readableError(reason, 'Could not paste this image asset.') }))
       return null
     }
-  }, [getTab, replaceTab, saveDocument])
+  }, [getOriginTab, replaceTab, saveDocument])
 
   saveRef.current = saveDocument
 
@@ -268,7 +341,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     if (!currentTab?.document.path) return
     replaceTab(id, (tab) => ({ ...tab, activity: 'opening' }))
     try {
-      const file = await readMarkdownFile(currentTab.document.path)
+      const file = await recoverAndReadMarkdownFile(currentTab.document.path)
       const inspected = inspectMarkdownDocument(file.markdown)
       selfWritesRef.current.delete(id)
       replaceTab(id, (tab) => ({
@@ -292,14 +365,14 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const overwriteExternalChange = useCallback(async (id = activeTabIdRef.current) => {
     const tab = getTab(id)
-    return tab?.document.path ? saveToPath(id, tab.document.path, true) : false
-  }, [getTab, saveToPath])
+    return tab?.document.path ? saveToPath(originForTab(tab), tab.document.path, true) : false
+  }, [getTab, originForTab, saveToPath])
 
   const handleWatchedChange = useCallback(async (id: number, path: string) => {
     const currentTab = getTab(id)
     if (!currentTab || currentTab.document.path !== path) return
     try {
-      const file = await readMarkdownFile(path)
+      const file = await recoverAndReadMarkdownFile(path)
       const latestTab = getTab(id)
       if (!latestTab || latestTab.document.path !== file.path) return
       const selfWrite = selfWritesRef.current.get(id)
@@ -339,25 +412,31 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       void watchMarkdownFile(tab.document.path, () => {
         if (!stopped) void handleWatchedChange(tab.id, tab.document.path!)
       }).then((stop) => {
-        if (stopped) void stop()
-        else stopWatching.set(tab.id, stop)
+        if (stopped) {
+          void stop()
+        } else stopWatching.set(tab.id, stop)
       }).catch((reason) => {
         if (!stopped) replaceTab(tab.id, (current) => ({ ...current, error: readableError(reason, 'Could not watch this Markdown file for external changes.') }))
       })
     })
     return () => {
       stopped = true
-      stopWatching.forEach((stop) => void stop())
+      stopWatching.forEach((stop) => { void stop() })
     }
   }, [handleWatchedChange, replaceTab, watchSignature])
 
   useEffect(() => {
     const timers = tabsRef.current.flatMap((tab) => {
       if (!tab.document.path || !tab.document.isDirty || tab.document.protectionReason || tab.activity !== 'idle' || tab.externalChange) return []
-      return [window.setTimeout(() => void saveToPath(tab.id, tab.document.path!), 1000)]
+      const origin = originForTab(tab)
+      const revision = tab.document.revision
+      const timer = window.setTimeout(() => {
+        void saveToPath(origin, origin.path!, false, revision)
+      }, 1000)
+      return [{ timer }]
     })
-    return () => timers.forEach((timer) => window.clearTimeout(timer))
-  }, [autoSaveSignature, saveToPath])
+    return () => timers.forEach(({ timer }) => window.clearTimeout(timer))
+  }, [autoSaveSignature, originForTab, saveToPath])
 
   useEffect(() => {
     const timers = tabsRef.current.flatMap((tab) => (
@@ -409,7 +488,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     if (closingTabId !== null && await saveDocument(closingTabId)) removeTab(closingTabId)
   }, [closingTabId, removeTab, saveDocument])
 
-  const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0], [activeTabId, tabs])
+  const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? emptyDocumentTab, [activeTabId, tabs])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
