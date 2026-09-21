@@ -1643,6 +1643,10 @@ button:focus-visible,
   margin: 0 0 1.12em;
 }
 
+.milkdown .ProseMirror > p:has(+ p) {
+  margin-bottom: 0.75em;
+}
+
 .milkdown .ProseMirror h1,
 .milkdown .ProseMirror h2,
 .milkdown .ProseMirror h3,
@@ -1654,20 +1658,18 @@ button:focus-visible,
   font-weight: 660;
   letter-spacing: -0.035em;
   line-height: 1.22;
+  margin: var(--editor-font-size, 22px) 0 0.5em;
 }
 
 .milkdown .ProseMirror h1 {
-  margin: 1.55em 0 0.5em;
   font-size: 1.75em;
 }
 
 .milkdown .ProseMirror h2 {
-  margin: 1.45em 0 0.5em;
   font-size: 1.4em;
 }
 
 .milkdown .ProseMirror h3 {
-  margin: 1.3em 0 0.45em;
   font-size: 1.12em;
 }
 
@@ -2152,7 +2154,8 @@ button:focus-visible,
   font-weight: 680;
 }
 
-.milkdown .ProseMirror ::selection {
+.milkdown .ProseMirror::selection,
+.milkdown .ProseMirror *::selection {
   background: var(--selection-bg);
 }
 
@@ -2332,7 +2335,8 @@ button:focus-visible,
   box-shadow: 0 10px 28px rgb(0 0 0 / 32%);
 }
 
-.app-shell[data-color-scheme="dark"] .milkdown .ProseMirror ::selection {
+.app-shell[data-color-scheme="dark"] .milkdown .ProseMirror::selection,
+.app-shell[data-color-scheme="dark"] .milkdown .ProseMirror *::selection {
   background: #344c69;
 }
 
