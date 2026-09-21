@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Schema } from '@milkdown/prose/model'
 import { EditorState, TextSelection, type Command } from '@milkdown/prose/state'
-import { createEditorCommands, isValidEditorSelectionSnapshot } from './editorCommands'
+import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart } from './editorCommands'
+import type { BlockTarget } from './blockControls'
 
 function runner() {
   return {
@@ -11,7 +12,127 @@ function runner() {
   }
 }
 
+function dividerState(blocks: string[]) {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'block+' },
+      paragraph: { content: 'text*', group: 'block' },
+      hr: { group: 'block', atom: true },
+      text: {},
+    },
+  })
+  const doc = schema.node('doc', undefined, blocks.map((text) => schema.node('paragraph', undefined, text ? [schema.text(text)] : [])))
+  return EditorState.create({ doc, selection: TextSelection.create(doc, 1) })
+}
+
+function applyDivider(state: EditorState, insertAfterPosition: number) {
+  const host = runner()
+  const commands = createEditorCommands(host)
+  const target = {
+    insertAfterPosition,
+    selection: { doc: state.doc, from: 1, to: 1, text: '' },
+  } as BlockTarget
+  commands.insertDivider(target)
+  const command = (host.runProse.mock.calls as unknown as Array<[Command]>)[0]![0]
+  expect(command(state, (transaction) => { state = state.apply(transaction) })).toBe(true)
+  return state
+}
+
 describe('editorCommands', () => {
+  it('inserts one sibling paragraph at a top-level paragraph start in one transaction', () => {
+    const schema = new Schema({
+      nodes: {
+        doc: { content: 'paragraph+' },
+        paragraph: { content: 'text*', group: 'block' },
+        text: {},
+      },
+    })
+    const doc = schema.node('doc', undefined, [
+      schema.node('paragraph', undefined, [schema.text('A')]),
+      schema.node('paragraph', undefined, [schema.text('B')]),
+    ])
+    const before = EditorState.create({ doc, selection: TextSelection.create(doc, 1) })
+    let transactionJSON: unknown
+    let after = before
+
+    expect(splitTopLevelParagraphAtStart(before, (transaction) => {
+      transactionJSON = {
+        steps: transaction.steps.map((step) => step.toJSON()),
+        selectionBefore: { from: before.selection.from, to: before.selection.to },
+        selectionAfter: { from: transaction.selection.from, to: transaction.selection.to },
+      }
+      after = before.apply(transaction)
+    })).toBe(true)
+
+    expect(transactionJSON).toEqual({
+      steps: [{ stepType: 'replace', from: 0, to: 0, slice: { content: [{ type: 'paragraph' }] } }],
+      selectionBefore: { from: 1, to: 1 },
+      selectionAfter: { from: 1, to: 1 },
+    })
+    expect(after.doc.toJSON()).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph' },
+        { type: 'paragraph', content: [{ type: 'text', text: 'A' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'B' }] },
+      ],
+    })
+
+    const inputTransaction = after.tr.insertText('标题')
+    expect({
+      steps: inputTransaction.steps.map((step) => step.toJSON()),
+      selectionBefore: { from: after.selection.from, to: after.selection.to },
+      selectionAfter: { from: inputTransaction.selection.from, to: inputTransaction.selection.to },
+    }).toEqual({
+      steps: [{ stepType: 'replace', from: 1, to: 1, slice: { content: [{ type: 'text', text: '标题' }] } }],
+      selectionBefore: { from: 1, to: 1 },
+      selectionAfter: { from: 3, to: 3 },
+    })
+    after = after.apply(inputTransaction)
+    expect(after.doc.toJSON()).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: '标题' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'A' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'B' }] },
+      ],
+    })
+  })
+
+  it('leaves non-start, ranged, and nested paragraph Enter behavior to the standard keymap', () => {
+    const schema = new Schema({
+      nodes: {
+        doc: { content: 'block+' },
+        paragraph: { content: 'text*', group: 'block' },
+        blockquote: { content: 'block+', group: 'block' },
+        text: {},
+      },
+    })
+    const topLevelDoc = schema.node('doc', undefined, [
+      schema.node('paragraph', undefined, [schema.text('AB')]),
+    ])
+    const nestedDoc = schema.node('doc', undefined, [
+      schema.node('blockquote', undefined, [
+        schema.node('paragraph', undefined, [schema.text('AB')]),
+      ]),
+    ])
+    const dispatch = vi.fn()
+
+    expect(splitTopLevelParagraphAtStart(
+      EditorState.create({ doc: topLevelDoc, selection: TextSelection.create(topLevelDoc, 2) }),
+      dispatch,
+    )).toBe(false)
+    expect(splitTopLevelParagraphAtStart(
+      EditorState.create({ doc: topLevelDoc, selection: TextSelection.create(topLevelDoc, 1, 2) }),
+      dispatch,
+    )).toBe(false)
+    expect(splitTopLevelParagraphAtStart(
+      EditorState.create({ doc: nestedDoc, selection: TextSelection.create(nestedDoc, 2) }),
+      dispatch,
+    )).toBe(false)
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('routes inline formatting and link mutations through one command runner', () => {
     const host = runner()
     const commands = createEditorCommands(host)
@@ -130,5 +251,36 @@ describe('editorCommands', () => {
     const calls = host.runMilkdown.mock.calls as unknown as Array<[unknown, unknown, unknown]>
     expect(calls[8][1]).toEqual({ row: 3, col: 3 })
     expect(host.runProse).toHaveBeenCalledWith(expect.any(Function), undefined)
+  })
+
+  it('inserts a divider and one editable paragraph at the document end', () => {
+    const state = applyDivider(dividerState(['A']), 3)
+
+    expect(state.doc.toJSON()).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'A' }] },
+        { type: 'hr' },
+        { type: 'paragraph' },
+      ],
+    })
+    expect(state.selection).toBeInstanceOf(TextSelection)
+    expect(state.selection.from).toBe(5)
+    expect(state.selection.$from.parent.type.name).toBe('paragraph')
+  })
+
+  it('reuses the following paragraph after a divider instead of creating another one', () => {
+    const state = applyDivider(dividerState(['A', 'B']), 3)
+
+    expect(state.doc.toJSON()).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'A' }] },
+        { type: 'hr' },
+        { type: 'paragraph', content: [{ type: 'text', text: 'B' }] },
+      ],
+    })
+    expect(state.selection.from).toBe(5)
+    expect(state.selection.$from.parent.textContent).toBe('B')
   })
 })

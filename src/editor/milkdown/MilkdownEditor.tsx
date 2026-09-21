@@ -31,7 +31,7 @@ import { EditorContextMenu, type EditorContextMenuCopy } from './EditorContextMe
 import { EditorLinkPopover, type EditorLinkPopoverCopy, type LinkPopoverMode } from './EditorLinkPopover'
 import { EditorOutline, type EditorHeading } from './EditorOutline'
 import { ContextualEditorStore, createContextualEditorPlugin } from './contextualEditorStore'
-import { createEditorCommands, isValidEditorSelectionSnapshot, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
+import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
 import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 import { miloTableAlignmentSchema } from './tableAlignment'
@@ -190,6 +190,31 @@ const exitHeadingAsParagraph: Command = (state, dispatch) => {
 
     dispatch?.(transaction.scrollIntoView())
   })
+}
+
+const exitCodeOrTableAsParagraph: Command = (state, dispatch) => {
+  const { $from } = state.selection
+  let blockDepth: number | null = null
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const nodeName = $from.node(depth).type.name
+    if (nodeName === 'code_block' || nodeName === 'table') {
+      blockDepth = depth
+      break
+    }
+  }
+
+  const paragraph = state.schema.nodes.paragraph
+  if (blockDepth === null || !paragraph) return false
+
+  const insertPosition = $from.after(blockDepth)
+  const transaction = state.tr.insert(insertPosition, paragraph.create())
+  dispatch?.(
+    transaction
+      .setSelection(TextSelection.create(transaction.doc, insertPosition + 1))
+      .scrollIntoView(),
+  )
+  return true
 }
 
 const headingScrollOffset = 24
@@ -376,6 +401,19 @@ export function MilkdownEditor({
             props: {
               handleKeyDown: (editorView, event) => {
                 if (
+                  event.key === 'Enter'
+                  && (event.metaKey || event.ctrlKey)
+                  && !event.shiftKey
+                  && !event.altKey
+                  && !editorView.composing
+                ) {
+                  syncProseMirrorSelectionFromDOM(editorView)
+                  const handled = exitCodeOrTableAsParagraph(editorView.state, editorView.dispatch)
+                  if (handled) editorView.focus()
+                  return handled
+                }
+
+                if (
                   event.key !== 'Enter'
                   || event.shiftKey
                   || event.altKey
@@ -385,7 +423,8 @@ export function MilkdownEditor({
                 ) return false
 
                 syncProseMirrorSelectionFromDOM(editorView)
-                return exitHeadingAsParagraph(editorView.state, editorView.dispatch)
+                return splitTopLevelParagraphAtStart(editorView.state, editorView.dispatch)
+                  || exitHeadingAsParagraph(editorView.state, editorView.dispatch)
               },
             },
           }),
@@ -567,6 +606,10 @@ export function MilkdownEditor({
 
   const focusEditor = useCallback(() => {
     editorRootRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus()
+  }, [])
+
+  const focusEditorView = useCallback(() => {
+    editorRef.current?.action((ctx) => ctx.get(editorViewCtx).focus())
   }, [])
 
   const syncEditorSelectionFromDOM = useCallback(() => editorRef.current?.action((ctx) => {
@@ -871,11 +914,14 @@ export function MilkdownEditor({
       case 'ordered-list': editorCommands.toggleOrderedList(target.selection); break
       case 'code-block': editorCommands.setCodeBlock(target.selection); break
       case 'table': editorCommands.insertTable(target.selection); break
-      case 'divider': editorCommands.insertDivider(target); break
+      case 'divider': {
+        if (editorCommands.insertDivider(target)) focusEditorView()
+        break
+      }
       case 'delete-block': editorCommands.deleteBlock(target); break
     }
     closeBlockMenu()
-  }, [active, closeBlockMenu, editorCommands, editorId])
+  }, [active, closeBlockMenu, editorCommands, editorId, focusEditorView])
 
   useEffect(() => {
     if (!active || presentationMode !== 'edit' || linkEditorOpen) closeBlockMenu()

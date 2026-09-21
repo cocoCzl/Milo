@@ -48,6 +48,28 @@ function isInsideNode(state: EditorState | null, name: string) {
   return false
 }
 
+// Handle the one plain-text split whose native DOM selection can be
+// ambiguous in WebKit: Enter at the very start of a top-level paragraph.
+// Keeping this as one ProseMirror transaction guarantees that the new visual
+// line is a real sibling block, never a soft/hard break inside the old block.
+export const splitTopLevelParagraphAtStart: Command = (state, dispatch) => {
+  const { $from } = state.selection
+  const paragraph = state.schema.nodes.paragraph
+  if (
+    !state.selection.empty
+    || !paragraph
+    || $from.depth !== 1
+    || $from.parent.type !== paragraph
+    || $from.parentOffset !== 0
+  ) return false
+
+  const insertPosition = $from.before()
+  const transaction = state.tr.insert(insertPosition, paragraph.create())
+  transaction.setSelection(TextSelection.create(transaction.doc, insertPosition + 1)).scrollIntoView()
+  dispatch?.(transaction)
+  return true
+}
+
 // This module deliberately translates UI intents to the existing Milkdown and
 // ProseMirror commands only.  It never edits Markdown strings, owns no schema,
 // and lets every mutation flow through the editor's normal transaction/history.
@@ -132,17 +154,26 @@ export function createEditorCommands(runner: EditorCommandRunner) {
     setCodeBlock: (selection?: EditorSelectionSnapshot) => setBlockKind('code-block', selection),
     toggleBulletList,
     toggleOrderedList,
-    // Milkdown's stock insert-HR command adds a temporary empty paragraph for
-    // its caret. That paragraph serializes as HTML `<br />`. Insert the same
-    // schema node directly at the current textblock boundary instead: one
-    // normal ProseMirror history transaction, no synthetic block.
+    // Keep the divider and its editable landing point in one history step.
+    // Reuse an immediately following textblock; otherwise add one structural
+    // empty paragraph (never a hard-break placeholder).
     insertDivider: (target?: BlockTarget) => runner.runProse((state, dispatch) => {
       const hr = state.schema.nodes.hr
-      if (!hr || !target) return false
+      const paragraph = state.schema.nodes.paragraph
+      if (!hr || !paragraph || !target) return false
       const divider = hr.create()
       if (target.insertAfterPosition < 0 || target.insertAfterPosition > state.doc.content.size) return false
-      const transaction = state.tr.insert(target.insertAfterPosition, divider).scrollIntoView()
-      dispatch?.(transaction)
+      const landingPosition = target.insertAfterPosition + divider.nodeSize
+      let transaction = state.tr.insert(target.insertAfterPosition, divider)
+      const followingBlock = transaction.doc.nodeAt(landingPosition)
+      if (!followingBlock?.isTextblock) {
+        transaction = transaction.insert(landingPosition, paragraph.create())
+      }
+      dispatch?.(
+        transaction
+          .setSelection(TextSelection.create(transaction.doc, landingPosition + 1))
+          .scrollIntoView(),
+      )
       return true
     }, target?.selection),
     deleteBlock: (target: BlockTarget) => runner.runProse((state, dispatch) => {
