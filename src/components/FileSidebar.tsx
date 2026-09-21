@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, Folder, FolderOpen } from 'lucide-react'
+import { ChevronRight, FileText, Folder, FolderOpen, X } from 'lucide-react'
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
@@ -12,13 +12,18 @@ type FileSidebarProps = {
     empty: string
     emptyFolder: string
     files: string
+    clearRecent: string
     recent: string
     recentLabel: string
+    removeRecent: (name: string) => string
   }
   folder: string | null
   onChooseFolder: () => void
+  onClearRecent: () => void
   onOpenFile: (path: string) => void
   onOpenFolder: (path: string) => void
+  onRemoveRecentFile: (path: string) => void
+  onRemoveRecentFolder: (path: string) => void
   onWidthChange: (width: number) => void
   recentFiles: string[]
   recentFolders: string[]
@@ -26,7 +31,7 @@ type FileSidebarProps = {
   width: number
 }
 
-export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onOpenFile, onOpenFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
+export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearRecent, onOpenFile, onOpenFolder, onRemoveRecentFile, onRemoveRecentFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null)
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -81,9 +86,30 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onOpenFi
       </header>
       {(recentFiles.length > 0 || recentFolders.length > 0) ? (
         <section className="file-sidebar__recent" aria-label={copy.recentLabel}>
-          <span>{copy.recent}</span>
-          {recentFiles.map((path) => <button aria-current={path === activeFile ? 'page' : undefined} key={path} title={path} type="button" onClick={() => onOpenFile(path)}><FileText aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span></button>)}
-          {recentFolders.map((path) => <button key={path} title={path} type="button" onClick={() => onOpenFolder(path)}><Folder aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span></button>)}
+          <header className="file-sidebar__recent-header">
+            <span>{copy.recent}</span>
+            <button type="button" onClick={onClearRecent}>{copy.clearRecent}</button>
+          </header>
+          {recentFiles.map((path) => (
+            <div className="file-sidebar__recent-item" key={path}>
+              <button aria-current={path === activeFile ? 'page' : undefined} className="file-sidebar__recent-open" title={path} type="button" onClick={() => onOpenFile(path)}>
+                <FileText aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span>
+              </button>
+              <button aria-label={copy.removeRecent(fileName(path))} className="file-sidebar__recent-remove" title={copy.removeRecent(fileName(path))} type="button" onClick={() => onRemoveRecentFile(path)}>
+                <X aria-hidden="true" size={12} strokeWidth={1.8} />
+              </button>
+            </div>
+          ))}
+          {recentFolders.map((path) => (
+            <div className="file-sidebar__recent-item" key={path}>
+              <button className="file-sidebar__recent-open" title={path} type="button" onClick={() => onOpenFolder(path)}>
+                <Folder aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span>
+              </button>
+              <button aria-label={copy.removeRecent(fileName(path))} className="file-sidebar__recent-remove" title={copy.removeRecent(fileName(path))} type="button" onClick={() => onRemoveRecentFolder(path)}>
+                <X aria-hidden="true" size={12} strokeWidth={1.8} />
+              </button>
+            </div>
+          ))}
         </section>
       ) : null}
       {tree ? (

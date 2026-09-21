@@ -38,6 +38,7 @@ export function App() {
   const [outlineLayout, setOutlineLayout] = useState<'inline' | 'drawer'>('drawer')
   const didRestoreStartupSession = useRef(false)
   const didOpenLaunchFile = useRef(false)
+  const lastRecordedRecentPathRef = useRef<string | null | undefined>(undefined)
   const preferencesRef = useRef<HTMLDivElement>(null)
   const documentStageRef = useRef<HTMLElement>(null)
   const previousActiveTabIdRef = useRef<DocumentTab['id'] | null>(null)
@@ -46,7 +47,9 @@ export function App() {
   const [outlineDrawerMount, setOutlineDrawerMount] = useState<HTMLElement | null>(null)
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
-  const activePresentationMode = presentationModes[session.activeTabId] ?? 'edit'
+  const activeTabId = session.activeTabId
+  const hasActiveDocument = activeTabId !== null
+  const activePresentationMode = activeTabId === null ? 'edit' : presentationModes[activeTabId] ?? 'edit'
   const activeDocumentIsProtected = session.document.protectionReason !== null
 
   const saveDocumentScroll = useCallback((tabId: DocumentTab['id'], scrollTop: number, publish = false) => {
@@ -66,7 +69,7 @@ export function App() {
   const selectTab = useCallback((tabId: DocumentTab['id']) => {
     const stage = documentStageRef.current
     const currentTabId = previousActiveTabIdRef.current ?? session.activeTabId
-    if (stage) saveDocumentScroll(currentTabId, stage.scrollTop, true)
+    if (stage && currentTabId !== null) saveDocumentScroll(currentTabId, stage.scrollTop, true)
     session.selectTab(tabId)
   }, [saveDocumentScroll, session])
 
@@ -114,6 +117,12 @@ export function App() {
     const stage = documentStageRef.current
     const nextTabId = session.activeTabId
     const previousTabId = previousActiveTabIdRef.current
+
+    if (nextTabId === null) {
+      previousActiveTabIdRef.current = null
+      if (stage) stage.scrollTop = 0
+      return
+    }
 
     if (!stage) {
       previousActiveTabIdRef.current = nextTabId
@@ -204,6 +213,8 @@ export function App() {
 
   useEffect(() => {
     const path = session.document.path
+    if (lastRecordedRecentPathRef.current === path) return
+    lastRecordedRecentPathRef.current = path
     if (!path || settings.recentFiles[0] === path) return
     updateWorkspaceSettings({
       currentFolder: settings.currentFolder,
@@ -213,6 +224,22 @@ export function App() {
       sidebarWidth: settings.sidebarWidth,
     })
   }, [session.document.path, settings, updateWorkspaceSettings])
+
+  const clearRecent = () => updateWorkspaceSettings({
+    ...workspaceSettings(settings),
+    recentFiles: [],
+    recentFolders: [],
+  })
+
+  const removeRecentFile = (path: string) => updateWorkspaceSettings({
+    ...workspaceSettings(settings),
+    recentFiles: settings.recentFiles.filter((file) => file !== path),
+  })
+
+  const removeRecentFolder = (path: string) => updateWorkspaceSettings({
+    ...workspaceSettings(settings),
+    recentFolders: settings.recentFolders.filter((folder) => folder !== path),
+  })
 
   const chooseCurrentFolder = async () => {
     const folder = await pickMarkdownFolder()
@@ -311,13 +338,13 @@ export function App() {
 
   useEffect(() => {
     const closeOutlineOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || focusMode || outlineLayout !== 'drawer' || !outlineOpen[session.activeTabId]) return
-      setOutlineOpen((current) => ({ ...current, [session.activeTabId]: false }))
+      if (activeTabId === null || event.key !== 'Escape' || focusMode || outlineLayout !== 'drawer' || !outlineOpen[activeTabId]) return
+      setOutlineOpen((current) => ({ ...current, [activeTabId]: false }))
       queueMicrotask(() => outlineToggleRef.current?.focus())
     }
     window.addEventListener('keydown', closeOutlineOnEscape)
     return () => window.removeEventListener('keydown', closeOutlineOnEscape)
-  }, [focusMode, outlineLayout, outlineOpen, session.activeTabId])
+  }, [activeTabId, focusMode, outlineLayout, outlineOpen])
 
   return (
     <main
@@ -356,14 +383,16 @@ export function App() {
         </nav>
         <div className="window-bar__actions">
           <ModeSwitch
-            disabled={activeDocumentIsProtected}
+            disabled={!hasActiveDocument || activeDocumentIsProtected}
             editLabel={copy.edit}
             mode={activePresentationMode}
             readLabel={copy.read}
-            onChange={(mode) => setPresentationModes((current) => ({ ...current, [session.activeTabId]: mode }))}
+            onChange={(mode) => {
+              if (activeTabId !== null) setPresentationModes((current) => ({ ...current, [activeTabId]: mode }))
+            }}
           />
-          {!focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
-            <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[session.activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [session.activeTabId]: !current[session.activeTabId] }))} />
+          {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
+            <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
           ) : null}
           <span className="window-bar__divider" aria-hidden="true" />
           <IconButton label={copy.newDocument} onClick={session.createNewDocument}>
@@ -389,7 +418,7 @@ export function App() {
           <span className="window-bar__divider" aria-hidden="true" />
           <IconButton
             label={copy.saveDocument}
-            disabled={session.activity !== 'idle' || session.document.protectionReason !== null}
+            disabled={!hasActiveDocument || session.activity !== 'idle' || session.document.protectionReason !== null}
             title={session.document.protectionReason ? copy.protectedSave : undefined}
             onClick={() => void session.saveDocument()}
           >
@@ -466,8 +495,11 @@ export function App() {
             tree={folderTree}
             width={settings.sidebarWidth}
             onChooseFolder={() => void chooseCurrentFolder()}
+            onClearRecent={clearRecent}
             onOpenFile={(path) => void openSidebarFile(path)}
             onOpenFolder={setCurrentFolder}
+            onRemoveRecentFile={removeRecentFile}
+            onRemoveRecentFolder={removeRecentFolder}
             onWidthChange={(sidebarWidth) => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarWidth })}
             recentFiles={settings.recentFiles}
             recentFolders={settings.recentFolders}
@@ -572,8 +604,8 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         zoom: '正文字号',
         editorLabel: (title: string) => `${title} Markdown 文档`,
         sidebar: {
-          changeFolder: '更换', chooseFolder: '选择文件夹', currentFolder: '当前文件夹', empty: '打开一个文件夹，在这里浏览 Markdown 文件。', emptyFolder: '还没有选择文件夹',
-          files: '文件', recent: '最近使用', recentLabel: '最近使用的文件和文件夹',
+          changeFolder: '更换', chooseFolder: '选择文件夹', clearRecent: '清空', currentFolder: '当前文件夹', empty: '打开一个文件夹，在这里浏览 Markdown 文件。', emptyFolder: '还没有选择文件夹',
+          files: '文件', recent: '最近使用', recentLabel: '最近使用的文件和文件夹', removeRecent: (name: string) => `从最近使用中移除 ${name}`,
         },
         editor: {
           apply: '应用', blockquote: '引用', bold: '粗体', bulletList: '项目符号列表', cancel: '取消', codeBlock: '代码块',
@@ -607,8 +639,8 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         zoom: 'Document size',
         editorLabel: (title: string) => `${title} Markdown document`,
         sidebar: {
-          changeFolder: 'Change', chooseFolder: 'Choose folder', currentFolder: 'Current folder', empty: 'Open a folder to browse Markdown files here.', emptyFolder: 'No folder selected',
-          files: 'Files', recent: 'Recent', recentLabel: 'Recent files and folders',
+          changeFolder: 'Change', chooseFolder: 'Choose folder', clearRecent: 'Clear', currentFolder: 'Current folder', empty: 'Open a folder to browse Markdown files here.', emptyFolder: 'No folder selected',
+          files: 'Files', recent: 'Recent', recentLabel: 'Recent files and folders', removeRecent: (name: string) => `Remove ${name} from recent`,
         },
         editor: {
           apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',

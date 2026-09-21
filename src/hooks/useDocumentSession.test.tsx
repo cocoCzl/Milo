@@ -92,9 +92,29 @@ describe('useDocumentSession', () => {
     return { tabId: tab.id, documentId: tab.document.id, path: tab.document.path }
   }
 
+  it('starts with no document session and returns to that state after closing the last tab', () => {
+    const session = renderHook(() => useDocumentSession())
+
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.activeTabId).toBeNull()
+    expect(mocks.watchMarkdownFile).not.toHaveBeenCalled()
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+
+    act(() => session.result.current.createNewDocument())
+    expect(session.result.current.tabs).toHaveLength(1)
+    expect(session.result.current.activeTabId).not.toBeNull()
+
+    act(() => session.result.current.requestCloseTab(session.result.current.activeTabId!))
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.activeTabId).toBeNull()
+  })
+
   it('auto-saves a changed saved document, but never writes an unsaved document', async () => {
     const unsaved = renderHook(() => useDocumentSession())
 
+    act(() => {
+      unsaved.result.current.createNewDocument()
+    })
     act(() => {
       updateActive(unsaved, '# Draft')
     })
@@ -124,6 +144,7 @@ describe('useDocumentSession', () => {
     mocks.pickMarkdownSavePath.mockResolvedValue('/tmp/new.md')
     const session = renderHook(() => useDocumentSession())
 
+    act(() => session.result.current.createNewDocument())
     act(() => updateActive(session, '# New'))
     await act(async () => { await session.result.current.saveDocument() })
 
@@ -249,7 +270,7 @@ describe('useDocumentSession', () => {
     expect(session.result.current.error).toBe('Disk full')
 
     act(() => {
-      session.result.current.requestCloseTab(session.result.current.activeTabId)
+      session.result.current.requestCloseTab(session.result.current.activeTabId!)
     })
     expect(session.result.current.closingTabId).toBe(session.result.current.activeTabId)
     act(() => {
@@ -282,7 +303,7 @@ describe('useDocumentSession', () => {
 
     const firstTab = session.result.current.tabs.find((tab) => tab.document.path === paths[0])!
     const secondTab = session.result.current.tabs.find((tab) => tab.document.path === paths[1])!
-    expect(session.result.current.tabs).toHaveLength(3)
+    expect(session.result.current.tabs).toHaveLength(2)
 
     act(() => {
       session.result.current.selectTab(firstTab.id)
@@ -447,6 +468,8 @@ describe('useDocumentSession', () => {
   it('opens a tree file once, then activates its existing tab', async () => {
     const session = renderHook(() => useDocumentSession())
 
+    act(() => session.result.current.createNewDocument())
+
     await act(async () => {
       await session.result.current.openDocumentAtPath(path)
     })
@@ -462,6 +485,25 @@ describe('useDocumentSession', () => {
 
     expect(session.result.current.tabs).toHaveLength(2)
     expect(session.result.current.activeTabId).toBe(fileTab.id)
+  })
+
+  it('opens a saved file into an empty workspace without creating an untitled tab', async () => {
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: '# Readme',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+    const session = renderHook(() => useDocumentSession())
+
+    await act(async () => {
+      await session.result.current.openDocumentAtPath('/tmp/README.md')
+    })
+
+    expect(session.result.current.tabs).toHaveLength(1)
+    expect(session.result.current.document.path).toBe('/tmp/README.md')
+    expect(session.result.current.document.title).toBe('README.md')
+    expect(session.result.current.tabs.some((tab) => tab.document.path === null)).toBe(false)
   })
 
   it('restores saved files and safely skips unavailable session paths', async () => {
@@ -484,16 +526,15 @@ describe('useDocumentSession', () => {
     expect(session.result.current.document.markdown).toBe('# Restored')
   })
 
-  it('keeps the focused untitled document for an empty startup session', async () => {
+  it('keeps an empty workspace empty for an empty startup session', async () => {
     const session = renderHook(() => useDocumentSession())
-    const initialId = session.result.current.activeTabId
 
     await act(async () => {
       await session.result.current.restoreStartupSession({ activeDocumentPath: null, openDocumentPaths: [] })
     })
 
-    expect(session.result.current.tabs).toHaveLength(1)
-    expect(session.result.current.activeTabId).toBe(initialId)
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.activeTabId).toBeNull()
     expect(session.result.current.document.path).toBeNull()
   })
 
@@ -501,15 +542,17 @@ describe('useDocumentSession', () => {
     const unsaved = renderHook(() => useDocumentSession())
     mocks.pickMarkdownSavePath.mockResolvedValue(null)
 
+    act(() => unsaved.result.current.createNewDocument())
+
     await act(async () => {
-      await expect(unsaved.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originFor(unsaved, unsaved.result.current.activeTabId))).resolves.toBeNull()
+      await expect(unsaved.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originFor(unsaved, unsaved.result.current.activeTabId!))).resolves.toBeNull()
     })
     expect(mocks.writeImageAsset).not.toHaveBeenCalled()
     unsaved.unmount()
 
     const session = await openSavedDocument()
     await act(async () => {
-      await expect(session.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originFor(session, session.result.current.activeTabId))).resolves.toBe('assets/image.png')
+      await expect(session.result.current.pasteImage({ bytes: [137, 80], mimeType: 'image/png' }, originFor(session, session.result.current.activeTabId!))).resolves.toBe('assets/image.png')
     })
     expect(mocks.writeImageAsset).toHaveBeenCalledWith(path, { bytes: [137, 80], mimeType: 'image/png' })
   })

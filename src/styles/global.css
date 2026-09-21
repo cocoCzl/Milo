@@ -772,16 +772,40 @@ button:focus-visible,
   border: 0;
 }
 
-.file-sidebar__recent > span {
+.file-sidebar__recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0 5px 4px;
+}
+
+.file-sidebar__recent-header > span {
   color: var(--muted-ink);
   font-size: var(--ui-font-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.file-sidebar__recent button {
+.file-sidebar__recent-header button {
+  padding: 1px 3px;
+  color: var(--muted-ink);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--ui-font-xs);
+}
+
+.file-sidebar__recent-item {
+  position: relative;
   display: flex;
+  min-width: 0;
+}
+
+.file-sidebar__recent-open {
+  display: flex;
+  flex: 1;
   gap: 7px;
   align-items: center;
   min-height: 32px;
@@ -798,16 +822,44 @@ button:focus-visible,
   white-space: nowrap;
 }
 
-.file-sidebar__recent button:hover,
-.file-sidebar__recent button:focus-visible {
+.file-sidebar__recent-open:hover,
+.file-sidebar__recent-open:focus-visible,
+.file-sidebar__recent-header button:hover,
+.file-sidebar__recent-header button:focus-visible {
   color: var(--ink);
   background: var(--soft-fill);
 }
 
-.file-sidebar__recent button[aria-current="page"],
+.file-sidebar__recent-open[aria-current="page"],
 .file-sidebar__file[aria-current="page"] {
   color: var(--text-primary);
   background: var(--accent-soft);
+}
+
+.file-sidebar__recent-remove {
+  display: grid;
+  flex: 0 0 24px;
+  place-items: center;
+  width: 24px;
+  margin-left: -24px;
+  padding: 0;
+  color: var(--muted-ink);
+  cursor: pointer;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--sidebar) 35%);
+  border: 0;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+}
+
+.file-sidebar__recent-item:hover .file-sidebar__recent-remove,
+.file-sidebar__recent-remove:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.file-sidebar__recent-remove:hover {
+  color: var(--text-primary);
 }
 
 .file-sidebar__tree {

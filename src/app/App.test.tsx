@@ -45,17 +45,29 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('App', () => {
-  it('starts with an unsaved document surface', () => {
+  it('starts with a true no-document surface and creates an untitled editor only on request', () => {
     render(<App />)
 
     expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
+    expect(editorMocks.markdownChanges.size).toBe(0)
+    expect(screen.getByRole('button', { name: 'Save document' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'New document' })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    expect(screen.getByRole('tab', { name: 'Untitled' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Untitled' }))
+    expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
   })
 
   it('adds and switches document tabs from the application surface', () => {
     render(<App />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     const tabs = screen.getAllByRole('tab')
@@ -69,6 +81,7 @@ describe('App', () => {
   it('binds each mounted editor callback to its own document session after a tab switch', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     // Tab B is active.  Invoke Tab A's retained editor callback to model a
     // delayed Milkdown markdownUpdated event from the hidden editor.
@@ -81,6 +94,7 @@ describe('App', () => {
 
   it('keeps each tab\'s document scroll position separate and clamps a restored position', () => {
     const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     const stage = container.querySelector<HTMLElement>('.document-stage')!
     let scrollTop = 0
     let scrollHeight = 2200
@@ -139,8 +153,36 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '偏好设置' })).toBeVisible()
   })
 
+  it('persists individual removal and clearing of recent records', async () => {
+    preferenceMocks.load.mockResolvedValue({
+      settingsVersion: 3,
+      appearance: 'system',
+      locale: 'en',
+      documentZoom: 100,
+      interfaceZoom: 120,
+      recentFiles: ['/notes/one.md'],
+      recentFolders: ['/notes/archive'],
+    })
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove one.md from recent' }))
+    await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      recentFiles: [],
+      recentFolders: ['/notes/archive'],
+    })))
+    expect(screen.queryByRole('button', { name: 'Remove one.md from recent' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      recentFiles: [],
+      recentFolders: [],
+    })))
+    expect(screen.queryByRole('region', { name: 'Recent files and folders' })).not.toBeInTheDocument()
+  })
+
   it('handles document zoom shortcuts without changing editor content', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     fireEvent.keyDown(window, { key: '+', metaKey: true })
     await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ documentZoom: 110 })))
@@ -161,6 +203,7 @@ describe('App', () => {
 
   it('defaults each document tab to edit and keeps presentation mode per tab', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     const firstEditor = screen.getByRole('textbox', { name: 'Untitled Markdown document' })
     expect(firstEditor).toHaveAttribute('data-presentation-mode', 'edit')
@@ -178,6 +221,7 @@ describe('App', () => {
 
   it('keeps read mode independent from focus mode', () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Read' }))
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
@@ -188,6 +232,7 @@ describe('App', () => {
 
   it('keeps the compact outline available, closes its drawer from every expected action, and hides it in focus mode', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     const outlineToggle = screen.getByRole('button', { name: 'Outline' })
     fireEvent.click(outlineToggle)
@@ -219,6 +264,7 @@ describe('App', () => {
 
     try {
       const { container } = render(<App />)
+      fireEvent.click(screen.getByRole('button', { name: 'New document' }))
       const stage = container.querySelector<HTMLElement>('.document-stage')!
       Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1200 })
       notify?.()
@@ -253,15 +299,19 @@ describe('App', () => {
     expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument()
   })
 
-  it('uses Chinese copy throughout the empty document surface', async () => {
+  it('uses Chinese copy for both the no-document surface and a real untitled document', async () => {
     preferenceMocks.load.mockResolvedValue({ appearance: 'system', locale: 'zh-CN', documentZoom: 100 })
     render(<App />)
 
     expect(await screen.findByRole('main', { name: 'Milo Markdown 编辑器' })).toHaveAttribute('lang', 'zh-CN')
     expect(screen.getByRole('complementary', { name: '当前文件夹' })).toHaveTextContent('打开一个文件夹，在这里浏览 Markdown 文件。')
     expect(screen.getByRole('button', { name: '选择文件夹' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: '未命名' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '未命名 Markdown 文档' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '打开文件夹' }).parentElement).toHaveTextContent('打开文件夹')
+
+    fireEvent.click(screen.getByRole('button', { name: '新建文档' }))
     expect(screen.getByRole('tab', { name: '未命名' })).toBeVisible()
     expect(screen.getByRole('textbox', { name: '未命名 Markdown 文档' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '打开文件夹' }).parentElement).toHaveTextContent('打开文件夹')
   })
 })

@@ -81,8 +81,8 @@ function titleFromPath(path: string): string {
 }
 
 export function useDocumentSession(untitledTitle = 'Untitled') {
-  const [tabs, setTabs] = useState<DocumentTab[]>(() => [createTab(createUntitledDocument())])
-  const [activeTabId, setActiveTabId] = useState(() => documentId)
+  const [tabs, setTabs] = useState<DocumentTab[]>([])
+  const [activeTabId, setActiveTabId] = useState<number | null>(null)
   const [closingTabId, setClosingTabId] = useState<number | null>(null)
   const tabsRef = useRef(tabs)
   const activeTabIdRef = useRef(activeTabId)
@@ -100,7 +100,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     setTabs(nextTabs)
   }, [])
 
-  const getTab = useCallback((id: number) => (
+  const getTab = useCallback((id: number | null) => (
     tabsRef.current.find((tab) => tab.id === id) ?? null
   ), [])
 
@@ -117,7 +117,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   }, [getTab])
 
   const selectTab = useCallback((id: number) => {
-    if (getTab(id)) setActiveTabId(id)
+    if (getTab(id)) {
+      activeTabIdRef.current = id
+      setActiveTabId(id)
+    }
   }, [getTab])
 
   const appendTab = useCallback((document: DocumentSession) => {
@@ -125,6 +128,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     const nextTabs = [...tabsRef.current, nextTab]
     tabsRef.current = nextTabs
     setTabs(nextTabs)
+    activeTabIdRef.current = nextTab.id
     setActiveTabId(nextTab.id)
     return nextTab
   }, [])
@@ -150,6 +154,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const openDocumentAtPath = useCallback(async (path: string) => {
     const existingTab = tabsRef.current.find((tab) => tab.document.path === path)
     if (existingTab) {
+      activeTabIdRef.current = existingTab.id
       setActiveTabId(existingTab.id)
       return true
     }
@@ -158,6 +163,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const file = await recoverAndReadMarkdownFile(path)
       const duplicateTab = tabsRef.current.find((tab) => tab.document.path === file.path)
       if (duplicateTab) {
+        activeTabIdRef.current = duplicateTab.id
         setActiveTabId(duplicateTab.id)
         return true
       }
@@ -339,12 +345,13 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const reloadExternalChange = useCallback(async (id = activeTabIdRef.current) => {
     const currentTab = getTab(id)
     if (!currentTab?.document.path) return
-    replaceTab(id, (tab) => ({ ...tab, activity: 'opening' }))
+    const tabId = currentTab.id
+    replaceTab(tabId, (tab) => ({ ...tab, activity: 'opening' }))
     try {
       const file = await recoverAndReadMarkdownFile(currentTab.document.path)
       const inspected = inspectMarkdownDocument(file.markdown)
-      selfWritesRef.current.delete(id)
-      replaceTab(id, (tab) => ({
+      selfWritesRef.current.delete(tabId)
+      replaceTab(tabId, (tab) => ({
         ...tab, activity: 'idle',
         document: {
           ...tab.document, path: file.path, title: titleFromPath(file.path), markdown: inspected.body,
@@ -355,11 +362,12 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         externalChange: null, notice: 'Reloaded external change.', saveFeedback: 'idle',
       }))
     } catch (reason) {
-      replaceTab(id, (tab) => ({ ...tab, activity: 'idle', error: readableError(reason, 'Could not reload the externally changed file.') }))
+      replaceTab(tabId, (tab) => ({ ...tab, activity: 'idle', error: readableError(reason, 'Could not reload the externally changed file.') }))
     }
   }, [getTab, replaceTab])
 
   const retainLocalChanges = useCallback((id = activeTabIdRef.current) => {
+    if (id === null) return
     replaceTab(id, (tab) => ({ ...tab, externalChange: 'retained', notice: null }))
   }, [replaceTab])
 
@@ -454,14 +462,18 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     selfWritesRef.current.delete(id)
     const nextTabs = currentTabs.filter((tab) => tab.id !== id)
     if (nextTabs.length === 0) {
-      const replacement = createTab(createUntitledDocument())
-      tabsRef.current = [replacement]
-      setTabs([replacement])
-      setActiveTabId(replacement.id)
+      tabsRef.current = []
+      activeTabIdRef.current = null
+      setTabs([])
+      setActiveTabId(null)
     } else {
       tabsRef.current = nextTabs
       setTabs(nextTabs)
-      if (activeTabIdRef.current === id) setActiveTabId(nextTabs[Math.min(index, nextTabs.length - 1)].id)
+      if (activeTabIdRef.current === id) {
+        const nextActiveTabId = nextTabs[Math.min(index, nextTabs.length - 1)].id
+        activeTabIdRef.current = nextActiveTabId
+        setActiveTabId(nextActiveTabId)
+      }
     }
     setClosingTabId(null)
   }, [])
@@ -479,6 +491,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const cancelCloseTab = useCallback(() => {
     if (closingTabId !== null) {
+      activeTabIdRef.current = closingTabId
       setActiveTabId(closingTabId)
     }
     setClosingTabId(null)
