@@ -485,8 +485,16 @@ export function App() {
             outlineLayout={outlineLayout}
             outlineOpen={!focusMode && outlineLayout === 'drawer' && (outlineOpen[tab.id] ?? false)}
             presentationMode={presentationModes[tab.id] ?? 'edit'}
-            onMarkdownChange={session.updateMarkdown}
-            onPasteImage={(image) => session.pasteImage(image, tab.id)}
+            onMarkdownChange={(markdown) => session.updateMarkdown({
+              tabId: tab.id,
+              documentId: tab.document.id,
+              path: tab.document.path,
+            }, markdown)}
+            onPasteImage={(image) => session.pasteImage(image, {
+              tabId: tab.id,
+              documentId: tab.document.id,
+              path: tab.document.path,
+            })}
             onReload={() => void session.reloadExternalChange(tab.id)}
             onRetain={() => session.retainLocalChanges(tab.id)}
             onOverwrite={() => void session.overwriteExternalChange(tab.id)}

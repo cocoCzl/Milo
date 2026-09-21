@@ -66,6 +66,37 @@ describe('MilkdownEditor', () => {
     expect(container.querySelectorAll('.ProseMirror')).toHaveLength(1)
   })
 
+  it('commits a Chinese IME composition without HTML or invisible-character pollution', async () => {
+    const onMarkdownChange = vi.fn()
+    const { container } = render(
+      <MilkdownEditor initialMarkdown="输入前" onMarkdownChange={onMarkdownChange} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const text = editor.querySelector('p')!.firstChild as Text
+    const selection = window.getSelection()!
+    const range = document.createRange()
+    range.setStart(text, text.data.length)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    fireEvent.compositionStart(editor, { data: '' })
+    text.data += '中文输入'
+    fireEvent.input(editor, { data: '中文输入', inputType: 'insertCompositionText', isComposing: true })
+    fireEvent.compositionEnd(editor, { data: '中文输入' })
+
+    await waitFor(() => expect(onMarkdownChange).toHaveBeenCalled())
+    const saved = onMarkdownChange.mock.calls.at(-1)?.[0] as string
+    expect(saved.trimEnd()).toBe('输入前中文输入')
+    expect(saved).not.toMatch(/<br\s*\/?>/i)
+    expect(saved).not.toContain('\u200b')
+    expect(saved).not.toContain('\u00a0')
+  })
+
   it('switches read mode on the existing ProseMirror instance without remounting it', async () => {
     const { container, rerender } = render(<MilkdownEditor initialMarkdown="A stable document" presentationMode="edit" />)
     const proseMirror = await waitFor(() => {
@@ -1205,6 +1236,19 @@ describe('MilkdownEditor', () => {
 
     await waitFor(() => expect(container.querySelector('.token.keyword')).toHaveTextContent('const'))
     expect(container.querySelector('.token.string')).toHaveTextContent('"hello"')
+  })
+
+  it('keeps code-block authored content on the stable pre content DOM boundary', async () => {
+    const { container } = render(<MilkdownEditor initialMarkdown={'```\n你好啊\n```'} />)
+
+    const content = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.code-block-card__content')
+      expect(element).toHaveTextContent('你好啊')
+      return element!
+    })
+
+    expect(content.tagName).toBe('PRE')
+    expect(content.querySelector('code')).not.toBeInTheDocument()
   })
 
   it('edits code-block languages from the embedded header without changing its code', async () => {

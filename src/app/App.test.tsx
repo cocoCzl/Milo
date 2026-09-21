@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const preferenceMocks = vi.hoisted(() => ({
@@ -6,18 +6,23 @@ const preferenceMocks = vi.hoisted(() => ({
   save: vi.fn(),
 }))
 
+const editorMocks = vi.hoisted(() => ({
+  markdownChanges: new Map<string, (markdown: string) => void>(),
+}))
+
 import { App } from './App'
 
 vi.mock('../editor/milkdown/MilkdownEditor', () => ({
-  MilkdownEditor: ({ active = true, ariaLabel = 'Untitled Markdown document', onCloseOutline, outlineLayout, outlineOpen, presentationMode = 'edit' }: { active?: boolean; ariaLabel?: string; onCloseOutline?: () => void; outlineLayout?: 'inline' | 'drawer'; outlineOpen?: boolean; presentationMode?: string }) => (
-    <div aria-label={ariaLabel} data-presentation-mode={presentationMode} role="textbox">
+  MilkdownEditor: ({ active = true, ariaLabel = 'Untitled Markdown document', editorId = 'standalone', initialMarkdown, onCloseOutline, onMarkdownChange, outlineLayout, outlineOpen, presentationMode = 'edit' }: { active?: boolean; ariaLabel?: string; editorId?: string; initialMarkdown: string; onCloseOutline?: () => void; onMarkdownChange?: (markdown: string) => void; outlineLayout?: 'inline' | 'drawer'; outlineOpen?: boolean; presentationMode?: string }) => {
+    if (onMarkdownChange) editorMocks.markdownChanges.set(editorId, onMarkdownChange)
+    return <div aria-label={ariaLabel} data-markdown={initialMarkdown} data-presentation-mode={presentationMode} role="textbox">
       {(outlineLayout === 'inline' || outlineOpen) && active ? (
         <nav aria-label="Outline" id={outlineLayout === 'inline' ? undefined : 'outline-drawer'}>
           <button type="button" onClick={onCloseOutline}>Example heading</button>
         </nav>
       ) : null}
     </div>
-  ),
+  },
 }))
 
 vi.mock('../settings/applicationSettings', async (importOriginal) => {
@@ -32,6 +37,7 @@ vi.mock('../settings/applicationSettings', async (importOriginal) => {
 beforeEach(() => {
   preferenceMocks.load.mockClear()
   preferenceMocks.save.mockClear()
+  editorMocks.markdownChanges.clear()
   preferenceMocks.load.mockResolvedValue({ settingsVersion: 3, appearance: 'system', locale: 'system', documentZoom: 100, interfaceZoom: 120 })
   preferenceMocks.save.mockImplementation(async (settings) => settings)
 })
@@ -58,6 +64,19 @@ describe('App', () => {
 
     fireEvent.click(tabs[0])
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('binds each mounted editor callback to its own document session after a tab switch', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+
+    // Tab B is active.  Invoke Tab A's retained editor callback to model a
+    // delayed Milkdown markdownUpdated event from the hidden editor.
+    act(() => editorMocks.markdownChanges.values().next().value?.('A1'))
+
+    const editors = screen.getAllByRole('textbox', { hidden: true })
+    expect(editors[0]).toHaveAttribute('data-markdown', 'A1')
+    expect(editors[1]).toHaveAttribute('data-markdown', '')
   })
 
   it('keeps each tab\'s document scroll position separate and clamps a restored position', () => {

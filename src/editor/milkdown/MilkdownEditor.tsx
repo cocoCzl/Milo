@@ -1,5 +1,5 @@
 import { defaultValueCtx, Editor, editorViewCtx, nodeViewCtx, prosePluginsCtx, rootCtx, type CmdKey } from '@milkdown/core'
-import { convertFileSrc, invoke, isTauri } from '@tauri-apps/api/core'
+import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { prism } from '@milkdown/plugin-prism'
@@ -11,6 +11,7 @@ import {
   addColBeforeCommand,
   addRowAfterCommand,
   addRowBeforeCommand,
+  autoInsertSpanPlugin,
   gfm,
 } from '@milkdown/preset-gfm'
 import { splitBlockAs } from '@milkdown/prose/commands'
@@ -113,47 +114,8 @@ const languageOptions = [
   { value: 'typescript', label: 'TypeScript' },
 ]
 
-let diagnosticTransactionSequence = 0
-let latestDiagnosticTransactionSequence = 0
-
-function selectionDiagnostic(selection: EditorState['selection']) {
-  return {
-    type: selection.constructor.name,
-    from: selection.from,
-    to: selection.to,
-    empty: selection.empty,
-  }
-}
-
-function isLocalDevelopment() {
-  return globalThis.location?.hostname === 'localhost'
-}
-
-function writeLinkP0Diagnostic(kind: string, payload: unknown) {
-  if (!isLocalDevelopment() || !isTauri()) return
-  void invoke('append_link_p0_diagnostic_log', {
-    entry: JSON.stringify({ kind, timestamp: new Date().toISOString(), payload }),
-  }).catch(() => undefined)
-}
-
 function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
   const domSelection = editorView.dom.ownerDocument.getSelection()
-
-  if (isLocalDevelopment()) {
-    const payload = {
-      dom: domSelection ? {
-        anchorNode: domSelection.anchorNode?.nodeName ?? null,
-        anchorOffset: domSelection.anchorOffset,
-        focusNode: domSelection.focusNode?.nodeName ?? null,
-        focusOffset: domSelection.focusOffset,
-        collapsed: domSelection.isCollapsed,
-        text: domSelection.toString(),
-      } : null,
-      before: selectionDiagnostic(editorView.state.selection),
-    }
-    console.debug('[Milo selection sync] CALL syncProseMirrorSelectionFromDOM', payload)
-    writeLinkP0Diagnostic('selection-sync-call', payload)
-  }
 
   if (
     !domSelection?.anchorNode
@@ -170,14 +132,6 @@ function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
 
     if (!selection.eq(editorView.state.selection)) {
       editorView.dispatch(editorView.state.tr.setSelection(selection))
-      if (isLocalDevelopment()) {
-        const payload = {
-          transactionSequence: latestDiagnosticTransactionSequence,
-          after: selectionDiagnostic(editorView.state.selection),
-        }
-        console.debug('[Milo selection sync] dispatched selection-only candidate', payload)
-        writeLinkP0Diagnostic('selection-sync-dispatch', payload)
-      }
     }
     return true
   } catch {
@@ -407,45 +361,6 @@ export function MilkdownEditor({
         ctx.update(prosePluginsCtx, (plugins) => [
           createContextualEditorPlugin(contextualStoreRef.current!),
           new Plugin({
-            // P0 diagnostic: a Link UI operation must never create a block.
-            // Keep this observer development-only; it neither dispatches nor
-            // appends transactions.  Its output identifies the first actual
-            // document-changing transaction rather than blaming WebKit.
-            appendTransaction: (transactions, oldState, newState) => {
-              if (!isLocalDevelopment()) return null
-              transactions.forEach((transaction) => {
-                if (!transaction.docChanged && !transaction.selectionSet) return
-                const sequence = ++diagnosticTransactionSequence
-                latestDiagnosticTransactionSequence = sequence
-                const summary = {
-                  sequence,
-                  timestamp: new Date().toISOString(),
-                  docChanged: transaction.docChanged,
-                  selectionSet: transaction.selectionSet,
-                  steps: transaction.steps.map((step) => ({ type: step.constructor.name, json: step.toJSON() })),
-                  meta: {
-                    uiEvent: transaction.getMeta('uiEvent') ?? null,
-                    pointer: transaction.getMeta('pointer') ?? null,
-                    paste: transaction.getMeta('paste') ?? null,
-                    origin: transaction.getMeta('origin') ?? null,
-                    addToHistory: transaction.getMeta('addToHistory') ?? null,
-                  },
-                  before: {
-                    childCount: oldState.doc.childCount,
-                    selection: selectionDiagnostic(oldState.selection),
-                    doc: transaction.docChanged ? oldState.doc.toJSON() : undefined,
-                  },
-                  after: {
-                    childCount: newState.doc.childCount,
-                    selection: selectionDiagnostic(newState.selection),
-                    doc: transaction.docChanged ? newState.doc.toJSON() : undefined,
-                  },
-                }
-                console.debug(transaction.docChanged ? '[Milo document transaction]' : '[Milo selection transaction]', summary)
-                writeLinkP0Diagnostic(transaction.docChanged ? 'document-transaction' : 'selection-transaction', summary)
-              })
-              return null
-            },
             props: {
               handleKeyDown: (editorView, event) => {
                 if (
@@ -471,7 +386,6 @@ export function MilkdownEditor({
         ])
         ctx.get(listenerCtx).markdownUpdated((updateCtx, markdown) => {
           if (!disposed) {
-            writeLinkP0Diagnostic('markdown-updated', { markdown })
             onMarkdownChangeRef.current?.(markdown)
             const editorView = updateCtx.get(editorViewCtx)
             if (editorView.state) setHeadings(readHeadings(editorView.state))
@@ -499,7 +413,11 @@ export function MilkdownEditor({
         })
       })
       .use(commonmark)
-      .use(gfm)
+      // Milkdown's GFM preset registers a Safari table-cell IME workaround
+      // globally. Its widget contaminates ordinary paragraph composition in
+      // WKWebView, so retain every other GFM component by identity and omit
+      // only that plugin.
+      .use(gfm.filter((plugin) => plugin !== autoInsertSpanPlugin))
       .use(miloEmptyTableCellSerializer)
       .use(prism)
       .use(history)
@@ -613,8 +531,6 @@ export function MilkdownEditor({
     if (presentationModeRef.current !== 'edit' || event.button !== 0 || (!event.metaKey && !event.ctrlKey)) return
     const url = linkNavigationTarget(event)
     if (!url) return
-    writeLinkP0Diagnostic('external-link-pointer', { button: event.button, metaKey: event.metaKey, ctrlKey: event.ctrlKey, url })
-
     // This runs before ProseMirror's pointer handler.  Preventing the native
     // default stops WebKit from selecting the anchor text; stopping propagation
     // keeps ProseMirror from publishing a transient non-empty selection that
@@ -629,22 +545,11 @@ export function MilkdownEditor({
     const url = linkNavigationTarget(event)
     if (!url) return
     const shouldOpen = presentationModeRef.current === 'read' || event.metaKey || event.ctrlKey || linkNavigationPointerRef.current
-    writeLinkP0Diagnostic('external-link-click', {
-      button: event.button,
-      metaKey: event.metaKey,
-      ctrlKey: event.ctrlKey,
-      url,
-      presentationMode: presentationModeRef.current,
-      shouldOpen,
-    })
     if (!shouldOpen) return
     event.preventDefault()
     event.stopPropagation()
     linkNavigationPointerRef.current = false
-    void openExternalLink(url).then(
-      () => writeLinkP0Diagnostic('external-link-result', { url, ok: true }),
-      (reason) => writeLinkP0Diagnostic('external-link-result', { url, ok: false, error: String(reason) }),
-    )
+    void openExternalLink(url).catch(() => undefined)
   }, [linkNavigationTarget])
 
   const focusEditor = useCallback(() => {
@@ -898,31 +803,17 @@ export function MilkdownEditor({
 
   const applyLink = useCallback(() => {
     const href = linkUrl.trim()
-    if (!href) {
-      writeLinkP0Diagnostic('link-submit-rejected', { reason: 'empty-href', mode: linkMode, selection: linkSelection })
-      return
-    }
+    if (!href) return
     const text = linkText.trim() || href
-    const before = editorRef.current?.action((ctx) => {
-      const state = ctx.get(editorViewCtx).state
-      return { childCount: state.doc.childCount, doc: state.doc.toJSON(), selection: selectionDiagnostic(state.selection) }
-    }) ?? null
-    writeLinkP0Diagnostic('link-submit-pre', { mode: linkMode, selection: linkSelection, text, href, before })
     const applied = linkMode === 'insert'
       ? editorCommands.insertLink(text, href, linkSelection ?? undefined)
       : linkMode === 'edit'
         ? editorCommands.updateLink(href, linkSelection ?? undefined)
         : editorCommands.applyLinkToSelection(href, linkSelection ?? undefined)
     if (!applied) {
-      writeLinkP0Diagnostic('link-submit-result', { applied: false })
       cancelLinkEditor()
       return
     }
-    const after = editorRef.current?.action((ctx) => {
-      const state = ctx.get(editorViewCtx).state
-      return { childCount: state.doc.childCount, doc: state.doc.toJSON(), selection: selectionDiagnostic(state.selection) }
-    }) ?? null
-    writeLinkP0Diagnostic('link-submit-result', { applied: true, after })
     setLinkEditorOpen(false)
     setLinkCanRemove(false)
     setLinkSelection(null)
@@ -1251,8 +1142,11 @@ function createCodeBlockNodeView(
     const languageTrigger = document.createElement('button')
     const languageMenu = document.createElement('div')
     const copyButton = document.createElement('button')
-    const pre = document.createElement('pre')
-    const contentDOM = document.createElement('code')
+    // Safari/WKWebView can replace the nested <code> element while composing
+    // inside a <pre>.  Keep the content DOM at the stable <pre> boundary so
+    // ProseMirror observes those content mutations instead of mistaking them
+    // for NodeView chrome.
+    const contentDOM = document.createElement('pre')
 
     card.className = 'code-block-card'
     header.className = 'code-block-card__header'
@@ -1266,7 +1160,7 @@ function createCodeBlockNodeView(
     languageMenu.hidden = true
     copyButton.className = 'code-block-card__copy'
     copyButton.type = 'button'
-    pre.className = 'code-block-card__content'
+    contentDOM.className = 'code-block-card__content'
 
     const closeLanguageMenu = () => {
       languageMenu.hidden = true
@@ -1325,9 +1219,8 @@ function createCodeBlockNodeView(
     document.addEventListener('pointerdown', closeMenuOnOutsidePress)
     document.addEventListener('keydown', closeMenuOnEscape)
 
-    pre.append(contentDOM)
     header.append(label, languageTrigger, copyButton, languageMenu)
-    card.append(header, pre)
+    card.append(header, contentDOM)
     updateControls()
 
     return {
@@ -1339,6 +1232,8 @@ function createCodeBlockNodeView(
         updateControls(nextNode)
         return true
       },
+      // Header controls are NodeView chrome. Every mutation at or below the
+      // content <pre> can affect authored code and must reach ProseMirror.
       ignoreMutation: (mutation) => !contentDOM.contains(mutation.target),
       stopEvent: (event) => event.target instanceof Node && header.contains(event.target),
       destroy: () => {
