@@ -1,4 +1,4 @@
-import { Check, Code2, Heading1, Heading2, Heading3, List, ListOrdered, Minus, Pilcrow, Quote, Table2 } from 'lucide-react'
+import { Check, Code2, Heading1, Heading2, Heading3, List, ListOrdered, Minus, Pilcrow, Quote, Table2, Trash2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { BlockMenuCommand, BlockTarget } from './blockControls'
 
@@ -14,6 +14,7 @@ export type BlockMenuCopy = {
   orderedList: string
   paragraph: string
   table: string
+  deleteBlock: string
 }
 
 type BlockMenuProps = {
@@ -77,6 +78,18 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
           </button>
         )
       })}
+      <div className="block-menu__separator" role="separator" />
+      <button
+        className="block-menu__delete"
+        role="menuitem"
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onCommand('delete-block', target)}
+      >
+        <span className="block-menu__icon" aria-hidden="true"><Trash2 /></span>
+        <span>{copy.deleteBlock}</span>
+        <span />
+      </button>
     </div>
   )
 }

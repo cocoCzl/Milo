@@ -71,6 +71,7 @@ type EditorCopy = BlockMenuCopy & EditorContextMenuCopy & EditorLinkPopoverCopy 
   codeBlockLanguage: string
   closeOutline: string
   deleteColumn: string
+  deleteBlock: string
   deleteRow: string
   loadImage: string
   loadImageError: string
@@ -95,7 +96,7 @@ const defaultEditorCopy: EditorCopy = {
   codeBlockLanguage: 'Code block language', closeOutline: 'Close outline', deleteColumn: 'Delete column', deleteRow: 'Delete row', loadImage: 'Load image',
   loadImageError: 'Could not load image — try again', loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
   loadingImage: 'Loading image…', noOutline: 'Headings will appear here.', outline: 'Outline', plainText: 'Plain text', startWriting: 'Start with a thought…',
-  removeLink: 'Remove link', insert: 'Insert', linkText: 'Link text', addLink: 'Add link', editLink: 'Edit link', insertLink: 'Insert link…',
+  removeLink: 'Remove link', deleteBlock: 'Delete block', insert: 'Insert', linkText: 'Link text', addLink: 'Add link', editLink: 'Edit link', insertLink: 'Insert link…',
   startWritingHint: 'Just type — Milo keeps the Markdown for you.',
 }
 
@@ -166,6 +167,16 @@ const exitHeadingAsParagraph: Command = (state, dispatch) => {
 
   const paragraph = state.schema.nodes.paragraph
   if (headingStart === null || !paragraph) return false
+
+  // ProseMirror's split command inherits the heading's textblock context at
+  // its start.  Typora-style Enter at offset zero instead inserts a normal
+  // paragraph *before* the heading, leaving the heading node and its content
+  // untouched.
+  if (selection.from === selection.$from.start(selection.$from.depth)) {
+    const transaction = state.tr.insert(headingStart, paragraph.create())
+    dispatch?.(transaction.setSelection(TextSelection.create(transaction.doc, headingStart + 1)).scrollIntoView())
+    return true
+  }
 
   return splitBlockAs(() => ({ type: paragraph }))(state, (transaction) => {
     const mappedHeadingStart = transaction.mapping.map(headingStart, -1)
@@ -860,7 +871,8 @@ export function MilkdownEditor({
       case 'ordered-list': editorCommands.toggleOrderedList(target.selection); break
       case 'code-block': editorCommands.setCodeBlock(target.selection); break
       case 'table': editorCommands.insertTable(target.selection); break
-      case 'divider': editorCommands.insertDivider(target.selection); break
+      case 'divider': editorCommands.insertDivider(target); break
+      case 'delete-block': editorCommands.deleteBlock(target); break
     }
     closeBlockMenu()
   }, [active, closeBlockMenu, editorCommands, editorId])

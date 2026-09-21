@@ -10,6 +10,8 @@ function target(position: number, top = 100): BlockTarget {
     targetBlockPosition: position,
     selection: { doc, from: position + 1, to: position + 1, text: '' },
     blockType: 'paragraph',
+    containerBlockPosition: position,
+    insertAfterPosition: position + 32,
     rect: { left: 200, top, right: 700, bottom: top + 32 },
   }
 }

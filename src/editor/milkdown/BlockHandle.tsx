@@ -1,9 +1,11 @@
 import { Plus } from 'lucide-react'
-import { invoke, isTauri } from '@tauri-apps/api/core'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ContextualEditorStore } from './contextualEditorStore'
 import { blockTargetAtCoords, blockTargetAtPosition, type BlockTarget } from './blockControls'
 import { isWithinBlockHoverCorridor, resolveBlockHandleHover } from './blockHandleHover'
+
+const handleSize = 26
+const visualGutterGap = 14
 
 type BlockHandleProps = {
   active: boolean
@@ -13,13 +15,6 @@ type BlockHandleProps = {
   menuTarget: BlockTarget | null
   onOpenMenu: (target: BlockTarget) => void
   store: ContextualEditorStore
-}
-
-type PointerLogTarget = { tag: string; className: string | null }
-
-function describeTarget(target: EventTarget | null): PointerLogTarget | null {
-  if (!(target instanceof Element)) return null
-  return { tag: target.tagName, className: target.getAttribute('class') }
 }
 
 function isBlockUiTarget(target: EventTarget | null) {
@@ -34,22 +29,12 @@ function sameTarget(current: BlockTarget | null, next: BlockTarget | null) {
   return current?.doc === next?.doc && current?.targetBlockPosition === next?.targetBlockPosition
 }
 
-// Temporary P0 instrumentation. It is strictly observation-only and shares
-// the existing development diagnostic sink; production builds never call it.
-function logBlockHandleDiagnostic(kind: string, payload: Record<string, unknown>) {
-  if (globalThis.location?.hostname !== 'localhost' || !isTauri()) return
-  void invoke('append_link_p0_diagnostic_log', {
-    entry: JSON.stringify({ kind: `block-handle-${kind}`, timestamp: new Date().toISOString(), payload }),
-  }).catch(() => undefined)
-}
-
 export function BlockHandle({ active, editorId, interactionOpen, label, menuTarget, onOpenMenu, store }: BlockHandleProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [hoverTarget, setHoverTarget] = useState<BlockTarget | null>(null)
   const hoverTargetRef = useRef<BlockTarget | null>(null)
   const frameRef = useRef(0)
   const pointerRef = useRef<{ left: number; top: number } | null>(null)
-  const visibleRef = useRef<number | null>(null)
   const selected = snapshot.state?.selection
   const hasTextSelection = Boolean(selected && !selected.empty)
   const blocked = !active || interactionOpen || hasTextSelection
@@ -62,18 +47,6 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
     hoverTargetRef.current = stable
     setHoverTarget(stable)
   }, [])
-
-  useEffect(() => {
-    const next = target?.targetBlockPosition ?? null
-    if (visibleRef.current === next) return
-    logBlockHandleDiagnostic('visibility', {
-      previousBlockPosition: visibleRef.current,
-      nextBlockPosition: next,
-      reason: menuTarget ? 'menu-target' : blocked ? 'blocked' : next === null ? 'no-hover-target' : 'hover-target',
-      blocked,
-    })
-    visibleRef.current = next
-  }, [blocked, menuTarget, target])
 
   useEffect(() => {
     if (blocked || menuTarget) {
@@ -97,50 +70,23 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
         pointer,
         pointerInBlockUi: false,
       })
-      logBlockHandleDiagnostic('resolve', {
-        pointer,
-        directBlockPosition: direct?.targetBlockPosition ?? null,
-        fallbackBlockPosition: fallback?.targetBlockPosition ?? null,
-        currentBlockPosition: current?.targetBlockPosition ?? null,
-        result: next ? (next === current ? 'keep:owned-corridor' : 'set:activation-gutter') : 'clear:outside-corridor',
-      })
       setStableHoverTarget(next)
     }
     const onPointerMove = (event: PointerEvent) => {
       pointerRef.current = { left: event.clientX, top: event.clientY }
-      logBlockHandleDiagnostic('pointermove', {
-        pointer: pointerRef.current,
-        eventTarget: describeTarget(event.target),
-        composedPath: event.composedPath().slice(0, 3).map(describeTarget),
-        currentBlockPosition: hoverTargetRef.current?.targetBlockPosition ?? null,
-        handleVisible: visibleRef.current !== null,
-      })
       if (!frameRef.current) frameRef.current = requestAnimationFrame(resolve)
     }
     const onPointerLeave = (event: PointerEvent) => {
       const current = hoverTargetRef.current
       const retainForBlockUi = isBlockUiTarget(event.relatedTarget)
       const retainForCorridor = Boolean(current && isWithinBlockHoverCorridor(current, { left: event.clientX, top: event.clientY }))
-      logBlockHandleDiagnostic('root-leave', {
-        eventTarget: describeTarget(event.target),
-        relatedTarget: describeTarget(event.relatedTarget),
-        currentBlockPosition: current?.targetBlockPosition ?? null,
-        result: retainForBlockUi ? 'retain:block-ui' : retainForCorridor ? 'retain:owned-corridor' : 'clear:outside-corridor',
-      })
       if (!retainForBlockUi && !retainForCorridor) setStableHoverTarget(null)
     }
     const onDocumentPointerMove = (event: PointerEvent) => {
       const current = hoverTargetRef.current
       if (!current || root.contains(event.target as Node)) return
-      if (eventIsInBlockUi(event)) {
-        logBlockHandleDiagnostic('ownership', { currentBlockPosition: current.targetBlockPosition, result: 'retain:block-ui' })
-        return
-      }
-      if (isWithinBlockHoverCorridor(current, { left: event.clientX, top: event.clientY })) {
-        logBlockHandleDiagnostic('ownership', { currentBlockPosition: current.targetBlockPosition, result: 'retain:owned-corridor' })
-        return
-      }
-      logBlockHandleDiagnostic('ownership', { currentBlockPosition: current.targetBlockPosition, result: 'clear:outside-editor-and-corridor' })
+      if (eventIsInBlockUi(event)) return
+      if (isWithinBlockHoverCorridor(current, { left: event.clientX, top: event.clientY })) return
       setStableHoverTarget(null)
     }
     root.addEventListener('pointermove', onPointerMove, { passive: true })
@@ -163,7 +109,11 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
 
   if (!target) return null
   const top = Math.max(8, Math.min(target.rect.top + (target.rect.bottom - target.rect.top - 26) / 2, window.innerHeight - 34))
-  const left = Math.max(8, target.rect.left - 34)
+  // `rect` is the visual anchor supplied by blockControls: for a quote it is
+  // the quote boundary, for a table/list/code it is the outer block edge.
+  // Every block therefore gets one shared, fixed gap outside its own visual
+  // boundary instead of type-specific offsets.
+  const left = Math.max(8, target.rect.left - handleSize - visualGutterGap)
   return (
     <button
       aria-expanded={Boolean(menuTarget)}
@@ -175,16 +125,6 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
       title={label}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
-      onPointerEnter={(event) => logBlockHandleDiagnostic('button-enter', {
-        eventTarget: describeTarget(event.target),
-        targetBlockPosition: target.targetBlockPosition,
-        menuOpen: Boolean(menuTarget),
-      })}
-      onPointerMove={(event) => logBlockHandleDiagnostic('button-move', {
-        eventTarget: describeTarget(event.target),
-        targetBlockPosition: target.targetBlockPosition,
-        menuOpen: Boolean(menuTarget),
-      })}
       onClick={() => onOpenMenu(target)}
     >
       <Plus aria-hidden="true" />

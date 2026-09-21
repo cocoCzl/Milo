@@ -723,6 +723,14 @@ describe('MilkdownEditor', () => {
     expect(saved).not.toContain('<br')
     expect(saved).not.toMatch(/^\\$/m)
     expect(saved).not.toMatch(/<[^>]+>/)
+    const reopened = render(<MilkdownEditor initialMarkdown={saved} />)
+    const reopenedEditor = await waitFor(() => {
+      const element = reopened.container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    assertion(reopenedEditor)
+    reopened.unmount()
     overlayMount.remove()
     rmSync(directory, { recursive: true, force: true })
   })
@@ -748,8 +756,162 @@ describe('MilkdownEditor', () => {
     await waitFor(() => expect(overlayMount.querySelector('.block-menu')).not.toBeInTheDocument())
     expect(onMarkdownChange).not.toHaveBeenCalled()
     expect(readFileSync(file, 'utf8')).toBe(baseline)
+
+    const reopenedMenu = await openBlockMenu(overlayMount)
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => expect(reopenedMenu.queryByRole('menu', { name: 'Add block' })).not.toBeInTheDocument())
+    expect(onMarkdownChange).not.toHaveBeenCalled()
+    expect(readFileSync(file, 'utf8')).toBe(baseline)
     overlayMount.remove()
     rmSync(directory, { recursive: true, force: true })
+  })
+
+  it('applies a Block Menu command to its frozen block rather than a later pointer target', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(
+      <MilkdownEditor initialMarkdown={'First block\n\nSecond block'} contextualOverlayMount={overlayMount} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const menu = await openBlockMenu(overlayMount)
+
+    // The menu already owns the first block. Pointer movement must not make
+    // its command infer a new target from the DOM under the pointer.
+    fireEvent.pointerMove(container.querySelector('.milkdown-editor')!, { clientX: 0, clientY: 400 })
+    fireEvent.click(menu.getByRole('menuitemradio', { name: 'Heading 2' }))
+
+    await waitFor(() => expect(editor.querySelector('h2')).toHaveTextContent('First block'))
+    expect(editor.querySelectorAll('p')[0]).toHaveTextContent('Second block')
+    overlayMount.remove()
+  })
+
+  it('inserts exactly one divider after a table without duplicating the table, and keeps one-step Undo/Redo', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const source = '| A | B |\n| :- | :- |\n| 1 | 2 |'
+    const onMarkdownChange = vi.fn()
+    const { container } = render(<MilkdownEditor initialMarkdown={source} contextualOverlayMount={overlayMount} onMarkdownChange={onMarkdownChange} />)
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const cell = editor.querySelector('td p')!
+    const range = document.createRange()
+    range.selectNodeContents(cell)
+    range.collapse(true)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent.mouseUp(editor)
+    const menu = await openBlockMenu(overlayMount)
+    fireEvent.click(menu.getByRole('menuitem', { name: 'Divider' }))
+
+    await waitFor(() => expect(editor.querySelectorAll('table')).toHaveLength(1))
+    expect(editor.querySelectorAll('hr')).toHaveLength(1)
+    await waitFor(() => expect(onMarkdownChange).toHaveBeenLastCalledWith(expect.stringContaining('***')))
+    const saved = onMarkdownChange.mock.calls.at(-1)?.[0] as string
+    expect(saved).not.toContain('<br')
+    expect(saved).not.toMatch(/^\\$/m)
+    const reopened = render(<MilkdownEditor initialMarkdown={saved} />)
+    await waitFor(() => expect(reopened.container.querySelectorAll('table')).toHaveLength(1))
+    expect(reopened.container.querySelectorAll('hr')).toHaveLength(1)
+
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(editor.querySelectorAll('hr')).toHaveLength(0))
+    expect(editor.querySelectorAll('table')).toHaveLength(1)
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(editor.querySelectorAll('hr')).toHaveLength(1))
+    expect(editor.querySelectorAll('table')).toHaveLength(1)
+    reopened.unmount()
+    overlayMount.remove()
+  })
+
+  it.each([
+    ['table', '| A |\n| :- |\n| 1 |', 'td p', 'table'],
+    ['code block', '```\ncode\n```', '.code-block-card__content', 'pre'],
+  ])('deletes a %s through Block Menu in one undoable ProseMirror transaction', async (_name, source, selector, blockSelector) => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const onMarkdownChange = vi.fn()
+    const { container } = render(<MilkdownEditor initialMarkdown={source} contextualOverlayMount={overlayMount} onMarkdownChange={onMarkdownChange} />)
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const content = await waitFor(() => {
+      const element = editor.querySelector<HTMLElement>(selector)
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const range = document.createRange()
+    range.selectNodeContents(content)
+    range.collapse(true)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent.mouseUp(editor)
+    const menu = await openBlockMenu(overlayMount)
+    fireEvent.click(menu.getByRole('menuitem', { name: 'Delete block' }))
+    await waitFor(() => expect(editor.querySelector(blockSelector)).not.toBeInTheDocument())
+    expect(editor.querySelectorAll('p')).toHaveLength(1)
+    await waitFor(() => expect(onMarkdownChange).toHaveBeenCalled())
+    expect(onMarkdownChange.mock.calls.at(-1)?.[0]).not.toMatch(/<br\s*\/?>|^\\$/m)
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(editor.querySelector(blockSelector)).toBeInTheDocument())
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(editor.querySelector(blockSelector)).not.toBeInTheDocument())
+    overlayMount.remove()
+  })
+
+  it.each([['h1'], ['h2'], ['h3']])('keeps %s text and type when Enter is pressed at its start', async (tag) => {
+    const { container } = render(<MilkdownEditor initialMarkdown={`${'#'.repeat(Number(tag.at(-1)))} Heading`} />)
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const heading = editor.querySelector<HTMLElement>(tag)!
+    const text = heading.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.collapse(true)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    await waitFor(() => {
+      expect(editor.querySelector(`p + ${tag}`)).toHaveTextContent('Heading')
+      expect(editor.querySelector('p')?.textContent).toBe('')
+    })
+  })
+
+  it('closes a tab’s Block Menu and discards its target when that tab becomes inactive', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const view = render(
+      <>
+        <MilkdownEditor active editorId="tab-a" initialMarkdown="Tab A" contextualOverlayMount={overlayMount} />
+        <MilkdownEditor active={false} editorId="tab-b" initialMarkdown="Tab B" contextualOverlayMount={overlayMount} />
+      </>,
+    )
+    const firstHandle = await within(overlayMount).findByRole('button', { name: 'Add block' })
+    fireEvent.click(firstHandle)
+    await within(overlayMount).findByRole('menu', { name: 'Add block' })
+
+    view.rerender(
+      <>
+        <MilkdownEditor active={false} editorId="tab-a" initialMarkdown="Tab A" contextualOverlayMount={overlayMount} />
+        <MilkdownEditor active editorId="tab-b" initialMarkdown="Tab B" contextualOverlayMount={overlayMount} />
+      </>,
+    )
+
+    await waitFor(() => expect(overlayMount.querySelector('.block-menu')).not.toBeInTheDocument())
+    const secondHandle = await within(overlayMount).findByRole('button', { name: 'Add block' })
+    expect(secondHandle).not.toBe(firstHandle)
+    fireEvent.click(secondHandle)
+    fireEvent.click(within(overlayMount).getByRole('menuitemradio', { name: 'Heading 3' }))
+    await waitFor(() => expect(view.container.querySelectorAll('.ProseMirror')[1].querySelector('h3')).toHaveTextContent('Tab B'))
+    expect(view.container.querySelectorAll('.ProseMirror')[0].querySelector('p')).toHaveTextContent('Tab A')
+    overlayMount.remove()
   })
 
   it('keeps Block Handle and Selection Toolbar mutually exclusive across edit, read, and inactive states', async () => {
@@ -781,7 +943,7 @@ describe('MilkdownEditor', () => {
     overlayMount.remove()
   })
 
-  it('starts a body paragraph when Enter is pressed in a heading', async () => {
+  it('inserts a body paragraph before an empty heading when Enter is pressed at its start', async () => {
     const overlayMount = document.body.appendChild(document.createElement('aside'))
     const { container } = render(<MilkdownEditor initialMarkdown="" contextualOverlayMount={overlayMount} />)
 
@@ -798,10 +960,11 @@ describe('MilkdownEditor', () => {
     fireEvent.keyDown(editor!, { key: 'Enter' })
 
     await waitFor(() => {
-      const paragraph = container.querySelector('.ProseMirror > h1 + p')
+      const paragraph = container.querySelector('.ProseMirror > p + h1')?.previousElementSibling
       const selection = window.getSelection()
 
       expect(paragraph).toBeInTheDocument()
+      expect(container.querySelector('.ProseMirror > h1')).toBeInTheDocument()
       expect(selection?.anchorNode === paragraph || paragraph?.contains(selection?.anchorNode ?? null)).toBe(true)
       expect(selection?.anchorOffset).toBe(0)
     })

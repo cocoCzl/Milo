@@ -15,6 +15,7 @@ import { lift } from '@milkdown/prose/commands'
 import { TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
 import type { CmdKey } from '@milkdown/core'
 import { isExternalHttpUrl } from '../../file-system/externalLink'
+import type { BlockTarget } from './blockControls'
 
 export type EditorBlockKind = 'paragraph' | 'heading-1' | 'heading-2' | 'heading-3' | 'blockquote' | 'code-block'
 
@@ -135,23 +136,31 @@ export function createEditorCommands(runner: EditorCommandRunner) {
     // its caret. That paragraph serializes as HTML `<br />`. Insert the same
     // schema node directly at the current textblock boundary instead: one
     // normal ProseMirror history transaction, no synthetic block.
-    insertDivider: (selection?: EditorSelectionSnapshot) => runner.runProse((state, dispatch) => {
+    insertDivider: (target?: BlockTarget) => runner.runProse((state, dispatch) => {
       const hr = state.schema.nodes.hr
-      if (!hr) return false
-      let depth = state.selection.$from.depth
-      while (depth > 0 && !state.selection.$from.node(depth).isTextblock) depth -= 1
-      if (!depth) return false
-      const blockPosition = state.selection.$from.before(depth)
-      const block = state.selection.$from.node(depth)
+      if (!hr || !target) return false
       const divider = hr.create()
-      let transaction = block.content.size === 0
-        ? state.tr.replaceWith(blockPosition, blockPosition + block.nodeSize, divider)
-        : state.tr.insert(blockPosition, divider)
-      const cursor = TextSelection.near(transaction.doc.resolve(Math.min(blockPosition + divider.nodeSize, transaction.doc.content.size)), 1)
-      transaction = transaction.setSelection(cursor).scrollIntoView()
+      if (target.insertAfterPosition < 0 || target.insertAfterPosition > state.doc.content.size) return false
+      const transaction = state.tr.insert(target.insertAfterPosition, divider).scrollIntoView()
       dispatch?.(transaction)
       return true
-    }, selection),
+    }, target?.selection),
+    deleteBlock: (target: BlockTarget) => runner.runProse((state, dispatch) => {
+      const position = target.insertAfterPosition
+      const block = state.doc.nodeAt(target.containerBlockPosition)
+      if (!block || position !== target.containerBlockPosition + block.nodeSize) return false
+      const paragraph = state.schema.nodes.paragraph
+      let transaction
+      if (state.doc.childCount === 1) {
+        if (!paragraph) return false
+        transaction = state.tr.replaceWith(target.containerBlockPosition, position, paragraph.create())
+      } else {
+        transaction = state.tr.delete(target.containerBlockPosition, position)
+      }
+      const cursor = TextSelection.near(transaction.doc.resolve(Math.min(target.containerBlockPosition + 1, transaction.doc.content.size)), 1)
+      dispatch?.(transaction.setSelection(cursor).scrollIntoView())
+      return true
+    }, target.selection),
     insertTable: (selection?: EditorSelectionSnapshot) => runner.runMilkdown(insertTableCommand.key, { row: 3, col: 3 }, selection),
   }
 }

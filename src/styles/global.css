@@ -1327,6 +1327,8 @@ button:focus-visible,
 .block-menu button[aria-checked="true"] .block-menu__check { color: currentcolor; }
 .block-menu svg { width: 15px; height: 15px; stroke-width: 1.8; }
 .block-menu button[aria-checked="false"] .block-menu__check { opacity: 0; }
+.block-menu__separator { height: 1px; margin: 6px 4px; background: var(--border-subtle); }
+.block-menu__delete { color: var(--danger, #c53c3c) !important; }
 
 .editor-link-popover--contextual {
   position: fixed;
@@ -1933,8 +1935,9 @@ button:focus-visible,
 }
 
 .milkdown .ProseMirror hr {
-  width: 68px;
-  margin: 2.2em auto;
+  display: block;
+  width: 100%;
+  margin: 1.8em 0;
   border: 0;
   border-top: 1px solid var(--line-strong);
 }
