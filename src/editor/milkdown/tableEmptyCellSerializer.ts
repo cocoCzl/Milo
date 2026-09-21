@@ -1,6 +1,6 @@
-import { tableCellSchema, tableHeaderSchema } from '@milkdown/preset-gfm'
 import type { Node } from '@milkdown/prose/model'
 import type { SerializerState } from '@milkdown/transformer'
+import { miloTableCellAlignment, miloTableHeaderAlignment } from './tableAlignment'
 
 // `@milkdown/preset-commonmark` intentionally serializes an otherwise-empty
 // paragraph as `<br />` when its preserve-empty-line remark plugin is active.
@@ -21,14 +21,14 @@ function serializeTableCell(state: SerializerState, node: Node) {
 }
 
 export const miloEmptyTableCellSerializer = [
-  tableCellSchema.extendSchema((base) => (ctx) => ({
+  miloTableCellAlignment.extendSchema((base) => (ctx) => ({
     ...base(ctx),
     toMarkdown: {
       match: (node) => node.type.name === 'table_cell',
       runner: serializeTableCell,
     },
   })),
-  tableHeaderSchema.extendSchema((base) => (ctx) => ({
+  miloTableHeaderAlignment.extendSchema((base) => (ctx) => ({
     ...base(ctx),
     toMarkdown: {
       match: (node) => node.type.name === 'table_header',

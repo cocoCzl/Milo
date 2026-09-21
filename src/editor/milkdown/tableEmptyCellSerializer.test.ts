@@ -1,4 +1,4 @@
-import { defaultValueCtx, Editor, parserCtx, rootCtx, schemaCtx, serializerCtx } from '@milkdown/core'
+import { defaultValueCtx, Editor, editorViewCtx, parserCtx, rootCtx, schemaCtx, serializerCtx } from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import type { Node as ProseNode, Schema } from '@milkdown/prose/model'
@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { composeMarkdownDocument, inspectMarkdownDocument } from '../markdown/documentSafety'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
+import { miloTableAlignmentSchema } from './tableAlignment'
 
 const createdEditors: Array<{ editor: Editor; mount: HTMLElement }> = []
 
@@ -27,6 +28,7 @@ async function createTablePipeline() {
     })
     .use(commonmark)
     .use(gfm)
+    .use(miloTableAlignmentSchema)
     .use(miloEmptyTableCellSerializer)
   await editor.create()
   createdEditors.push({ editor, mount })
@@ -72,6 +74,52 @@ function assertSafeTableMarkdown(markdown: string) {
 }
 
 describe('Milo empty table-cell serialization', () => {
+  it('keeps omitted and explicit GFM column alignments distinct', async () => {
+    const cases = [
+      ['| A |\n| --- |\n| B |\n', null, '', /^\|\s*-\s*\|/m],
+      ['| A |\n| :--- |\n| B |\n', 'left', 'left', /^\|\s*:-+\s*\|/m],
+      ['| A |\n| :---: |\n| B |\n', 'center', 'center', /^\|\s*:-+:\s*\|/m],
+      ['| A |\n| ---: |\n| B |\n', 'right', 'right', /^\|\s*-+:\s*\|/m],
+    ] as const
+
+    for (const [markdown, alignment, domAlignment, marker] of cases) {
+      const mount = document.body.appendChild(document.createElement('div'))
+      const editor = Editor.make()
+        .config((ctx) => {
+          ctx.set(rootCtx, mount)
+          ctx.set(defaultValueCtx, markdown)
+        })
+        .use(commonmark)
+        .use(gfm)
+        .use(miloTableAlignmentSchema)
+        .use(miloEmptyTableCellSerializer)
+      await editor.create()
+      createdEditors.push({ editor, mount })
+
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx)
+        expect(view.state.doc.firstChild?.firstChild?.firstChild?.attrs.alignment).toBe(alignment)
+        expect(ctx.get(serializerCtx)(view.state.doc)).toMatch(marker)
+      })
+      expect(mount.querySelector('th')?.style.textAlign).toBe(domAlignment)
+      expect(mount.querySelector('td')?.style.textAlign).toBe(domAlignment)
+    }
+  })
+
+  it('creates new table cells with omitted alignment instead of explicit left alignment', async () => {
+    const editor = await createTablePipeline()
+    editor.action((ctx) => {
+      const schema = ctx.get(schemaCtx)
+      const original = tableDocument(schema, Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [])))
+      original.descendants((node) => {
+        if (node.type.name === 'table_cell' || node.type.name === 'table_header') {
+          expect(node.attrs.alignment).toBeNull()
+        }
+      })
+      expect(ctx.get(serializerCtx)(original)).toMatch(/^\|\s*\|\s*\|\s*\|\n\|\s*-\s*\|\s*-\s*\|\s*-\s*\|/)
+    })
+  })
+
   it('round-trips an editor-generated empty 3×3 table through a real temp file without HTML or invisible text', async () => {
     const editor = await createTablePipeline()
     let markdown = ''

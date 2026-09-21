@@ -34,6 +34,7 @@ import { ContextualEditorStore, createContextualEditorPlugin } from './contextua
 import { createEditorCommands, isValidEditorSelectionSnapshot, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
 import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
+import { miloTableAlignmentSchema } from './tableAlignment'
 
 type EditorMenu = {
   hasSelection: boolean
@@ -418,6 +419,7 @@ export function MilkdownEditor({
       // WKWebView, so retain every other GFM component by identity and omit
       // only that plugin.
       .use(gfm.filter((plugin) => plugin !== autoInsertSpanPlugin))
+      .use(miloTableAlignmentSchema)
       .use(miloEmptyTableCellSerializer)
       .use(prism)
       .use(history)

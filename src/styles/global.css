@@ -1985,7 +1985,7 @@ button:focus-visible,
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-size: 0.68em;
+  font-size: inherit;
   letter-spacing: -0.006em;
   line-height: 1.5;
   overflow: hidden;
@@ -1994,9 +1994,10 @@ button:focus-visible,
 .milkdown .ProseMirror th,
 .milkdown .ProseMirror td {
   min-width: 100px;
-  padding: 0.65em 0.76em;
-  text-align: left;
-  vertical-align: top;
+  padding: 10px 12px;
+  /* Cells with no inline alignment came from `---` or a new table. */
+  text-align: center;
+  vertical-align: middle;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
@@ -2004,7 +2005,7 @@ button:focus-visible,
 .milkdown .ProseMirror th {
   color: var(--ink);
   background: var(--chrome);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .milkdown .ProseMirror tr > :last-child {
