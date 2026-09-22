@@ -48,7 +48,7 @@ describe('App', () => {
   it('starts with a true no-document surface and creates an untitled editor only on request', () => {
     render(<App />)
 
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveStyle({ '--editor-font-size': '16.5px' })
     expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
     expect(editorMocks.markdownChanges.size).toBe(0)
@@ -139,7 +139,7 @@ describe('App', () => {
     expect(app).toHaveAttribute('data-appearance', 'dark')
     expect(app).toHaveAttribute('data-theme', 'dark')
     expect(app).toHaveAttribute('data-color-scheme', 'dark')
-    expect(app).toHaveStyle({ '--editor-font-size': '17.6px' })
+    expect(app).toHaveStyle({ '--editor-font-size': '18.15px' })
     expect(app).toHaveStyle({ '--ui-font-lg': '16.9px' })
 
     await waitFor(() => {

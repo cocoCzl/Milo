@@ -104,6 +104,10 @@ button:focus-visible,
   --ui-font-md: var(--font-ui-sm);
   --ui-font-sm: var(--font-ui-xs);
   --ui-font-xs: 10px;
+  --editor-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --editor-font-size: 16.5px;
+  --editor-heading-line-height: 1.22;
+  --editor-heading-space-before: var(--editor-font-size);
   --reading-width: 820px;
   --top-region-height: var(--space-12);
   --editor-rail-width: 48px;
@@ -1645,9 +1649,9 @@ button:focus-visible,
 
 .milkdown-editor__placeholder {
   color: var(--subtle-ink);
-  font-family: ui-serif, "Iowan Old Style", "Songti SC", "STSong", Georgia, serif;
-  font-size: var(--editor-font-size, 22px);
-  letter-spacing: -0.018em;
+  font-family: var(--editor-font-family);
+  font-size: var(--editor-font-size);
+  letter-spacing: 0;
   line-height: 1.7;
 }
 
@@ -1680,10 +1684,10 @@ button:focus-visible,
   outline: 0;
   direction: ltr;
   text-align: left;
-  font-family: ui-serif, "Iowan Old Style", "Songti SC", "STSong", Georgia, serif;
-  font-size: var(--editor-font-size, 22px);
+  font-family: var(--editor-font-family);
+  font-size: var(--editor-font-size);
   line-height: 1.7;
-  letter-spacing: -0.018em;
+  letter-spacing: 0;
 }
 
 .milkdown .ProseMirror > *:first-child {
@@ -1706,23 +1710,46 @@ button:focus-visible,
 .milkdown .ProseMirror h5,
 .milkdown .ProseMirror h6 {
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-weight: 660;
+  font-family: var(--editor-font-family);
   letter-spacing: -0.035em;
-  line-height: 1.22;
-  margin: var(--editor-font-size, 22px) 0 0.5em;
+  line-height: var(--editor-heading-line-height);
+  margin-top: var(--editor-heading-space-before);
 }
 
 .milkdown .ProseMirror h1 {
-  font-size: 1.75em;
+  font-size: calc(var(--editor-font-size) * 1.9091);
+  font-weight: 700;
+  margin-bottom: calc(var(--editor-font-size) * 0.9545);
 }
 
 .milkdown .ProseMirror h2 {
-  font-size: 1.4em;
+  font-size: calc(var(--editor-font-size) * 1.5152);
+  font-weight: 680;
+  margin-bottom: calc(var(--editor-font-size) * 0.7576);
 }
 
 .milkdown .ProseMirror h3 {
-  font-size: 1.12em;
+  font-size: calc(var(--editor-font-size) * 1.2424);
+  font-weight: 660;
+  margin-bottom: calc(var(--editor-font-size) * 0.6212);
+}
+
+.milkdown .ProseMirror h4 {
+  font-size: calc(var(--editor-font-size) * 1.0909);
+  font-weight: 640;
+  margin-bottom: calc(var(--editor-font-size) * 0.5455);
+}
+
+.milkdown .ProseMirror h5 {
+  font-size: calc(var(--editor-font-size) * 1.0303);
+  font-weight: 620;
+  margin-bottom: calc(var(--editor-font-size) * 0.5152);
+}
+
+.milkdown .ProseMirror h6 {
+  font-size: var(--editor-font-size);
+  font-weight: 600;
+  margin-bottom: calc(var(--editor-font-size) * 0.5);
 }
 
 .milkdown .ProseMirror blockquote {

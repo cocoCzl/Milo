@@ -150,7 +150,7 @@ export function App() {
     previousActiveTabIdRef.current = nextTabId
   }, [documentViewStates, saveDocumentScroll, session.activeTabId])
   const appStyle = {
-    '--editor-font-size': `${Number((16 * (settings.documentZoom / 100)).toFixed(2))}px`,
+    '--editor-font-size': `${Number((16.5 * (settings.documentZoom / 100)).toFixed(2))}px`,
     '--ui-font-lg': `${Number((13 * (settings.interfaceZoom / 100)).toFixed(2))}px`,
     '--ui-font-mark': `${Number((12.5 * (settings.interfaceZoom / 100)).toFixed(2))}px`,
     '--ui-font-md': `${Number((12 * (settings.interfaceZoom / 100)).toFixed(2))}px`,
