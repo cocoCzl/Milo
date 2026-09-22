@@ -91,6 +91,7 @@ type EditorCopy = BlockMenuCopy & EditorContextMenuCopy & EditorLinkPopoverCopy 
 const defaultEditorCopy: EditorCopy = {
   apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',
   copy: 'Copy', cut: 'Cut', divider: 'Divider', formattingToolbar: 'Formatting', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3',
+  heading4: 'Heading 4', heading5: 'Heading 5', heading6: 'Heading 6', moreHeadings: 'More Headings',
   inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', orderedList: 'Numbered list', paragraph: 'Body text',
   paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', addBlock: 'Add block',
   addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',
@@ -912,6 +913,9 @@ export function MilkdownEditor({
       case 'heading-1': editorCommands.setHeading1(target.selection); break
       case 'heading-2': editorCommands.setHeading2(target.selection); break
       case 'heading-3': editorCommands.setHeading3(target.selection); break
+      case 'heading-4': editorCommands.setHeading4(target.selection); break
+      case 'heading-5': editorCommands.setHeading5(target.selection); break
+      case 'heading-6': editorCommands.setHeading6(target.selection); break
       case 'blockquote': editorCommands.setQuote(target.selection); break
       case 'bullet-list': editorCommands.toggleBulletList(target.selection); break
       case 'ordered-list': editorCommands.toggleOrderedList(target.selection); break

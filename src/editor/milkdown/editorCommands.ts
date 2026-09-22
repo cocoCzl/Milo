@@ -17,7 +17,7 @@ import type { CmdKey } from '@milkdown/core'
 import { isExternalHttpUrl } from '../../file-system/externalLink'
 import type { BlockTarget } from './blockControls'
 
-export type EditorBlockKind = 'paragraph' | 'heading-1' | 'heading-2' | 'heading-3' | 'blockquote' | 'code-block'
+export type EditorBlockKind = 'paragraph' | `heading-${1 | 2 | 3 | 4 | 5 | 6}` | 'blockquote' | 'code-block'
 
 export type EditorSelectionSnapshot = {
   doc: EditorState['doc']
@@ -88,6 +88,9 @@ export function createEditorCommands(runner: EditorCommandRunner) {
       case 'heading-1': return runner.runMilkdown(wrapInHeadingCommand.key, 1, selection)
       case 'heading-2': return runner.runMilkdown(wrapInHeadingCommand.key, 2, selection)
       case 'heading-3': return runner.runMilkdown(wrapInHeadingCommand.key, 3, selection)
+      case 'heading-4': return runner.runMilkdown(wrapInHeadingCommand.key, 4, selection)
+      case 'heading-5': return runner.runMilkdown(wrapInHeadingCommand.key, 5, selection)
+      case 'heading-6': return runner.runMilkdown(wrapInHeadingCommand.key, 6, selection)
       case 'blockquote': return runner.runMilkdown(wrapInBlockquoteCommand.key, undefined, selection)
       case 'code-block': return runner.runMilkdown(createCodeBlockCommand.key, undefined, selection)
     }
@@ -150,6 +153,9 @@ export function createEditorCommands(runner: EditorCommandRunner) {
     setHeading1: (selection?: EditorSelectionSnapshot) => setBlockKind('heading-1', selection),
     setHeading2: (selection?: EditorSelectionSnapshot) => setBlockKind('heading-2', selection),
     setHeading3: (selection?: EditorSelectionSnapshot) => setBlockKind('heading-3', selection),
+    setHeading4: (selection?: EditorSelectionSnapshot) => setBlockKind('heading-4', selection),
+    setHeading5: (selection?: EditorSelectionSnapshot) => setBlockKind('heading-5', selection),
+    setHeading6: (selection?: EditorSelectionSnapshot) => setBlockKind('heading-6', selection),
     setQuote: (selection?: EditorSelectionSnapshot) => setBlockKind('blockquote', selection),
     setCodeBlock: (selection?: EditorSelectionSnapshot) => setBlockKind('code-block', selection),
     toggleBulletList,

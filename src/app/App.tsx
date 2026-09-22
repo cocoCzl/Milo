@@ -610,6 +610,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         editor: {
           apply: '应用', blockquote: '引用', bold: '粗体', bulletList: '项目符号列表', cancel: '取消', codeBlock: '代码块',
           copy: '复制', cut: '剪切', deleteBlock: '删除块', divider: '分隔线', formattingToolbar: '格式工具栏', heading1: '一级标题', heading2: '二级标题', heading3: '三级标题', closeOutline: '关闭大纲',
+          heading4: '四级标题', heading5: '五级标题', heading6: '六级标题', moreHeadings: '更多标题',
           inlineCode: '行内代码', italic: '斜体', link: '链接', linkAddress: '链接地址', linkText: '链接文本', insert: '插入', addBlock: '添加块', addLink: '添加链接…', editLink: '编辑链接…', insertLink: '插入链接…', orderedList: '编号列表', paragraph: '正文',
           paste: '粘贴', selectAll: '全选', strike: '删除线', table: '表格', textStyle: '文本样式',
           addColumnLeft: '在左侧添加列', addColumnRight: '在右侧添加列', addRowAbove: '在上方添加行', addRowBelow: '在下方添加行',
@@ -645,6 +646,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         editor: {
           apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',
           copy: 'Copy', cut: 'Cut', deleteBlock: 'Delete block', divider: 'Divider', formattingToolbar: 'Formatting toolbar', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3', closeOutline: 'Close outline',
+          heading4: 'Heading 4', heading5: 'Heading 5', heading6: 'Heading 6', moreHeadings: 'More Headings',
           inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', linkText: 'Link text', insert: 'Insert', addBlock: 'Add block', addLink: 'Add link…', editLink: 'Edit link…', insertLink: 'Insert link…', orderedList: 'Numbered list', paragraph: 'Body text',
           paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', textStyle: 'Text style',
           addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',

@@ -7,6 +7,9 @@ export type BlockMenuCommand =
   | 'heading-1'
   | 'heading-2'
   | 'heading-3'
+  | 'heading-4'
+  | 'heading-5'
+  | 'heading-6'
   | 'blockquote'
   | 'bullet-list'
   | 'ordered-list'
@@ -41,7 +44,7 @@ function targetBlockType($position: ReturnType<EditorState['doc']['resolve']>, d
   const node = $position.node(depth)
   if (node.type.name === 'heading') {
     const level = Number(node.attrs.level)
-    if (level >= 1 && level <= 3) return `heading-${level}` as BlockMenuCommand
+    if (level >= 1 && level <= 6) return `heading-${level}` as BlockMenuCommand
   }
   if (node.type.name === 'code_block') return 'code-block'
   return 'paragraph'

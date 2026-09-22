@@ -57,6 +57,93 @@ function setStageGeometry(
 }
 
 describe('MilkdownEditor', () => {
+  it.each([4, 5, 6])('converts only the frozen first block to H%i, with history and Markdown round-trip', async (level) => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const onMarkdownChange = vi.fn()
+    const { container } = render(<MilkdownEditor initialMarkdown={'第一段\n\n第二段\n\n第三段'} contextualOverlayMount={overlayMount} onMarkdownChange={onMarkdownChange} />)
+    const menu = await openBlockMenu(overlayMount)
+    const editor = container.querySelector<HTMLElement>('.ProseMirror')!
+    const neighbors = Array.from(editor.children).slice(1).map((node) => node.outerHTML)
+    fireEvent.pointerEnter(menu.getByRole('menuitem', { name: 'More Headings' }))
+    fireEvent.pointerMove(editor.children[1], { clientX: 300, clientY: 220 })
+    fireEvent.pointerMove(editor.children[2], { clientX: 300, clientY: 300 })
+    fireEvent.click(menu.getByRole('menuitemradio', { name: `Heading ${level}` }))
+    await waitFor(() => expect(editor.firstElementChild?.tagName).toBe(`H${level}`))
+    expect(Array.from(editor.children).slice(1).map((node) => node.outerHTML)).toEqual(neighbors)
+    await waitFor(() => expect(onMarkdownChange).toHaveBeenCalled())
+    const saved = onMarkdownChange.mock.calls.at(-1)![0] as string
+    expect(saved.trim()).toBe(`${'#'.repeat(level)} 第一段\n\n第二段\n\n第三段`)
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(editor.firstElementChild?.tagName).toBe('P'))
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(editor.firstElementChild?.tagName).toBe(`H${level}`))
+    expect(Array.from(editor.children).slice(1).map((node) => node.outerHTML)).toEqual(neighbors)
+    const reopened = render(<MilkdownEditor initialMarkdown={saved} />)
+    await waitFor(() => expect(reopened.container.querySelector(`h${level}`)).toHaveTextContent('第一段'))
+    expect(proseMirrorDocJSON(reopened.container.querySelector('.ProseMirror')!)).toEqual(proseMirrorDocJSON(editor))
+    reopened.unmount()
+    overlayMount.remove()
+  })
+
+  it.each([4, 5, 6])('recognizes parsed H%i and supports heading/body conversions without changing neighbors', async (initialLevel) => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(<MilkdownEditor initialMarkdown={`${'#'.repeat(initialLevel)} 标题\n\n第二段\n\n第三段`} contextualOverlayMount={overlayMount} />)
+    let current = initialLevel
+    for (const next of [4, 5, 6, 0, 1, 4, 2, 5, 3, 6, 5, 4, 0]) {
+      const menu = await openBlockMenu(overlayMount)
+      const more = menu.getByRole('menuitem', { name: 'More Headings' })
+      fireEvent.click(more)
+      const label = current === 0 ? 'Body text' : `Heading ${current}`
+      expect(menu.getByRole('menuitemradio', { name: label })).toHaveAttribute('aria-checked', 'true')
+      if (current >= 4) {
+        expect(more).toHaveClass('block-menu__more--active')
+        expect(menu.getByRole('menuitemradio', { name: 'Body text' })).toHaveAttribute('aria-checked', 'false')
+      }
+      fireEvent.click(menu.getByRole('menuitemradio', { name: next === 0 ? 'Body text' : `Heading ${next}` }))
+      await waitFor(() => expect(container.querySelector('.ProseMirror')?.firstElementChild?.tagName).toBe(next ? `H${next}` : 'P'))
+      expect(Array.from(container.querySelector('.ProseMirror')!.children).slice(1).map((node) => node.outerHTML)).toEqual(['<p>第二段</p>', '<p>第三段</p>'])
+      current = next
+    }
+    overlayMount.remove()
+  })
+
+  it('closes both menu levels on Read and does not restore them on Edit', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const props = { initialMarkdown: '#### 四级标题\n\n##### 五级标题\n\n###### 六级标题', contextualOverlayMount: overlayMount }
+    const view = render(<MilkdownEditor {...props} />)
+    const menu = await openBlockMenu(overlayMount)
+    expect(Array.from(view.container.querySelector('.ProseMirror')!.children).map((node) => node.tagName)).toEqual(['H4', 'H5', 'H6'])
+    fireEvent.click(menu.getByRole('menuitem', { name: 'More Headings' }))
+    expect(menu.getAllByRole('menu')).toHaveLength(2)
+    view.rerender(<MilkdownEditor {...props} presentationMode="read" />)
+    await waitFor(() => expect(menu.queryByRole('menu')).not.toBeInTheDocument())
+    view.rerender(<MilkdownEditor {...props} presentationMode="edit" />)
+    await within(overlayMount).findByRole('button', { name: 'Add block' })
+    expect(menu.queryByRole('menu')).not.toBeInTheDocument()
+    overlayMount.remove()
+  })
+
+  it('serializes and reparses a document containing all three lower heading levels', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const markdown = '#### 四级标题\n\n##### 五级标题\n\n###### 六级标题\n'
+    const onMarkdownChange = vi.fn()
+    const view = render(<MilkdownEditor initialMarkdown={markdown} contextualOverlayMount={overlayMount} onMarkdownChange={onMarkdownChange} />)
+    for (const level of [5, 4]) {
+      const menu = await openBlockMenu(overlayMount)
+      fireEvent.click(menu.getByRole('menuitem', { name: 'More Headings' }))
+      fireEvent.click(menu.getByRole('menuitemradio', { name: `Heading ${level}` }))
+      await waitFor(() => expect(view.container.querySelector('.ProseMirror')?.firstElementChild?.tagName).toBe(`H${level}`))
+    }
+    await waitFor(() => expect(onMarkdownChange.mock.calls.at(-1)?.[0]).toBe(markdown))
+    const original = proseMirrorDocJSON(view.container.querySelector('.ProseMirror')!)
+    view.unmount()
+    const reopened = render(<MilkdownEditor initialMarkdown={onMarkdownChange.mock.calls.at(-1)![0]} />)
+    await waitFor(() => expect(reopened.container.querySelector('h6')).toHaveTextContent('六级标题'))
+    expect(Array.from(reopened.container.querySelector('.ProseMirror')!.children).map((node) => node.tagName)).toEqual(['H4', 'H5', 'H6'])
+    expect(proseMirrorDocJSON(reopened.container.querySelector('.ProseMirror')!)).toEqual(original)
+    overlayMount.remove()
+  })
+
   it('mounts one editable ProseMirror surface', async () => {
     const { container } = render(<MilkdownEditor initialMarkdown="# A quiet page" />)
 
@@ -1366,6 +1453,9 @@ describe('MilkdownEditor', () => {
     fireEvent.click(firstHandle)
     await within(overlayMount).findByRole('menu', { name: 'Add block' })
 
+    fireEvent.click(within(overlayMount).getByRole('menuitem', { name: 'More Headings' }))
+    expect(within(overlayMount).getByRole('menu', { name: 'More Headings' })).toBeInTheDocument()
+
     view.rerender(
       <>
         <MilkdownEditor active={false} editorId="tab-a" initialMarkdown="Tab A" contextualOverlayMount={overlayMount} />
@@ -1380,6 +1470,13 @@ describe('MilkdownEditor', () => {
     fireEvent.click(within(overlayMount).getByRole('menuitemradio', { name: 'Heading 3' }))
     await waitFor(() => expect(view.container.querySelectorAll('.ProseMirror')[1].querySelector('h3')).toHaveTextContent('Tab B'))
     expect(view.container.querySelectorAll('.ProseMirror')[0].querySelector('p')).toHaveTextContent('Tab A')
+    view.rerender(
+      <>
+        <MilkdownEditor active editorId="tab-a" initialMarkdown="Tab A" contextualOverlayMount={overlayMount} />
+        <MilkdownEditor active={false} editorId="tab-b" initialMarkdown="Tab B" contextualOverlayMount={overlayMount} />
+      </>,
+    )
+    await waitFor(() => expect(within(overlayMount).queryByRole('menu')).not.toBeInTheDocument())
     overlayMount.remove()
   })
 

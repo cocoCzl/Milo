@@ -1356,6 +1356,26 @@ button:focus-visible,
   box-shadow: var(--shadow-floating);
 }
 
+.block-menu__items { display: grid; overflow-y: auto; }
+
+/* The padding is a hit-testable bridge, owned by the same menu DOM subtree. */
+.block-menu__submenu-corridor {
+  position: fixed;
+  z-index: 1;
+  padding-left: 8px;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.block-menu__submenu-corridor[data-side="left"] { padding-right: 8px; padding-left: 0; }
+.block-menu__submenu {
+  display: grid;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+}
+
 .block-menu button {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) 14px;
@@ -1375,11 +1395,13 @@ button:focus-visible,
 .block-menu button:hover,
 .block-menu button:focus-visible { background: var(--bg-hover); }
 
-.block-menu button[aria-checked="true"] { color: var(--accent); background: var(--accent-soft); }
+.block-menu button[aria-checked="true"],
+.block-menu button.block-menu__more--active { color: var(--accent); background: var(--accent-soft); }
 
 .block-menu__icon,
 .block-menu__check { display: grid; color: var(--text-tertiary); place-items: center; }
 .block-menu button[aria-checked="true"] .block-menu__icon,
+.block-menu .block-menu__more--active .block-menu__icon,
 .block-menu button[aria-checked="true"] .block-menu__check { color: currentcolor; }
 .block-menu svg { width: 15px; height: 15px; stroke-width: 1.8; }
 .block-menu button[aria-checked="false"] .block-menu__check { opacity: 0; }
@@ -2281,6 +2303,7 @@ button:focus-visible,
 .app-shell[data-color-scheme="dark"] .preferences-popover,
 .app-shell[data-color-scheme="dark"] .editor-context-menu,
 .app-shell[data-color-scheme="dark"] .block-menu,
+.app-shell[data-color-scheme="dark"] .block-menu__submenu,
 .app-shell[data-color-scheme="dark"] .editor-link-popover {
   box-shadow: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 8px rgb(0 0 0 / 24%);
 }

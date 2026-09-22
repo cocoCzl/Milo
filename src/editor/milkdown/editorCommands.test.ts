@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Schema } from '@milkdown/prose/model'
 import { EditorState, TextSelection, type Command } from '@milkdown/prose/state'
+import { wrapInHeadingCommand } from '@milkdown/preset-commonmark'
 import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart } from './editorCommands'
 import type { BlockTarget } from './blockControls'
 
@@ -39,6 +40,16 @@ function applyDivider(state: EditorState, insertAfterPosition: number) {
 }
 
 describe('editorCommands', () => {
+  it.each([4, 5, 6] as const)('delegates H%i with the unchanged frozen selection', (level) => {
+    const host = runner()
+    const state = dividerState(['First', 'Second'])
+    const selection = { doc: state.doc, from: 1, to: 1, text: '' }
+    const commands = createEditorCommands(host)
+    commands[`setHeading${level}`](selection)
+    expect(host.runMilkdown).toHaveBeenCalledExactlyOnceWith(wrapInHeadingCommand.key, level, selection)
+    expect(host.runProse).not.toHaveBeenCalled()
+  })
+
   it('inserts one sibling paragraph at a top-level paragraph start in one transaction', () => {
     const schema = new Schema({
       nodes: {
