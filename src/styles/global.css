@@ -2059,6 +2059,11 @@ button:focus-visible,
   border-bottom: 1px solid var(--line);
 }
 
+.milkdown .ProseMirror th > p,
+.milkdown .ProseMirror td > p {
+  margin-block: 0;
+}
+
 .milkdown .ProseMirror th {
   color: var(--ink);
   background: var(--chrome);
