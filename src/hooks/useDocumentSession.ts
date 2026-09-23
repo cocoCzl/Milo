@@ -18,6 +18,7 @@ import {
 type DocumentActivity = 'idle' | 'opening' | 'saving'
 type SaveFeedback = 'idle' | 'pending' | 'saving' | 'saved'
 type ExternalChange = 'pending' | 'retained'
+type WatchState = 'inactive' | 'active' | 'unavailable'
 
 const emptyDocumentTab: DocumentTab = {
   id: 0,
@@ -25,7 +26,8 @@ const emptyDocumentTab: DocumentTab = {
     id: 0, path: null, title: '', markdown: '', lineEnding: 'lf', hasBom: false,
     frontMatter: '', isDirty: false, protectionReason: null, persistedMarkdown: null, editorVersion: 0, revision: 0,
   },
-  activity: 'idle', error: null, externalChange: null, notice: null, saveFeedback: 'idle',
+  activity: 'idle', error: null, saveError: null, watchError: null, watchState: 'inactive',
+  externalChange: null, notice: null, saveFeedback: 'idle',
 }
 
 export type DocumentSession = {
@@ -48,6 +50,9 @@ export type DocumentTab = {
   document: DocumentSession
   activity: DocumentActivity
   error: string | null
+  saveError: string | null
+  watchError: string | null
+  watchState: WatchState
   externalChange: ExternalChange | null
   notice: string | null
   saveFeedback: SaveFeedback
@@ -73,7 +78,10 @@ function createUntitledDocument(): DocumentSession {
 }
 
 function createTab(document: DocumentSession): DocumentTab {
-  return { id: document.id, document, activity: 'idle', error: null, externalChange: null, notice: null, saveFeedback: 'idle' }
+  return {
+    id: document.id, document, activity: 'idle', error: null, saveError: null,
+    watchError: null, watchState: 'inactive', externalChange: null, notice: null, saveFeedback: 'idle',
+  }
 }
 
 function titleFromPath(path: string): string {
@@ -271,7 +279,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         return false
       }
     }
-    replaceTab(origin.tabId, (tab) => ({ ...tab, activity: 'saving', error: null, saveFeedback: 'saving' }))
+    replaceTab(origin.tabId, (tab) => ({ ...tab, activity: 'saving', error: null, saveError: null, saveFeedback: 'saving' }))
     const serializedMarkdown = composeMarkdownDocument(savedSnapshot.frontMatter, savedSnapshot.markdown)
 
     try {
@@ -295,6 +303,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           isDirty: tab.document.markdown !== savedSnapshot.markdown, persistedMarkdown: serializedMarkdown,
         },
         externalChange: null, notice: null, saveFeedback: 'saved',
+        saveError: null,
       }))
       return true
     } catch (reason) {
@@ -302,6 +311,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       if (getOriginTab(origin)) replaceTab(origin.tabId, (tab) => ({
         ...tab,
         activity: 'idle',
+        saveError: externalConflict ? null : readableError(reason, 'Could not save this Markdown file.'),
         error: externalConflict ? null : readableError(reason, 'Could not save this Markdown file.'),
         externalChange: externalConflict ? 'pending' : tab.externalChange,
         saveFeedback: 'idle',
@@ -404,7 +414,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         externalChange: null, notice: 'Reloaded external change.', saveFeedback: 'idle',
       }))
     } catch (reason) {
-      replaceTab(id, (tab) => ({ ...tab, error: readableError(reason, 'Could not read an external file change.') }))
+      replaceTab(id, (tab) => ({
+        ...tab,
+        watchError: readableError(reason, 'Could not read an external file change.'),
+      }))
     }
   }, [getTab, replaceTab])
 
@@ -422,9 +435,16 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       }).then((stop) => {
         if (stopped) {
           void stop()
-        } else stopWatching.set(tab.id, stop)
+        } else {
+          stopWatching.set(tab.id, stop)
+          replaceTab(tab.id, (current) => ({ ...current, watchError: null, watchState: 'active' }))
+        }
       }).catch((reason) => {
-        if (!stopped) replaceTab(tab.id, (current) => ({ ...current, error: readableError(reason, 'Could not watch this Markdown file for external changes.') }))
+        if (!stopped) replaceTab(tab.id, (current) => ({
+          ...current,
+          watchError: readableError(reason, 'Could not watch this Markdown file for external changes.'),
+          watchState: 'unavailable',
+        }))
       })
     })
     return () => {
@@ -481,7 +501,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const requestCloseTab = useCallback((id: number) => {
     const tab = getTab(id)
     if (!tab) return
-    if (tab.document.isDirty || tab.error) setClosingTabId(id)
+    if (tab.document.isDirty || tab.saveError) setClosingTabId(id)
     else removeTab(id)
   }, [getTab, removeTab])
 

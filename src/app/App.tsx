@@ -551,7 +551,7 @@ export function App() {
         <section className="close-confirmation" role="alertdialog" aria-labelledby="close-confirmation-title">
           <strong id="close-confirmation-title">{copy.closeConfirmation(displayDocumentTitle(closingTab, copy))}</strong>
           <span>
-            {closingTab.error
+            {closingTab.saveError
               ? copy.lastSaveFailed
               : copy.unsavedChanges}
           </span>
@@ -702,7 +702,8 @@ function DocumentPanel({
   tab,
   title,
 }: DocumentPanelProps) {
-  const { document, error, externalChange, notice, saveFeedback } = tab
+  const { document, error, saveError, externalChange, notice, saveFeedback } = tab
+  const actionableError = saveError ?? error
   const isProtected = document.protectionReason !== null
 
   return (
@@ -771,9 +772,9 @@ function DocumentPanel({
           </div>
         </div>
       ) : null}
-      {error ? (
+      {actionableError ? (
         <div className="document-error" role="alert">
-          <span>{error}</span>
+          <span>{actionableError}</span>
           <button type="button" onClick={onRetry}>{copy.tryAgain}</button>
           <button type="button" onClick={onSaveAs}>{copy.saveAs}</button>
         </div>
@@ -832,7 +833,7 @@ function DocumentEditorWorkspace({ active, ariaLabel, copy, document, documentPa
 function documentStatus(tab: DocumentTab, copy: ReturnType<typeof interfaceCopy>): string {
   if (tab.externalChange) return copy.externalChange
   if (tab.document.protectionReason) return copy.protectedDocument
-  if (tab.error) return copy.saveFailed
+  if (tab.saveError || tab.error) return copy.saveFailed
   if (tab.activity === 'opening') return `${copy.openDocument}…`
   if (tab.activity === 'saving') return `${copy.saving}…`
   if (tab.document.isDirty) return copy.unsavedStatus

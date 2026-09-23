@@ -82,6 +82,78 @@ describe('useDocumentSession', () => {
     return session
   }
 
+  it('keeps a document open when watcher registration is denied', async () => {
+    mocks.watchMarkdownFile.mockRejectedValueOnce(new Error('forbidden path: /tmp/milo-note.md'))
+    const session = renderHook(() => useDocumentSession())
+
+    await act(async () => {
+      await session.result.current.openDocumentAtPath(path)
+    })
+
+    await waitFor(() => expect(session.result.current.watchState).toBe('unavailable'))
+    expect(session.result.current.document.markdown).toBe('# Before\n')
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(session.result.current.error).toBeNull()
+    expect(session.result.current.saveError).toBeNull()
+    expect(session.result.current.watchError).toContain('forbidden path')
+    expect(session.result.current.closingTabId).toBeNull()
+  })
+
+  it('keeps a successful disk save successful when watcher setup is unavailable', async () => {
+    mocks.watchMarkdownFile.mockRejectedValueOnce(new Error('allow-watch denied'))
+    const session = renderHook(() => useDocumentSession())
+
+    await act(async () => {
+      await session.result.current.openDocumentAtPath(path)
+    })
+    await waitFor(() => expect(session.result.current.watchState).toBe('unavailable'))
+
+    act(() => updateActive(session, '# Saved while unwatched'))
+    await act(async () => {
+      await expect(session.result.current.saveDocument()).resolves.toBe(true)
+    })
+
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(session.result.current.saveFeedback).toBe('saved')
+    expect(session.result.current.saveError).toBeNull()
+    expect(session.result.current.watchState).toBe('unavailable')
+  })
+
+  it('closes normally after a watcher denial and a successful save', async () => {
+    mocks.watchMarkdownFile.mockRejectedValueOnce(new Error('allow-watch denied'))
+    const session = renderHook(() => useDocumentSession())
+
+    await act(async () => {
+      await session.result.current.openDocumentAtPath(path)
+    })
+    await waitFor(() => expect(session.result.current.watchState).toBe('unavailable'))
+
+    act(() => updateActive(session, '# Close after save'))
+    await act(async () => { await session.result.current.saveDocument() })
+    act(() => session.result.current.requestCloseTab(session.result.current.activeTabId!))
+
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.closingTabId).toBeNull()
+  })
+
+  it('keeps the close guard for a real disk save failure', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Keep local'))
+    mocks.writeMarkdownFile.mockRejectedValueOnce(new Error('Disk full'))
+
+    await act(async () => { await session.result.current.saveDocument() })
+
+    expect(session.result.current.saveError).toBe('Disk full')
+    act(() => session.result.current.requestCloseTab(session.result.current.activeTabId!))
+    expect(session.result.current.closingTabId).toBe(session.result.current.activeTabId)
+  })
+
+  it('marks a normally registered watcher active', async () => {
+    const session = await openSavedDocument()
+    expect(session.result.current.watchState).toBe('active')
+    expect(session.result.current.watchError).toBeNull()
+  })
+
   function updateActive(session: { result: { current: ReturnType<typeof useDocumentSession> } }, markdown: string) {
     const tab = session.result.current.tabs.find((item) => item.id === session.result.current.activeTabId)!
     session.result.current.updateMarkdown({ tabId: tab.id, documentId: tab.document.id, path: tab.document.path }, markdown)
