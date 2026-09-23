@@ -1781,7 +1781,11 @@ button:focus-visible,
   border-left: 2px solid var(--line-strong);
 }
 
-.milkdown .ProseMirror blockquote p:last-child {
+.milkdown .ProseMirror blockquote > p {
+  margin-block: 0 0.65em;
+}
+
+.milkdown .ProseMirror blockquote > p:last-child {
   margin-bottom: 0;
 }
 
@@ -1789,6 +1793,10 @@ button:focus-visible,
 .milkdown .ProseMirror ol {
   margin: 0 0 1.15em;
   padding-left: 1.45em;
+}
+
+.milkdown .ProseMirror li > p {
+  margin-block: 0;
 }
 
 .milkdown .ProseMirror li + li {

@@ -65,3 +65,20 @@ describe('editor table typography', () => {
     expect(getComputedStyle(bodyParagraph).marginBottom).not.toBe('0px')
   })
 })
+
+describe('editor list and quote typography', () => {
+  it('keeps list and task paragraphs from inheriting body paragraph spacing', () => {
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror li > p \{\s*margin-block: 0;\s*\}/)
+    expect(globalCss).not.toMatch(/li\[data-item-type="task"\] > p \{/)
+  })
+
+  it('gives blockquotes an independent paragraph rhythm with no trailing gap', () => {
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror blockquote > p \{\s*margin-block: 0 0\.65em;\s*\}/)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror blockquote > p:last-child \{\s*margin-bottom: 0;\s*\}/)
+  })
+
+  it('preserves body and table-cell paragraph spacing boundaries', () => {
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror p \{[^}]*margin: 0 0 1\.12em;/s)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror th > p,\s*\.milkdown \.ProseMirror td > p \{\s*margin-block: 0;\s*\}/)
+  })
+})
