@@ -38,6 +38,12 @@ describe('editor typography baseline', () => {
 })
 
 describe('editor table typography', () => {
+  it('contains intrinsic table width in the standard TableView wrapper', () => {
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror \.tableWrapper \{[^}]*width: 100%;[^}]*max-width: 100%;[^}]*min-width: 0;[^}]*overflow-x: auto;/s)
+    expect(globalCss).not.toMatch(/\.document-stage \{[^}]*overflow-x: hidden;/s)
+    expect(globalCss).not.toMatch(/\.milkdown \.ProseMirror table \{[^}]*display: block;/s)
+  })
+
   it('removes paragraph rhythm only inside table cells while keeping cells vertically centered', () => {
     document.body.innerHTML = `
       <div class="milkdown">

@@ -3,9 +3,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Schema } from '@milkdown/prose/model'
+import { EditorState, TextSelection } from '@milkdown/prose/state'
+import { CellSelection, tableEditing, tableNodes } from '@milkdown/prose/tables'
+import { EditorView } from '@milkdown/prose/view'
 
 import { blockTargetAtPosition } from './blockControls'
-import { MilkdownEditor } from './MilkdownEditor'
+import { MilkdownEditor, syncProseMirrorSelectionFromDOM } from './MilkdownEditor'
 
 afterEach(cleanup)
 
@@ -15,6 +19,48 @@ function longOutlineMarkdown() {
 
 function proseMirrorDocJSON(editor: HTMLElement) {
   return (editor as HTMLElement & { pmViewDesc?: { node?: { toJSON: () => unknown } } }).pmViewDesc?.node?.toJSON()
+}
+
+function cellSelectionTestView() {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'block+' },
+      paragraph: { content: 'text*', group: 'block', toDOM: () => ['p', 0] },
+      text: { group: 'inline' },
+      ...tableNodes({ tableGroup: 'block', cellContent: 'paragraph+', cellAttributes: {} }),
+    },
+  })
+  const paragraph = (text: string) => schema.nodes.paragraph.create(null, text ? schema.text(text) : undefined)
+  const cell = (text: string, header = false) => schema.nodes[header ? 'table_header' : 'table_cell'].create(null, paragraph(text))
+  const rows = [
+    ['你好世界', 'B', 'C'],
+    ['D', 'E', 'F'],
+    ['G', 'H', 'I'],
+  ].map((values, row) => schema.nodes.table_row.create(null, values.map((value) => cell(value, row === 0))))
+  const doc = schema.nodes.doc.create(null, [
+    paragraph('Outside paragraph'),
+    schema.nodes.table.create(null, rows),
+  ])
+  const mount = document.body.appendChild(document.createElement('div'))
+  const view = new EditorView(mount, {
+    state: EditorState.create({ doc, plugins: [tableEditing()] }),
+    dispatchTransaction(transaction) {
+      view.updateState(view.state.apply(transaction))
+    },
+  })
+  const cellPositions: number[] = []
+  doc.descendants((node, position) => {
+    if (node.type.spec.tableRole === 'cell' || node.type.spec.tableRole === 'header_cell') cellPositions.push(position)
+  })
+  return { cellPositions, mount, view }
+}
+
+function setDOMTextSelection(node: Text, from: number, to: number) {
+  const range = document.createRange()
+  range.setStart(node, from)
+  range.setEnd(node, to)
+  window.getSelection()?.removeAllRanges()
+  window.getSelection()?.addRange(range)
 }
 
 async function openBlockMenu(overlayMount: HTMLElement) {
@@ -57,6 +103,90 @@ function setStageGeometry(
 }
 
 describe('MilkdownEditor', () => {
+  it('preserves a complete CellSelection through mouseup DOM-selection sync and clipboard serialization', () => {
+    const { cellPositions, mount, view } = cellSelectionTestView()
+    try {
+      const selection = CellSelection.create(view.state.doc, cellPositions[8], cellPositions[0])
+      view.dispatch(view.state.tr.setSelection(selection))
+      const originalAnchor = selection.$anchorCell.pos
+      const originalHead = selection.$headCell.pos
+      const firstCellText = view.dom.querySelector('th p')!.firstChild as Text
+      setDOMTextSelection(firstCellText, 0, firstCellText.data.length)
+
+      expect(syncProseMirrorSelectionFromDOM(view)).toBe(true)
+      expect(view.state.selection).toBeInstanceOf(CellSelection)
+      expect((view.state.selection as CellSelection).$anchorCell.pos).toBe(originalAnchor)
+      expect((view.state.selection as CellSelection).$headCell.pos).toBe(originalHead)
+      expect(view.dom.querySelectorAll('.selectedCell')).toHaveLength(9)
+
+      const clipboard = view.serializeForClipboard(view.state.selection.content()).text
+      expect(clipboard).toContain('你好世界')
+      expect(clipboard).toContain('E')
+      expect(clipboard).toContain('I')
+      expect(clipboard.trim()).not.toBe('你好世界')
+    } finally {
+      view.destroy()
+      mount.remove()
+    }
+  })
+
+  it('preserves the exact 2x2 CellSelection rectangle through mouseup sync and copy', () => {
+    const { cellPositions, mount, view } = cellSelectionTestView()
+    try {
+      const selection = CellSelection.create(view.state.doc, cellPositions[8], cellPositions[4])
+      view.dispatch(view.state.tr.setSelection(selection))
+      const firstCellText = view.dom.querySelector('th p')!.firstChild as Text
+      setDOMTextSelection(firstCellText, 0, firstCellText.data.length)
+
+      expect(syncProseMirrorSelectionFromDOM(view)).toBe(true)
+      expect(view.state.selection).toBeInstanceOf(CellSelection)
+      expect((view.state.selection as CellSelection).$anchorCell.pos).toBe(cellPositions[8])
+      expect((view.state.selection as CellSelection).$headCell.pos).toBe(cellPositions[4])
+      expect(view.dom.querySelectorAll('.selectedCell')).toHaveLength(4)
+
+      const clipboard = view.serializeForClipboard(view.state.selection.content()).text
+      for (const selected of ['E', 'F', 'H', 'I']) expect(clipboard).toContain(selected)
+      for (const outside of ['你好世界', 'B', 'C', 'D', 'G']) expect(clipboard).not.toContain(outside)
+    } finally {
+      view.destroy()
+      mount.remove()
+    }
+  })
+
+  it('still syncs ordinary paragraph and table-cell text selections after preserving CellSelection', () => {
+    const { cellPositions, mount, view } = cellSelectionTestView()
+    try {
+      view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellPositions[8], cellPositions[0])))
+
+      const cellText = view.dom.querySelector('th p')!.firstChild as Text
+      const cellCursor = view.posAtDOM(cellText, 2)
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, cellCursor)))
+      setDOMTextSelection(cellText, 0, 2)
+      expect(syncProseMirrorSelectionFromDOM(view)).toBe(true)
+      expect(view.state.selection).toBeInstanceOf(TextSelection)
+      expect(view.state.selection.empty).toBe(false)
+      expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('你好')
+
+      const paragraphText = view.dom.querySelector(':scope > p')!.firstChild as Text
+      const paragraphCursor = view.posAtDOM(paragraphText, 0)
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, paragraphCursor)))
+      setDOMTextSelection(paragraphText, 0, 'Outside'.length)
+      expect(syncProseMirrorSelectionFromDOM(view)).toBe(true)
+      expect(view.state.selection).toBeInstanceOf(TextSelection)
+      expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to)).toBe('Outside')
+
+      const collapsedCellCursor = view.posAtDOM(cellText, 1)
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, collapsedCellCursor)))
+      setDOMTextSelection(cellText, 1, 1)
+      expect(syncProseMirrorSelectionFromDOM(view)).toBe(true)
+      expect(view.state.selection).toBeInstanceOf(TextSelection)
+      expect(view.state.selection.empty).toBe(true)
+    } finally {
+      view.destroy()
+      mount.remove()
+    }
+  })
+
   it.each([4, 5, 6])('converts only the frozen first block to H%i, with history and Markdown round-trip', async (level) => {
     const overlayMount = document.body.appendChild(document.createElement('aside'))
     const onMarkdownChange = vi.fn()
@@ -536,6 +666,28 @@ describe('MilkdownEditor', () => {
 
     rerender(<MilkdownEditor initialMarkdown="Select this text" contextualOverlayMount={overlayMount} presentationMode="read" />)
     await waitFor(() => expect(within(overlayMount).queryByRole('toolbar', { name: 'Formatting' })).not.toBeInTheDocument())
+    overlayMount.remove()
+  })
+
+  it('keeps the selection toolbar available for an ordinary text selection inside a table cell', async () => {
+    const overlayMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(
+      <MilkdownEditor
+        initialMarkdown={'| A | B |\n| --- | --- |\n| 你好世界 | other |'}
+        contextualOverlayMount={overlayMount}
+      />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const text = editor.querySelector('td p')!.firstChild as Text
+    setDOMTextSelection(text, 0, 2)
+    fireEvent.mouseUp(editor)
+
+    await waitFor(() => expect(within(overlayMount).getByRole('toolbar', { name: 'Formatting' })).toBeVisible())
+    expect(editor.querySelectorAll('.selectedCell')).toHaveLength(0)
     overlayMount.remove()
   })
 
@@ -2028,6 +2180,136 @@ describe('MilkdownEditor', () => {
       ).toBeInTheDocument()
       expect(container.querySelector('table')).toBeInTheDocument()
     })
+
+    const wrapper = container.querySelector<HTMLElement>('.ProseMirror > .tableWrapper')!
+    const table = wrapper.querySelector<HTMLTableElement>(':scope > table')!
+    expect(wrapper).toBeInTheDocument()
+    expect(table.querySelector(':scope > colgroup')).toBeInTheDocument()
+    expect(table.querySelector(':scope > tbody')).toBeInTheDocument()
+    expect(table.querySelector('thead')).not.toBeInTheDocument()
+    expect(table.querySelector('tbody > tr[data-is-header="true"] > th > p')).toHaveTextContent('Area')
+    expect(table.querySelector('tbody > tr:not([data-is-header]) > td > p')).toHaveTextContent('Editor')
+    expect(wrapper.querySelector('.column-resize-handle')).not.toBeInTheDocument()
+    expect(container.querySelector('.ProseMirror.resize-cursor')).not.toBeInTheDocument()
+  })
+
+  it('keeps standard table node views mounted across modes and isolated between editors', async () => {
+    const markdown = '| A | B |\n| --- | --- |\n| one | two |'
+    const first = render(<MilkdownEditor initialMarkdown={markdown} presentationMode="edit" />)
+    const second = render(<MilkdownEditor initialMarkdown={markdown} presentationMode="edit" />)
+
+    const firstWrapper = await waitFor(() => {
+      const element = first.container.querySelector<HTMLElement>('.ProseMirror > .tableWrapper')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const firstTable = firstWrapper.querySelector(':scope > table')
+    const secondWrapper = await waitFor(() => {
+      const element = second.container.querySelector<HTMLElement>('.ProseMirror > .tableWrapper')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+
+    expect(secondWrapper).not.toBe(firstWrapper)
+    first.rerender(<MilkdownEditor initialMarkdown={markdown} presentationMode="read" />)
+
+    await waitFor(() => {
+      expect(first.container.querySelector('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
+      expect(first.container.querySelector('.ProseMirror > .tableWrapper')).toBe(firstWrapper)
+      expect(firstWrapper.querySelector(':scope > table')).toBe(firstTable)
+    })
+    expect(second.container.querySelector('.ProseMirror')).toHaveAttribute('contenteditable', 'true')
+    expect(second.container.querySelector('.ProseMirror > .tableWrapper')).toBe(secondWrapper)
+    first.unmount()
+    second.unmount()
+  })
+
+  it('anchors a table BlockTarget to its stable TableView wrapper without changing its semantic target', async () => {
+    const { container } = render(
+      <MilkdownEditor initialMarkdown={'First\n\n| A | B |\n| --- | --- |\n| one | two |\n\nThird'} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const wrapper = editor.querySelector<HTMLElement>(':scope > .tableWrapper')!
+    const table = wrapper.querySelector<HTMLTableElement>(':scope > table')!
+    const cellParagraph = table.querySelector<HTMLElement>('td > p')!
+    const pmDoc = (editor as HTMLElement & { pmViewDesc?: { node?: {
+      descendants: (callback: (node: { type: { name: string } }, position: number, parent: { type: { name: string } } | null) => boolean | void) => void
+      nodeAt: (position: number) => { type: { name: string } } | null
+      resolve: (position: number) => unknown
+      content: { size: number }
+      textBetween: (from: number, to: number, blockSeparator?: string, leafText?: string) => string
+    } } }).pmViewDesc?.node
+    expect(pmDoc).toBeDefined()
+
+    let tablePosition = -1
+    let cellParagraphPosition = -1
+    pmDoc?.descendants((node, position, parent) => {
+      if (node.type.name === 'table') tablePosition = position
+      if (cellParagraphPosition < 0 && node.type.name === 'paragraph' && parent?.type.name === 'table_cell') {
+        cellParagraphPosition = position
+      }
+    })
+    expect(tablePosition).toBeGreaterThanOrEqual(0)
+    expect(cellParagraphPosition).toBeGreaterThan(tablePosition)
+
+    let scrollLeft = 0
+    Object.defineProperty(wrapper, 'scrollLeft', {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (next: number) => { scrollLeft = next },
+    })
+    Object.defineProperty(wrapper, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(100, 200, 500, 400),
+    })
+    Object.defineProperty(table, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(100 - scrollLeft, 200, 1200, 400),
+    })
+    const fakeView = {
+      state: { doc: pmDoc },
+      nodeDOM: (position: number) => {
+        if (position === tablePosition) return wrapper
+        if (position === cellParagraphPosition) return cellParagraph
+        return null
+      },
+      domAtPos: () => ({ node: editor }),
+    } as unknown as Parameters<typeof blockTargetAtPosition>[0]
+
+    const leftTarget = blockTargetAtPosition(fakeView, 'table-anchor', cellParagraphPosition + 1)!
+    wrapper.scrollLeft = 350
+    const middleTarget = blockTargetAtPosition(fakeView, 'table-anchor', cellParagraphPosition + 1)!
+    wrapper.scrollLeft = 700
+    const rightTarget = blockTargetAtPosition(fakeView, 'table-anchor', cellParagraphPosition + 1)!
+
+    expect([leftTarget.rect.left, middleTarget.rect.left, rightTarget.rect.left]).toEqual([100, 100, 100])
+    expect(leftTarget.rect).toEqual({ left: 100, top: 200, right: 600, bottom: 600 })
+    expect(middleTarget).toMatchObject({
+      editorId: leftTarget.editorId,
+      doc: leftTarget.doc,
+      targetBlockPosition: leftTarget.targetBlockPosition,
+      selection: leftTarget.selection,
+      blockType: 'table',
+      containerBlockPosition: leftTarget.containerBlockPosition,
+      insertAfterPosition: leftTarget.insertAfterPosition,
+    })
+    expect(rightTarget).toMatchObject({
+      targetBlockPosition: leftTarget.targetBlockPosition,
+      selection: leftTarget.selection,
+      containerBlockPosition: leftTarget.containerBlockPosition,
+      insertAfterPosition: leftTarget.insertAfterPosition,
+    })
+
+    const legacyView = {
+      ...fakeView,
+      nodeDOM: (position: number) => position === tablePosition ? table : position === cellParagraphPosition ? cellParagraph : null,
+    } as unknown as Parameters<typeof blockTargetAtPosition>[0]
+    wrapper.scrollLeft = 0
+    expect(blockTargetAtPosition(legacyView, 'legacy-table', cellParagraphPosition + 1)?.rect.left).toBe(100)
   })
 
   it('toggles a task when its visual checkbox is clicked', async () => {

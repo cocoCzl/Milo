@@ -93,7 +93,12 @@ export function blockTargetAtPosition(view: EditorView, editorId: string, positi
   const outerBlockPosition = $position.before(1)
   const outerBlock = state.doc.nodeAt(outerBlockPosition)
   const selection = TextSelection.near(state.doc.resolve(Math.min(targetBlockPosition + 1, state.doc.content.size)), 1)
-  const element = blockElement(view, targetBlockPosition)
+  // TableView exposes the table node itself as the stable `.tableWrapper`
+  // viewport. Resolve that outer node for visual geometry while preserving
+  // the cell textblock as the semantic/selection target. Legacy table DOMs
+  // still resolve to the table element at the same outer position.
+  const visualBlockPosition = outerBlock?.type.name === 'table' ? outerBlockPosition : targetBlockPosition
+  const element = blockElement(view, visualBlockPosition)
   if (!element) return null
   const rect = element.getBoundingClientRect()
   if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top)) return null

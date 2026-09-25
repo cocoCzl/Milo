@@ -16,7 +16,7 @@ import {
 } from '@milkdown/preset-gfm'
 import { splitBlockAs } from '@milkdown/prose/commands'
 import { Plugin, TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
-import { deleteColumn, deleteRow } from '@milkdown/prose/tables'
+import { CellSelection, deleteColumn, deleteRow, TableView } from '@milkdown/prose/tables'
 import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
 import { callCommand } from '@milkdown/utils'
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
@@ -36,6 +36,9 @@ import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
 import { createSafariCompositionHardbreakPlugin, miloSafariCompositionHardbreakSchema } from './safariCompositionHardbreak'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 import { miloTableAlignmentSchema } from './tableAlignment'
+
+const tableDefaultCellMinWidth = 100
+const createTableNodeView: NodeViewConstructor = (node) => new TableView(node, tableDefaultCellMinWidth)
 
 type EditorMenu = {
   hasSelection: boolean
@@ -118,7 +121,10 @@ const languageOptions = [
   { value: 'typescript', label: 'TypeScript' },
 ]
 
-function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
+// eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the production mouseup path.
+export function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
+  if (editorView.state.selection instanceof CellSelection) return true
+
   const domSelection = editorView.dom.ownerDocument.getSelection()
 
   if (
@@ -435,6 +441,7 @@ export function MilkdownEditor({
         ])
         ctx.update(nodeViewCtx, (views) => [
           ...views,
+          ['table', createTableNodeView] as [string, NodeViewConstructor],
           ['code_block', createCodeBlockNodeView(copyRef, presentationModeRef)] as [string, NodeViewConstructor],
           ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
         ])

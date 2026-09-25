@@ -6,6 +6,21 @@ import { isWithinBlockHoverCorridor, resolveBlockHandleHover } from './blockHand
 
 const handleSize = 26
 const visualGutterGap = 14
+const stageInset = 8
+
+type VerticalRect = { top: number; bottom: number }
+
+function blockHandleTop(blockRect: VerticalRect, stageRect: VerticalRect): number | null {
+  const visibleTop = Math.max(blockRect.top, stageRect.top)
+  const visibleBottom = Math.min(blockRect.bottom, stageRect.bottom)
+  if (visibleBottom <= visibleTop) return null
+
+  const preferredTop = visibleTop + (visibleBottom - visibleTop - handleSize) / 2
+  const minTop = stageRect.top + stageInset
+  const maxTop = stageRect.bottom - handleSize - stageInset
+  if (maxTop < minTop) return stageRect.top + (stageRect.bottom - stageRect.top - handleSize) / 2
+  return Math.max(minTop, Math.min(preferredTop, maxTop))
+}
 
 type BlockHandleProps = {
   active: boolean
@@ -35,6 +50,7 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
   const hoverTargetRef = useRef<BlockTarget | null>(null)
   const frameRef = useRef(0)
   const pointerRef = useRef<{ left: number; top: number } | null>(null)
+  const [, setGeometryVersion] = useState(0)
   const selected = snapshot.state?.selection
   const hasTextSelection = Boolean(selected && !selected.empty)
   const blocked = !active || interactionOpen || hasTextSelection
@@ -102,18 +118,46 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
   }, [blocked, editorId, menuTarget, setStableHoverTarget, snapshot.view])
 
   useEffect(() => {
+    const stage = snapshot.view?.dom.closest<HTMLElement>('.document-stage')
+    if (!stage) return undefined
+    const refreshGeometry = () => {
+      setGeometryVersion((version) => version + 1)
+    }
+    stage.addEventListener('scroll', refreshGeometry, { capture: true, passive: true })
+    window.addEventListener('resize', refreshGeometry, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refreshGeometry)
+    observer?.observe(stage)
+    return () => {
+      stage.removeEventListener('scroll', refreshGeometry, { capture: true })
+      window.removeEventListener('resize', refreshGeometry)
+      observer?.disconnect()
+    }
+  }, [snapshot.view])
+
+  useEffect(() => {
     if (blocked || menuTarget || !snapshot.view || !selected?.empty || !selected.$from.parent.inlineContent) return
     const cursorTarget = blockTargetAtPosition(snapshot.view, editorId, selected.from)
     if (cursorTarget) setStableHoverTarget(cursorTarget)
   }, [blocked, editorId, menuTarget, selected, setStableHoverTarget, snapshot.view])
 
   if (!target) return null
-  const top = Math.max(8, Math.min(target.rect.top + (target.rect.bottom - target.rect.top - 26) / 2, window.innerHeight - 34))
+  const stage = snapshot.view?.dom.closest<HTMLElement>('.document-stage')
+  const liveRect = snapshot.view?.state?.doc === target.doc
+    ? blockTargetAtPosition(snapshot.view, editorId, target.targetBlockPosition)?.rect
+    : null
+  const rect = liveRect ?? target.rect
+  // Production editors always live in a document stage. The stage-less path
+  // keeps embedded/test consumers on the pre-existing block-center behavior
+  // without treating the global window as a document viewport.
+  const top = stage
+    ? blockHandleTop(rect, stage.getBoundingClientRect())
+    : rect.top + (rect.bottom - rect.top - handleSize) / 2
+  if (top === null) return null
   // `rect` is the visual anchor supplied by blockControls: for a quote it is
   // the quote boundary, for a table/list/code it is the outer block edge.
   // Every block therefore gets one shared, fixed gap outside its own visual
   // boundary instead of type-specific offsets.
-  const left = Math.max(8, target.rect.left - handleSize - visualGutterGap)
+  const left = Math.max(8, rect.left - handleSize - visualGutterGap)
   return (
     <button
       aria-expanded={Boolean(menuTarget)}
