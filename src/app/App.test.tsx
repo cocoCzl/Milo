@@ -46,9 +46,13 @@ afterEach(cleanup)
 
 describe('App', () => {
   it('starts with a true no-document surface and creates an untitled editor only on request', () => {
-    render(<App />)
+    const { container } = render(<App />)
 
     expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveStyle({ '--editor-font-size': '16.5px' })
+    expect(container.querySelector('.application-bar')).toBeVisible()
+    expect(container.querySelector('.document-area')).toHaveClass('document-area--empty')
+    expect(container.querySelector('.document-context')).not.toBeInTheDocument()
+    expect(container.querySelector('.document-stage')).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
     expect(editorMocks.markdownChanges.size).toBe(0)
@@ -58,10 +62,53 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     expect(screen.getByRole('tab', { name: 'Untitled' })).toBeVisible()
     expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toBeVisible()
+    expect(container.querySelector('.document-context')).toHaveTextContent('UntitledNot saved')
+    expect(container.querySelector('.document-area > .document-stage')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Untitled' }))
     expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
+  })
+
+  it('moves active document identity and save state into a context row outside the scroll stage', async () => {
+    preferenceMocks.load.mockResolvedValue({
+      settingsVersion: 4,
+      appearance: 'system',
+      locale: 'en',
+      documentZoom: 100,
+      interfaceZoom: 120,
+      currentFolder: '/notes/ajdbc',
+      recentFiles: [],
+      recentFolders: [],
+      sidebarVisible: true,
+      sidebarWidth: 240,
+      startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
+    })
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+
+    const context = container.querySelector<HTMLElement>('.document-context')!
+    const stage = container.querySelector<HTMLElement>('.document-stage')!
+    await waitFor(() => expect(context).toHaveTextContent('ajdbc/Untitled'))
+    expect(context).toHaveTextContent('Not saved')
+    expect(stage).not.toContainElement(context)
+    expect(container.querySelector('.document-meta')).not.toBeInTheDocument()
+
+    act(() => editorMocks.markdownChanges.values().next().value?.('Changed'))
+    expect(context).toHaveTextContent('Unsaved changes')
+  })
+
+  it('keeps document context synchronized with the active tab', () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    act(() => editorMocks.markdownChanges.values().next().value?.('First tab change'))
+    expect(container.querySelector('.document-context')).toHaveTextContent('Unsaved changes')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    expect(container.querySelector('.document-context')).toHaveTextContent('Not saved')
+
+    fireEvent.click(screen.getAllByRole('tab')[0])
+    expect(container.querySelector('.document-context')).toHaveTextContent('Unsaved changes')
   })
 
   it('adds and switches document tabs from the application surface', () => {

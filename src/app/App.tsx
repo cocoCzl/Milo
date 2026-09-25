@@ -1,4 +1,4 @@
-import { FilePlus2, Focus, FolderOpen, FolderTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, Settings2, X } from 'lucide-react'
+import { FilePlus2, FileText, Focus, FolderOpen, FolderTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, Settings2, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { FileSidebar } from '../components/FileSidebar'
@@ -48,6 +48,7 @@ export function App() {
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
   const activeTabId = session.activeTabId
+  const activeTab = activeTabId === null ? null : session.tabs.find((tab) => tab.id === activeTabId) ?? null
   const hasActiveDocument = activeTabId !== null
   const activePresentationMode = activeTabId === null ? 'edit' : presentationModes[activeTabId] ?? 'edit'
   const activeDocumentIsProtected = session.document.protectionReason !== null
@@ -356,7 +357,7 @@ export function App() {
       lang={locale}
       style={appStyle}
     >
-      <header className="window-bar">
+      <header className="application-bar window-bar">
         <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
           {session.tabs.map((tab) => (
             <div key={tab.id} className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}>
@@ -382,49 +383,52 @@ export function App() {
           ))}
         </nav>
         <div className="window-bar__actions">
-          <ModeSwitch
-            disabled={!hasActiveDocument || activeDocumentIsProtected}
-            editLabel={copy.edit}
-            mode={activePresentationMode}
-            readLabel={copy.read}
-            onChange={(mode) => {
-              if (activeTabId !== null) setPresentationModes((current) => ({ ...current, [activeTabId]: mode }))
-            }}
-          />
-          {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
-            <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
-          ) : null}
-          <span className="window-bar__divider" aria-hidden="true" />
-          <IconButton label={copy.newDocument} onClick={session.createNewDocument}>
-            <FilePlus2 aria-hidden="true" size={16} strokeWidth={1.7} />
-          </IconButton>
-          <IconButton label={copy.openDocument} onClick={() => void session.openDocument()}>
-            <FolderOpen aria-hidden="true" size={16} strokeWidth={1.7} />
-          </IconButton>
-          <span className="window-bar__divider" aria-hidden="true" />
-          <IconButton label={copy.openFolder} onClick={() => void chooseCurrentFolder()}>
-            <FolderTree aria-hidden="true" size={16} strokeWidth={1.7} />
-          </IconButton>
-          <IconButton
-            aria-pressed={settings.sidebarVisible}
-            label={settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar}
-            onClick={() => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarVisible: !settings.sidebarVisible })}
-          >
-            {settings.sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
-          </IconButton>
-          <IconButton label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
-            <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
-          </IconButton>
-          <span className="window-bar__divider" aria-hidden="true" />
-          <IconButton
-            label={copy.saveDocument}
-            disabled={!hasActiveDocument || session.activity !== 'idle' || session.document.protectionReason !== null}
-            title={session.document.protectionReason ? copy.protectedSave : undefined}
-            onClick={() => void session.saveDocument()}
-          >
-            <Save aria-hidden="true" size={16} strokeWidth={1.7} />
-          </IconButton>
-          <div className="preferences-menu" ref={preferencesRef}>
+          <div className="application-bar__group application-bar__group--primary">
+            <ModeSwitch
+              disabled={!hasActiveDocument || activeDocumentIsProtected}
+              editLabel={copy.edit}
+              mode={activePresentationMode}
+              readLabel={copy.read}
+              onChange={(mode) => {
+                if (activeTabId !== null) setPresentationModes((current) => ({ ...current, [activeTabId]: mode }))
+              }}
+            />
+          </div>
+          <div className="application-bar__group application-bar__group--layout">
+            {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
+              <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
+            ) : null}
+            <IconButton
+              aria-pressed={settings.sidebarVisible}
+              label={settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar}
+              onClick={() => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarVisible: !settings.sidebarVisible })}
+            >
+              {settings.sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
+            </IconButton>
+            <IconButton label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
+              <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
+            </IconButton>
+          </div>
+          <div className="application-bar__group application-bar__group--document">
+            <IconButton label={copy.newDocument} onClick={session.createNewDocument}>
+              <FilePlus2 aria-hidden="true" size={16} strokeWidth={1.7} />
+            </IconButton>
+            <IconButton label={copy.openDocument} onClick={() => void session.openDocument()}>
+              <FolderOpen aria-hidden="true" size={16} strokeWidth={1.7} />
+            </IconButton>
+            <IconButton label={copy.openFolder} onClick={() => void chooseCurrentFolder()}>
+              <FolderTree aria-hidden="true" size={16} strokeWidth={1.7} />
+            </IconButton>
+            <IconButton
+              label={copy.saveDocument}
+              disabled={!hasActiveDocument || session.activity !== 'idle' || session.document.protectionReason !== null}
+              title={session.document.protectionReason ? copy.protectedSave : undefined}
+              onClick={() => void session.saveDocument()}
+            >
+              <Save aria-hidden="true" size={16} strokeWidth={1.7} />
+            </IconButton>
+          </div>
+          <div className="preferences-menu application-bar__group application-bar__group--settings" ref={preferencesRef}>
             <IconButton
               aria-expanded={preferencesOpen}
               aria-haspopup="dialog"
@@ -506,40 +510,50 @@ export function App() {
           />
         ) : null}
         {folderError ? <div className="folder-error" role="status">{folderError}</div> : null}
-        <section className="document-stage" aria-label={copy.currentDocument} ref={documentStageRef}>
-        {session.tabs.map((tab) => (
-          <DocumentPanel
-            key={tab.id}
-            tab={tab}
-            copy={copy}
-            title={displayDocumentTitle(tab, copy)}
-            active={tab.id === session.activeTabId}
-            outlineLayout={outlineLayout}
-            outlineOpen={!focusMode && outlineLayout === 'drawer' && (outlineOpen[tab.id] ?? false)}
-            presentationMode={presentationModes[tab.id] ?? 'edit'}
-            onMarkdownChange={(markdown) => session.updateMarkdown({
-              tabId: tab.id,
-              documentId: tab.document.id,
-              path: tab.document.path,
-            }, markdown)}
-            onPasteImage={(image) => session.pasteImage(image, {
-              tabId: tab.id,
-              documentId: tab.document.id,
-              path: tab.document.path,
-            })}
-            onReload={() => void session.reloadExternalChange(tab.id)}
-            onRetain={() => session.retainLocalChanges(tab.id)}
-            onOverwrite={() => void session.overwriteExternalChange(tab.id)}
-            onSaveAs={() => void session.saveAsDocument(tab.id)}
-            onRetry={() => void session.retrySave(tab.id)}
-            onCloseOutline={() => {
-              setOutlineOpen((current) => ({ ...current, [tab.id]: false }))
-              queueMicrotask(() => outlineToggleRef.current?.focus())
-            }}
-            outlineDrawerMount={outlineDrawerMount}
-            contextualOverlayMount={contextualOverlayMount}
-          />
-        ))}
+        <section className={`document-area${activeTab ? '' : ' document-area--empty'}`} aria-label={copy.currentDocument}>
+          {activeTabId !== null && activeTab ? (
+            <DocumentContext
+              copy={copy}
+              document={activeTab.document}
+              folder={settings.currentFolder}
+              tab={activeTab}
+            />
+          ) : null}
+          <section className="document-stage" ref={documentStageRef}>
+            {session.tabs.map((tab) => (
+              <DocumentPanel
+                key={tab.id}
+                tab={tab}
+                copy={copy}
+                title={displayDocumentTitle(tab, copy)}
+                active={tab.id === session.activeTabId}
+                outlineLayout={outlineLayout}
+                outlineOpen={!focusMode && outlineLayout === 'drawer' && (outlineOpen[tab.id] ?? false)}
+                presentationMode={presentationModes[tab.id] ?? 'edit'}
+                onMarkdownChange={(markdown) => session.updateMarkdown({
+                  tabId: tab.id,
+                  documentId: tab.document.id,
+                  path: tab.document.path,
+                }, markdown)}
+                onPasteImage={(image) => session.pasteImage(image, {
+                  tabId: tab.id,
+                  documentId: tab.document.id,
+                  path: tab.document.path,
+                })}
+                onReload={() => void session.reloadExternalChange(tab.id)}
+                onRetain={() => session.retainLocalChanges(tab.id)}
+                onOverwrite={() => void session.overwriteExternalChange(tab.id)}
+                onSaveAs={() => void session.saveAsDocument(tab.id)}
+                onRetry={() => void session.retrySave(tab.id)}
+                onCloseOutline={() => {
+                  setOutlineOpen((current) => ({ ...current, [tab.id]: false }))
+                  queueMicrotask(() => outlineToggleRef.current?.focus())
+                }}
+                outlineDrawerMount={outlineDrawerMount}
+                contextualOverlayMount={contextualOverlayMount}
+              />
+            ))}
+          </section>
         </section>
       </section>
       {/* Drawer content must live outside the scrolling document stage.  WebKit
@@ -663,6 +677,44 @@ function displayDocumentTitle(tab: Pick<DocumentTab, 'document'>, copy: ReturnTy
   return tab.document.path ? tab.document.title : copy.untitled
 }
 
+function DocumentContext({ copy, document, folder, tab }: { copy: ReturnType<typeof interfaceCopy>; document: DocumentTab['document']; folder: string | null; tab: DocumentTab }) {
+  const title = displayDocumentTitle({ document }, copy)
+  const workspace = folder ? fileName(folder) : null
+  const status = tab.saveFeedback === 'pending'
+    ? copy.savingSoon
+    : tab.saveFeedback === 'saving'
+      ? copy.saving
+      : tab.saveFeedback === 'saved'
+        ? copy.saved
+        : documentStatus(tab, copy)
+
+  return (
+    <div className="document-context" aria-live="polite">
+      <div className="document-context__identity">
+        <span className="document-context__icon" aria-hidden="true"><FileText size={15} strokeWidth={1.7} /></span>
+        <span className="document-context__path">
+          {workspace ? <><span className="document-context__workspace">{workspace}</span><span className="document-context__separator" aria-hidden="true">/</span></> : null}
+          <strong title={title}>{title}</strong>
+        </span>
+      </div>
+      <div className="document-context__status">
+        <span className={`document-context__status-dot document-context__status-dot--${statusTone(tab)}`} aria-hidden="true" />
+        <span>{status}</span>
+      </div>
+    </div>
+  )
+}
+
+function statusTone(tab: DocumentTab): 'saved' | 'dirty' | 'error' {
+  if (tab.saveError || tab.error || tab.externalChange || tab.document.protectionReason) return 'error'
+  if (tab.document.isDirty || tab.activity === 'saving' || tab.activity === 'opening') return 'dirty'
+  return 'saved'
+}
+
+function fileName(path: string): string {
+  return path.split(/[\\/]/).at(-1) ?? path
+}
+
 type DocumentPanelProps = {
   active: boolean
   copy: ReturnType<typeof interfaceCopy>
@@ -702,7 +754,7 @@ function DocumentPanel({
   tab,
   title,
 }: DocumentPanelProps) {
-  const { document, error, saveError, externalChange, notice, saveFeedback } = tab
+  const { document, error, saveError, externalChange, notice } = tab
   const actionableError = saveError ?? error
   const isProtected = document.protectionReason !== null
 
@@ -714,17 +766,6 @@ function DocumentPanel({
       aria-label={title}
       hidden={!active}
     >
-      <div className="document-meta" aria-live="polite">
-        <span className="document-meta__status" aria-hidden="true" />
-        <span>{title}</span>
-        <span className="document-meta__separator" aria-hidden="true">·</span>
-        <span>{documentStatus(tab, copy)}</span>
-        {saveFeedback !== 'idle' ? (
-          <span className={`save-feedback save-feedback--${saveFeedback}`}>
-            {saveFeedback === 'pending' ? copy.savingSoon : saveFeedback === 'saving' ? copy.saving : copy.saved}
-          </span>
-        ) : null}
-      </div>
       {isProtected ? (
         <section className="protected-document" aria-label={copy.protectedDocument}>
           <div className="protected-document__notice" role="alert">

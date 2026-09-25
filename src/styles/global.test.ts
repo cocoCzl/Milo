@@ -37,6 +37,30 @@ describe('editor typography baseline', () => {
   })
 })
 
+describe('application shell foundation', () => {
+  it('separates application, context, and editor surfaces without changing sidebar sizing', () => {
+    expect(globalCss).toContain('--application-bar-height: 48px;')
+    expect(globalCss).toContain('--document-context-height: 48px;')
+    expect(globalCss).toMatch(/\.document-area \{[^}]*grid-template-rows: var\(--document-context-height\) minmax\(0, 1fr\);/s)
+    expect(globalCss).toMatch(/\.document-stage \{[^}]*overflow: auto;[^}]*background: var\(--surface-editor\);/s)
+    expect(globalCss).toMatch(/\.file-sidebar \{[^}]*min-width: 220px;[^}]*max-width: 420px;/s)
+  })
+
+  it('keeps the macOS drag region and makes every application action group interactive', () => {
+    expect(globalCss).toMatch(/\.window-bar \{[^}]*-webkit-app-region: drag;/s)
+    expect(globalCss).toMatch(/\.window-bar__actions \{[^}]*-webkit-app-region: no-drag;/s)
+    expect(globalCss).toMatch(/\.document-tab \{[^}]*-webkit-app-region: no-drag;/s)
+  })
+
+  it('defines theme-specific semantic shell surfaces', () => {
+    for (const token of ['surface-shell', 'surface-toolbar', 'surface-context', 'surface-editor', 'surface-outline']) {
+      expect(globalCss).toContain(`--${token}:`)
+    }
+    expect(globalCss).toMatch(/\.app-shell\[data-theme="dark"\] \{[^}]*--surface-context:/s)
+    expect(globalCss).toMatch(/\.app-shell\[data-theme="warm"\] \{[^}]*--surface-context:/s)
+  })
+})
+
 describe('editor table typography', () => {
   it('contains intrinsic table width in the standard TableView wrapper', () => {
     expect(globalCss).toMatch(/\.milkdown \.ProseMirror \.tableWrapper \{[^}]*width: 100%;[^}]*max-width: 100%;[^}]*min-width: 0;[^}]*overflow-x: auto;/s)
