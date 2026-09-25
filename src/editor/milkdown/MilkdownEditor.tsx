@@ -1318,7 +1318,8 @@ function createCodeBlockNodeView(
   }
 }
 
-function createImageNodeView(documentPathRef: MutableRefObject<string | null>, copyRef: MutableRefObject<EditorCopy>): NodeViewConstructor {
+// eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the NodeView lifecycle directly.
+export function createImageNodeView(documentPathRef: MutableRefObject<string | null>, copyRef: MutableRefObject<EditorCopy>): NodeViewConstructor {
   return (node) => {
     const source = String(node.attrs.src ?? '')
     const alt = String(node.attrs.alt ?? '')
@@ -1334,13 +1335,98 @@ function createImageNodeView(documentPathRef: MutableRefObject<string | null>, c
       return { dom: placeholder, ignoreMutation: () => true }
     }
 
-    const image = document.createElement('img')
-    image.alt = alt
-    image.addEventListener('error', () => image.remove())
-    image.src = documentPathRef.current && isTauri()
-      ? convertFileSrc(resolveDocumentPath(documentPathRef.current, source))
-      : source
-    return { dom: image }
+    const root = document.createElement('span')
+    root.className = 'local-image-view'
+    root.setAttribute('contenteditable', 'false')
+    let currentNode = node
+    let currentImage: HTMLImageElement | null = null
+    let generation = 0
+
+    const clearCurrentImage = () => {
+      if (!currentImage) return
+      currentImage.onload = null
+      currentImage.onerror = null
+      currentImage = null
+    }
+
+    const failureLabel = () => copyRef.current.loadImageError
+      .replace(/\s*[—–-]\s*.*$/, '')
+      .replace(/[，,]\s*.*$/, '')
+      .trim() || copyRef.current.loadImageError
+
+    const showPlaceholder = (state: 'empty' | 'error', imageAlt: string, token: number) => {
+      if (token !== generation) return
+      clearCurrentImage()
+      root.dataset.imageState = state
+      const placeholder = document.createElement('span')
+      placeholder.className = 'local-image-placeholder'
+      placeholder.dataset.imageState = state
+      placeholder.setAttribute('contenteditable', 'false')
+      if (imageAlt) {
+        const description = document.createElement('span')
+        description.className = 'local-image-placeholder__alt'
+        description.textContent = imageAlt
+        placeholder.append(description)
+      }
+      const status = document.createElement('span')
+      status.className = 'local-image-placeholder__status'
+      status.textContent = failureLabel()
+      placeholder.append(status)
+      placeholder.setAttribute('aria-label', imageAlt ? `${imageAlt}. ${status.textContent}` : status.textContent)
+      root.replaceChildren(placeholder)
+    }
+
+    const render = () => {
+      generation += 1
+      const token = generation
+      clearCurrentImage()
+      const nextSource = String(currentNode.attrs.src ?? '')
+      const nextAlt = String(currentNode.attrs.alt ?? '')
+      if (!nextSource) {
+        showPlaceholder('empty', nextAlt, token)
+        return
+      }
+
+      root.dataset.imageState = 'loading'
+      const image = document.createElement('img')
+      currentImage = image
+      image.alt = nextAlt
+      image.onload = () => {
+        if (token !== generation || currentImage !== image) return
+        root.dataset.imageState = 'loaded'
+      }
+      image.onerror = () => {
+        if (token !== generation || currentImage !== image) return
+        showPlaceholder('error', nextAlt, token)
+      }
+      root.replaceChildren(image)
+      image.src = documentPathRef.current && isTauri()
+        ? convertFileSrc(resolveDocumentPath(documentPathRef.current, nextSource))
+        : nextSource
+    }
+
+    render()
+    return {
+      dom: root,
+      update: (nextNode) => {
+        if (
+          nextNode.type !== currentNode.type
+          || isExternalHttpUrl(String(nextNode.attrs.src ?? ''))
+          || isMarkdownDocumentPath(String(nextNode.attrs.src ?? ''))
+        ) return false
+        currentNode = nextNode
+        render()
+        return true
+      },
+      // This atom has no contentDOM. Only mutations within its stable, inert
+      // rendering chrome are ignored; mutations outside the NodeView still
+      // reach ProseMirror normally.
+      ignoreMutation: (mutation) => mutation.target === root || root.contains(mutation.target),
+      destroy: () => {
+        generation += 1
+        clearCurrentImage()
+      },
+    }
   }
 }
 

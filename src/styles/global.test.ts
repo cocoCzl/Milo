@@ -72,6 +72,15 @@ describe('editor table typography', () => {
   })
 })
 
+describe('editor image integrity states', () => {
+  it('keeps local image failure chrome contained and theme-token based', () => {
+    expect(globalCss).toMatch(/\.local-image-view \{\s*display: block;\s*max-width: 100%;\s*\}/)
+    expect(globalCss).toMatch(/\.local-image-placeholder \{[^}]*display: inline-flex;[^}]*max-width: 100%;[^}]*color: var\(--muted-ink\);[^}]*background: var\(--soft-fill\);[^}]*border: 1px solid var\(--line\);/s)
+    expect(globalCss).toMatch(/\.local-image-placeholder__status \{[^}]*color: var\(--subtle-ink\);/s)
+    expect(globalCss).not.toMatch(/\.local-image-placeholder[^}]*position:\s*(?:fixed|absolute)/s)
+  })
+})
+
 describe('editor list and quote typography', () => {
   it('keeps list and task paragraphs from inheriting body paragraph spacing', () => {
     expect(globalCss).toMatch(/\.milkdown \.ProseMirror li > p \{\s*margin-block: 0;\s*\}/)

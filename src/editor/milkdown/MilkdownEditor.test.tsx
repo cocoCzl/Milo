@@ -9,7 +9,7 @@ import { CellSelection, tableEditing, tableNodes } from '@milkdown/prose/tables'
 import { EditorView } from '@milkdown/prose/view'
 
 import { blockTargetAtPosition } from './blockControls'
-import { MilkdownEditor, syncProseMirrorSelectionFromDOM } from './MilkdownEditor'
+import { createImageNodeView, MilkdownEditor, syncProseMirrorSelectionFromDOM } from './MilkdownEditor'
 
 afterEach(cleanup)
 
@@ -19,6 +19,31 @@ function longOutlineMarkdown() {
 
 function proseMirrorDocJSON(editor: HTMLElement) {
   return (editor as HTMLElement & { pmViewDesc?: { node?: { toJSON: () => unknown } } }).pmViewDesc?.node?.toJSON()
+}
+
+function localImageNodeViewTestHarness(source: string, alt = '', title = '') {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'paragraph+' },
+      paragraph: { content: 'inline*', toDOM: () => ['p', 0] },
+      image: {
+        inline: true,
+        group: 'inline',
+        atom: true,
+        attrs: { src: { default: '' }, alt: { default: '' }, title: { default: '' } },
+        toDOM: (node) => ['img', node.attrs],
+      },
+      text: { group: 'inline' },
+    },
+  })
+  const imageNode = (src: string, nextAlt = alt, nextTitle = title) => schema.nodes.image.create({ src, alt: nextAlt, title: nextTitle })
+  const constructor = createImageNodeView(
+    { current: '/documents/note.md' },
+    { current: { loadImageError: 'Could not load image — try again' } } as unknown as Parameters<typeof createImageNodeView>[1],
+  )
+  const view = constructor(imageNode(source), {} as EditorView, () => 1, [], {} as never)
+  document.body.append(view.dom)
+  return { imageNode, view }
 }
 
 function cellSelectionTestView() {
@@ -2342,6 +2367,121 @@ describe('MilkdownEditor', () => {
     fireEvent.click(button)
     expect(button).toBeDisabled()
     expect(button).toHaveTextContent('Loading image…')
+  })
+
+  it('keeps a broken local image node and Markdown intact when loading fails', async () => {
+    const markdown = '![Broken alt](missing.png "Broken title")\n\nAfter\n'
+    const onMarkdownChange = vi.fn()
+    const { container } = render(
+      <MilkdownEditor documentPath="/documents/note.md" initialMarkdown={markdown} onMarkdownChange={onMarkdownChange} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const image = await waitFor(() => {
+      const element = container.querySelector<HTMLImageElement>('.local-image-view img')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const before = proseMirrorDocJSON(editor)
+    const updateCount = onMarkdownChange.mock.calls.length
+
+    fireEvent.error(image)
+
+    await waitFor(() => expect(container.querySelector('.local-image-placeholder[data-image-state="error"]')).toHaveTextContent('Broken alt'))
+    expect(container.querySelector('.local-image-placeholder[data-image-state="error"]')).toHaveTextContent('Could not load image')
+    expect(proseMirrorDocJSON(editor)).toEqual(before)
+    const documentJson = proseMirrorDocJSON(editor) as { content: unknown[] }
+    expect(documentJson.content[0]).toMatchObject({
+      content: [{ type: 'image', attrs: { src: 'missing.png', alt: 'Broken alt', title: 'Broken title' } }],
+    })
+    expect(onMarkdownChange).toHaveBeenCalledTimes(updateCount)
+
+    const paragraph = editor.querySelector<HTMLElement>(':scope > p:last-child')!
+    paragraph.textContent = 'After!'
+    fireEvent.input(paragraph, { data: '!', inputType: 'insertText' })
+    await waitFor(() => expect(onMarkdownChange.mock.calls.at(-1)?.[0]).toContain('![Broken alt](missing.png "Broken title")'))
+    expect(onMarkdownChange.mock.calls.at(-1)?.[0]).not.toContain('<br />')
+  })
+
+  it('renders an empty image source as inert chrome without changing its node or Markdown', async () => {
+    const onMarkdownChange = vi.fn()
+    const { container } = render(<MilkdownEditor initialMarkdown={'![]()\n\nAfter\n'} onMarkdownChange={onMarkdownChange} />)
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const placeholder = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.local-image-placeholder[data-image-state="empty"]')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const before = proseMirrorDocJSON(editor)
+    const updateCount = onMarkdownChange.mock.calls.length
+
+    expect(placeholder).toHaveAttribute('contenteditable', 'false')
+    expect(placeholder).toHaveTextContent('Could not load image')
+    expect(container.querySelector('.local-image-view img')).not.toBeInTheDocument()
+    expect((before as { content: unknown[] }).content[0]).toMatchObject({
+      content: [{ type: 'image', attrs: { src: '', alt: '', title: null } }],
+    })
+    await Promise.resolve()
+    expect(proseMirrorDocJSON(editor)).toEqual(before)
+    expect(onMarkdownChange).toHaveBeenCalledTimes(updateCount)
+
+    const paragraph = editor.querySelector<HTMLElement>(':scope > p:last-child')!
+    paragraph.textContent = 'After!'
+    fireEvent.input(paragraph, { data: '!', inputType: 'insertText' })
+    await waitFor(() => expect(onMarkdownChange.mock.calls.at(-1)?.[0]).toContain('![]()'))
+    expect(onMarkdownChange.mock.calls.at(-1)?.[0]).not.toContain('<br />')
+  })
+
+  it('updates local image states on one stable root and ignores stale image events', () => {
+    const { imageNode, view } = localImageNodeViewTestHarness('a.png', 'Diagram', 'Title')
+    const root = view.dom as HTMLElement
+    const imageA = root.querySelector('img')!
+
+    expect(view.update?.(imageNode('b.png'), [], {} as never)).toBe(true)
+    const imageB = root.querySelector('img')!
+    expect(imageB).not.toBe(imageA)
+    expect(root.dataset.imageState).toBe('loading')
+
+    fireEvent.error(imageA)
+    fireEvent.load(imageA)
+    expect(root.querySelector('img')).toBe(imageB)
+    expect(root.dataset.imageState).toBe('loading')
+
+    fireEvent.load(imageB)
+    expect(root.dataset.imageState).toBe('loaded')
+    expect(view.update?.(imageNode('missing.png'), [], {} as never)).toBe(true)
+    const missing = root.querySelector('img')!
+    fireEvent.error(missing)
+    expect(root.dataset.imageState).toBe('error')
+    expect(root.querySelector('.local-image-placeholder')).toHaveTextContent('Diagram')
+
+    expect(view.update?.(imageNode('valid.png'), [], {} as never)).toBe(true)
+    const valid = root.querySelector('img')!
+    fireEvent.load(valid)
+    expect(view.dom).toBe(root)
+    expect(root.dataset.imageState).toBe('loaded')
+    expect(root.querySelector('.local-image-placeholder')).not.toBeInTheDocument()
+    view.destroy?.()
+  })
+
+  it('ignores only mutations inside the local image NodeView chrome', () => {
+    const { view } = localImageNodeViewTestHarness('missing.png', 'Diagram')
+    const root = view.dom as HTMLElement
+    const image = root.querySelector('img')!
+    const outside = document.createElement('p')
+    document.body.append(outside)
+
+    expect(view.ignoreMutation?.({ type: 'attributes', target: image } as unknown as MutationRecord)).toBe(true)
+    expect(view.ignoreMutation?.({ type: 'childList', target: root } as unknown as MutationRecord)).toBe(true)
+    expect(view.ignoreMutation?.({ type: 'attributes', target: outside } as unknown as MutationRecord)).toBe(false)
+    view.destroy?.()
   })
 
   it('applies Prism syntax decorations to a code block language', async () => {

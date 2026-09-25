@@ -2060,6 +2060,40 @@ button:focus-visible,
   border-radius: 7px;
 }
 
+.local-image-view {
+  display: block;
+  max-width: 100%;
+}
+
+.local-image-placeholder {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  margin: 1.4em 0;
+  padding: 6px 10px;
+  color: var(--muted-ink);
+  background: var(--soft-fill);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: var(--ui-font-sm);
+  line-height: 1.4;
+  user-select: none;
+}
+
+.local-image-placeholder__alt {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-image-placeholder__status {
+  color: var(--subtle-ink);
+  white-space: nowrap;
+}
+
 .invalid-local-image {
   display: inline;
   color: var(--subtle-ink);
