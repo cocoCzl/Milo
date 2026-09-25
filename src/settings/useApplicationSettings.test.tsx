@@ -29,7 +29,7 @@ describe('useApplicationSettings', () => {
 
     await waitFor(() => expect(hook.result.current.settings).toEqual({
       settingsVersion: 4, appearance: 'light', locale: 'en', documentZoom: 125, interfaceZoom: 120,
-      currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 240,
+      currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 224,
       startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
     }))
     expect(settingsBoundary.load).toHaveBeenCalledOnce()
@@ -47,7 +47,7 @@ describe('useApplicationSettings', () => {
 
     expect(hook.result.current.settings).toEqual({
       settingsVersion: 4, appearance: 'dark', locale: 'zh-CN', documentZoom: 160, interfaceZoom: 140,
-      currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 240,
+      currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 224,
       startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
     })
     await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -64,5 +64,21 @@ describe('useApplicationSettings', () => {
 
     expect(hook.result.current.settings.appearance).toBe('warm')
     await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({ appearance: 'warm' })))
+  })
+
+  it('normalizes legacy oversized widths while preserving valid custom widths', async () => {
+    settingsBoundary.load.mockResolvedValue({ sidebarWidth: 420 })
+    const legacy = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(legacy.result.current.settings.sidebarWidth).toBe(320))
+    legacy.unmount()
+
+    settingsBoundary.load.mockResolvedValue({ sidebarWidth: 240 })
+    const oldDefault = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(oldDefault.result.current.settings.sidebarWidth).toBe(240))
+    oldDefault.unmount()
+
+    settingsBoundary.load.mockResolvedValue({ sidebarWidth: 280 })
+    const custom = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(custom.result.current.settings.sidebarWidth).toBe(280))
   })
 })

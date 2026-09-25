@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { clampDocumentZoom, clampInterfaceZoom, clampSidebarWidth, defaultApplicationSettings, normalizeAppearancePreference } from './applicationSettings'
+import { clampDocumentZoom, clampInterfaceZoom, clampSidebarWidth, defaultApplicationSettings, normalizeAppearancePreference, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './applicationSettings'
 
 describe('Application Settings', () => {
   it('starts with system appearance, system locale, and readable zoom defaults', () => {
@@ -14,7 +14,7 @@ describe('Application Settings', () => {
       recentFiles: [],
       recentFolders: [],
       sidebarVisible: true,
-      sidebarWidth: 240,
+      sidebarWidth: 224,
       startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
     })
   })
@@ -32,9 +32,14 @@ describe('Application Settings', () => {
   })
 
   it('keeps the resizable navigation pane within the desktop shell range', () => {
-    expect(clampSidebarWidth(180)).toBe(220)
+    expect(SIDEBAR_DEFAULT_WIDTH).toBe(224)
+    expect(SIDEBAR_MIN_WIDTH).toBe(208)
+    expect(SIDEBAR_MAX_WIDTH).toBe(320)
+    expect(clampSidebarWidth(180)).toBe(208)
+    expect(clampSidebarWidth(240)).toBe(240)
+    expect(clampSidebarWidth(280)).toBe(280)
     expect(clampSidebarWidth(278.6)).toBe(279)
-    expect(clampSidebarWidth(520)).toBe(420)
+    expect(clampSidebarWidth(420)).toBe(320)
   })
 
   it('keeps an invalid persisted appearance from escaping the system fallback', () => {

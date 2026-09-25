@@ -84,7 +84,7 @@ impl Default for ApplicationSettings {
             recent_files: Vec::new(),
             recent_folders: Vec::new(),
             sidebar_visible: true,
-            sidebar_width: 240,
+            sidebar_width: 224,
             startup_session: StartupSession::default(),
         }
     }
@@ -95,7 +95,7 @@ impl ApplicationSettings {
         self.settings_version = CURRENT_SETTINGS_VERSION;
         self.document_zoom = self.document_zoom.clamp(80, 160);
         self.interface_zoom = self.interface_zoom.clamp(90, 140);
-        self.sidebar_width = self.sidebar_width.clamp(220, 420);
+        self.sidebar_width = self.sidebar_width.clamp(208, 320);
         self.recent_files.truncate(12);
         self.recent_folders.truncate(8);
         self.startup_session.open_document_paths.retain(|path| is_markdown_document_path(path));
@@ -235,9 +235,33 @@ mod tests {
 
         assert_eq!(read_settings(&settings_path).unwrap().document_zoom, 100);
         assert_eq!(read_settings(&settings_path).unwrap().interface_zoom, 120);
+        assert_eq!(read_settings(&settings_path).unwrap().sidebar_width, 224);
         fs::create_dir_all(&directory).unwrap();
         fs::write(&settings_path, "not settings").unwrap();
         assert_eq!(read_settings(&settings_path).unwrap().document_zoom, 100);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn sidebar_width_normalizes_legacy_values_without_overwriting_valid_custom_widths() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-sidebar-width-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let settings_path = directory.join("settings.json");
+        fs::create_dir_all(&directory).unwrap();
+
+        for (stored, expected) in [(420, 320), (180, 208), (240, 240), (280, 280)] {
+            fs::write(
+                &settings_path,
+                format!(r#"{{"settingsVersion":4,"sidebarWidth":{stored}}}"#),
+            ).unwrap();
+            let normalized = read_settings(&settings_path).unwrap();
+            assert_eq!(normalized.sidebar_width, expected);
+            write_settings(&settings_path, &normalized).unwrap();
+            assert_eq!(read_settings(&settings_path).unwrap().sidebar_width, expected);
+        }
+
         fs::remove_dir_all(directory).unwrap();
     }
 

@@ -1,7 +1,8 @@
-import { ChevronRight, FileText, Folder, FolderOpen, X } from 'lucide-react'
-import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { ChevronRight, FileText, Folder, FolderOpen, Settings2, X } from 'lucide-react'
+import { useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from '../settings/applicationSettings'
 
 type FileSidebarProps = {
   activeFile: string | null
@@ -10,18 +11,22 @@ type FileSidebarProps = {
     chooseFolder: string
     currentFolder: string
     empty: string
+    emptyDirectory: string
     emptyFolder: string
-    files: string
+    emptyRecent: string
     clearRecent: string
     recent: string
     recentLabel: string
     removeRecent: (name: string) => string
+    settings: string
+    workspace: string
   }
   folder: string | null
   onChooseFolder: () => void
   onClearRecent: () => void
   onOpenFile: (path: string) => void
   onOpenFolder: (path: string) => void
+  onOpenPreferences: () => void
   onRemoveRecentFile: (path: string) => void
   onRemoveRecentFolder: (path: string) => void
   onWidthChange: (width: number) => void
@@ -31,21 +36,27 @@ type FileSidebarProps = {
   width: number
 }
 
-export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearRecent, onOpenFile, onOpenFolder, onRemoveRecentFile, onRemoveRecentFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
+export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearRecent, onOpenFile, onOpenFolder, onOpenPreferences, onRemoveRecentFile, onRemoveRecentFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null)
+
+  const commitVisualWidth = (nextWidth: number) => {
+    const clampedWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(nextWidth)))
+    sidebarRef.current?.style.setProperty('width', `${clampedWidth}px`)
+    document.querySelector<HTMLElement>('.app-shell')?.style.setProperty('--sidebar-width', `${clampedWidth}px`)
+    return clampedWidth
+  }
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
 
-    const initialWidth = sidebarRef.current?.getBoundingClientRect().width ?? width
+    const measuredWidth = sidebarRef.current?.getBoundingClientRect().width ?? 0
+    const initialWidth = measuredWidth > 0 ? measuredWidth : width
     const initialX = event.clientX
     let nextWidth = initialWidth
 
     const applyWidth = (clientX: number) => {
-      nextWidth = Math.min(420, Math.max(220, Math.round(initialWidth + clientX - initialX)))
-      sidebarRef.current?.style.setProperty('width', `${nextWidth}px`)
-      document.querySelector<HTMLElement>('.app-shell')?.style.setProperty('--sidebar-width', `${nextWidth}px`)
+      nextWidth = commitVisualWidth(initialWidth + clientX - initialX)
     }
     const onPointerMove = (moveEvent: PointerEvent) => applyWidth(moveEvent.clientX)
     const stopResize = () => {
@@ -58,6 +69,14 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearR
     window.addEventListener('pointerup', stopResize)
   }
 
+  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const direction = event.key === 'ArrowLeft' ? -1 : 1
+    const nextWidth = commitVisualWidth(width + direction * (event.shiftKey ? 32 : 8))
+    onWidthChange(nextWidth)
+  }
+
   return (
     <aside
       ref={sidebarRef}
@@ -65,35 +84,24 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearR
       aria-label={copy.currentFolder}
       style={{ width }}
     >
-      <header className="file-sidebar__header">
-        <span className="file-sidebar__header-icon" aria-hidden="true">
-          <FolderOpen size={15} strokeWidth={1.8} />
+      <header className="file-sidebar__brand">
+        <span className="file-sidebar__brand-mark" aria-hidden="true">M</span>
+        <span className="file-sidebar__brand-copy">
+          <strong>Milo</strong>
+          <span>Write a clearer tomorrow</span>
         </span>
-        <span className="file-sidebar__header-copy">
-          <span className="file-sidebar__eyebrow">{copy.currentFolder}</span>
-          <strong className="file-sidebar__title">{folder ? fileName(folder) : copy.emptyFolder}</strong>
-        </span>
-        <button
-          aria-label={copy.changeFolder}
-          className="file-sidebar__change-folder"
-          title={copy.changeFolder}
-          type="button"
-          onClick={onChooseFolder}
-        >
-          <FolderOpen aria-hidden="true" size={14} strokeWidth={1.8} />
-          <span>{copy.changeFolder}</span>
-        </button>
       </header>
-      {(recentFiles.length > 0 || recentFolders.length > 0) ? (
-        <section className="file-sidebar__recent" aria-label={copy.recentLabel}>
-          <header className="file-sidebar__recent-header">
+      <div className="file-sidebar__body">
+        <section className="file-sidebar__section file-sidebar__recent" aria-label={copy.recentLabel}>
+          <header className="file-sidebar__section-header">
             <span>{copy.recent}</span>
-            <button type="button" onClick={onClearRecent}>{copy.clearRecent}</button>
+            {recentFiles.length > 0 || recentFolders.length > 0 ? <button type="button" onClick={onClearRecent}>{copy.clearRecent}</button> : null}
           </header>
+          {recentFiles.length === 0 && recentFolders.length === 0 ? <p className="file-sidebar__empty-note">{copy.emptyRecent}</p> : null}
           {recentFiles.map((path) => (
             <div className="file-sidebar__recent-item" key={path}>
               <button aria-current={path === activeFile ? 'page' : undefined} className="file-sidebar__recent-open" title={path} type="button" onClick={() => onOpenFile(path)}>
-                <FileText aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span>
+                <FileText aria-hidden="true" size={14} strokeWidth={1.6} /><span>{fileName(path)}</span>
               </button>
               <button aria-label={copy.removeRecent(fileName(path))} className="file-sidebar__recent-remove" title={copy.removeRecent(fileName(path))} type="button" onClick={() => onRemoveRecentFile(path)}>
                 <X aria-hidden="true" size={12} strokeWidth={1.8} />
@@ -103,7 +111,7 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearR
           {recentFolders.map((path) => (
             <div className="file-sidebar__recent-item" key={path}>
               <button className="file-sidebar__recent-open" title={path} type="button" onClick={() => onOpenFolder(path)}>
-                <Folder aria-hidden="true" size={13} strokeWidth={1.6} /><span>{fileName(path)}</span>
+                <Folder aria-hidden="true" size={14} strokeWidth={1.6} /><span>{fileName(path)}</span>
               </button>
               <button aria-label={copy.removeRecent(fileName(path))} className="file-sidebar__recent-remove" title={copy.removeRecent(fileName(path))} type="button" onClick={() => onRemoveRecentFolder(path)}>
                 <X aria-hidden="true" size={12} strokeWidth={1.8} />
@@ -111,22 +119,48 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearR
             </div>
           ))}
         </section>
-      ) : null}
-      {tree ? (
-        <section className="file-sidebar__tree" aria-label={copy.files}>
-          <span className="file-sidebar__section-label">{copy.files}</span>
-          {tree.children.map((child) => <TreeBranch activeFile={activeFile} key={child.path} node={child} depth={0} onOpenFile={onOpenFile} />)}
+        <section className="file-sidebar__section file-sidebar__workspace" aria-label={copy.workspace}>
+          <header className="file-sidebar__section-header"><span>{copy.workspace}</span></header>
+          <div className="file-sidebar__workspace-row">
+            <span className="file-sidebar__workspace-icon" aria-hidden="true"><FolderOpen size={15} strokeWidth={1.8} /></span>
+            <strong title={folder ?? undefined}>{folder ? fileName(folder) : copy.emptyFolder}</strong>
+            <button aria-label={copy.changeFolder} title={copy.changeFolder} type="button" onClick={onChooseFolder}>{copy.changeFolder}</button>
+          </div>
+          {tree ? (
+            <div className="file-sidebar__tree">
+              {tree.children.length > 0
+                ? tree.children.map((child) => <TreeBranch activeFile={activeFile} key={child.path} node={child} depth={0} onOpenFile={onOpenFile} />)
+                : <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>}
+            </div>
+          ) : (
+            <div className="file-sidebar__empty">
+              <p>{copy.empty}</p>
+              <button type="button" onClick={onChooseFolder}>
+                <FolderOpen aria-hidden="true" size={14} strokeWidth={1.7} />
+                {copy.chooseFolder}
+              </button>
+            </div>
+          )}
         </section>
-      ) : (
-        <div className="file-sidebar__empty">
-          <p>{copy.empty}</p>
-          <button type="button" onClick={onChooseFolder}>
-            <FolderOpen aria-hidden="true" size={14} strokeWidth={1.7} />
-            {copy.chooseFolder}
-          </button>
-        </div>
-      )}
-      <div aria-hidden="true" className="file-sidebar__resize-handle" onPointerDown={startResize} />
+      </div>
+      <footer className="file-sidebar__footer">
+        <button type="button" onClick={onOpenPreferences}>
+          <Settings2 aria-hidden="true" size={15} strokeWidth={1.7} />
+          <span>{copy.settings}</span>
+        </button>
+      </footer>
+      <div
+        aria-label={`${copy.workspace} width`}
+        aria-orientation="vertical"
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuenow={width}
+        className="file-sidebar__resize-handle"
+        role="separator"
+        tabIndex={0}
+        onKeyDown={resizeWithKeyboard}
+        onPointerDown={startResize}
+      />
     </aside>
   )
 }

@@ -38,12 +38,15 @@ describe('editor typography baseline', () => {
 })
 
 describe('application shell foundation', () => {
-  it('separates application, context, and editor surfaces without changing sidebar sizing', () => {
+  it('separates application, context, and editor surfaces with the compact navigation range', () => {
     expect(globalCss).toContain('--application-bar-height: 48px;')
     expect(globalCss).toContain('--document-context-height: 48px;')
     expect(globalCss).toMatch(/\.document-area \{[^}]*grid-template-rows: var\(--document-context-height\) minmax\(0, 1fr\);/s)
     expect(globalCss).toMatch(/\.document-stage \{[^}]*overflow: auto;[^}]*background: var\(--surface-editor\);/s)
-    expect(globalCss).toMatch(/\.file-sidebar \{[^}]*min-width: 220px;[^}]*max-width: 420px;/s)
+    expect(globalCss).toMatch(/\.file-sidebar \{[^}]*grid-template-rows: auto minmax\(0, 1fr\) auto;[^}]*min-width: 208px;[^}]*max-width: 320px;[^}]*overflow: hidden;/s)
+    expect(globalCss).toMatch(/\.file-sidebar__body \{[^}]*overflow: auto;/s)
+    expect(globalCss).toMatch(/\.file-sidebar__footer \{[^}]*border-top:/s)
+    expect(globalCss).toMatch(/\.file-sidebar__resize-handle:focus-visible::after \{[^}]*background: var\(--focus-ring\);/s)
   })
 
   it('keeps the macOS drag region and makes every application action group interactive', () => {

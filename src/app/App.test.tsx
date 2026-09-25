@@ -224,7 +224,7 @@ describe('App', () => {
       recentFiles: [],
       recentFolders: [],
     })))
-    expect(screen.queryByRole('region', { name: 'Recent files and folders' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Recent files and folders' })).toHaveTextContent('No recent items yet.')
   })
 
   it('handles document zoom shortcuts without changing editor content', async () => {
@@ -344,6 +344,51 @@ describe('App', () => {
     fireEvent.click(preferences)
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument()
+  })
+
+  it('opens the existing preferences surface from the pinned sidebar footer', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'Preferences' })).toHaveLength(1)
+  })
+
+  it('temporarily hides sidebar affordances at narrow widths without changing the persisted preference', async () => {
+    const originalMatchMedia = window.matchMedia
+    let narrow = true
+    let sidebarListener: (() => void) | undefined
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        addEventListener: (_type: string, listener: () => void) => { if (query === '(max-width: 900px)') sidebarListener = listener },
+        addListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        get matches() { return query === '(max-width: 900px)' ? narrow : false },
+        media: query,
+        onchange: null,
+        removeEventListener: vi.fn(),
+        removeListener: vi.fn(),
+      })),
+    })
+
+    try {
+      const rendered = render(<App />)
+      const toggle = screen.getByRole('button', { name: 'Sidebar unavailable at this window width' })
+      expect(toggle).toBeDisabled()
+      expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.queryByRole('complementary', { name: 'Current folder' })).not.toBeInTheDocument()
+      expect(preferenceMocks.save).not.toHaveBeenCalled()
+
+      narrow = false
+      act(() => sidebarListener?.())
+      await waitFor(() => expect(screen.getByRole('complementary', { name: 'Current folder' })).toBeVisible())
+      expect(screen.getByRole('button', { name: 'Hide sidebar' })).toHaveAttribute('aria-pressed', 'true')
+      expect(preferenceMocks.save).not.toHaveBeenCalled()
+      rendered.unmount()
+    } finally {
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+    }
   })
 
   it('uses Chinese copy for both the no-document surface and a real untitled document', async () => {

@@ -23,6 +23,10 @@ export type ApplicationSettings = {
   startupSession: StartupSession
 }
 
+export const SIDEBAR_DEFAULT_WIDTH = 224
+export const SIDEBAR_MIN_WIDTH = 208
+export const SIDEBAR_MAX_WIDTH = 320
+
 export const defaultApplicationSettings: ApplicationSettings = {
   settingsVersion: 4,
   appearance: 'system',
@@ -33,7 +37,7 @@ export const defaultApplicationSettings: ApplicationSettings = {
   recentFiles: [],
   recentFolders: [],
   sidebarVisible: true,
-  sidebarWidth: 240,
+  sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
 }
 
@@ -64,7 +68,7 @@ export function clampInterfaceZoom(zoom: number): number {
 }
 
 export function clampSidebarWidth(width: number): number {
-  return Math.min(420, Math.max(220, Math.round(width)))
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)))
 }
 
 export function normalizeAppearancePreference(value: unknown): AppearancePreference {

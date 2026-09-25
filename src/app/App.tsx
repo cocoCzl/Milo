@@ -20,6 +20,8 @@ type DocumentViewState = {
   scrollTop: number
 }
 
+const SIDEBAR_RESPONSIVE_QUERY = '(max-width: 900px)'
+
 export function App() {
   const { isLoading, setAppearance, setDocumentZoom, setInterfaceZoom, setLocale, setStartupSession, settings, settingsError, updateWorkspaceSettings } = useApplicationSettings()
   const locale = resolveLocale(settings.locale)
@@ -36,6 +38,9 @@ export function App() {
   const [documentViewStates, setDocumentViewStates] = useState<Record<DocumentTab['id'], DocumentViewState>>({})
   const [outlineOpen, setOutlineOpen] = useState<Record<number, boolean>>({})
   const [outlineLayout, setOutlineLayout] = useState<'inline' | 'drawer'>('drawer')
+  const [sidebarResponsiveHidden, setSidebarResponsiveHidden] = useState(() => (
+    typeof window.matchMedia === 'function' && window.matchMedia(SIDEBAR_RESPONSIVE_QUERY).matches
+  ))
   const didRestoreStartupSession = useRef(false)
   const didOpenLaunchFile = useRef(false)
   const lastRecordedRecentPathRef = useRef<string | null | undefined>(undefined)
@@ -52,6 +57,17 @@ export function App() {
   const hasActiveDocument = activeTabId !== null
   const activePresentationMode = activeTabId === null ? 'edit' : presentationModes[activeTabId] ?? 'edit'
   const activeDocumentIsProtected = session.document.protectionReason !== null
+  const sidebarAvailable = !sidebarResponsiveHidden
+  const sidebarVisible = settings.sidebarVisible && sidebarAvailable
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const mediaQuery = window.matchMedia(SIDEBAR_RESPONSIVE_QUERY)
+    const update = () => setSidebarResponsiveHidden(mediaQuery.matches)
+    update()
+    mediaQuery.addEventListener('change', update)
+    return () => mediaQuery.removeEventListener('change', update)
+  }, [])
 
   const saveDocumentScroll = useCallback((tabId: DocumentTab['id'], scrollTop: number, publish = false) => {
     const viewState = { scrollTop: Math.max(0, scrollTop) }
@@ -349,7 +365,7 @@ export function App() {
 
   return (
     <main
-      className={`app-shell${settings.sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' ? ' app-shell--inline-outline' : ''}`}
+      className={`app-shell${sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' ? ' app-shell--inline-outline' : ''}`}
       aria-label={copy.appLabel}
       data-appearance={settings.appearance}
       data-theme={colorScheme}
@@ -399,11 +415,12 @@ export function App() {
               <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
             ) : null}
             <IconButton
-              aria-pressed={settings.sidebarVisible}
-              label={settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar}
+              aria-pressed={sidebarVisible}
+              disabled={!sidebarAvailable}
+              label={!sidebarAvailable ? copy.sidebarUnavailable : settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar}
               onClick={() => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarVisible: !settings.sidebarVisible })}
             >
-              {settings.sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
+              {sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
             </IconButton>
             <IconButton label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
               <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
@@ -491,7 +508,7 @@ export function App() {
         </div>
       </header>
       <section className="app-workspace">
-        {settings.sidebarVisible ? (
+        {sidebarVisible ? (
           <FileSidebar
             copy={copy.sidebar}
             folder={settings.currentFolder}
@@ -502,6 +519,7 @@ export function App() {
             onClearRecent={clearRecent}
             onOpenFile={(path) => void openSidebarFile(path)}
             onOpenFolder={setCurrentFolder}
+            onOpenPreferences={() => setPreferencesOpen(true)}
             onRemoveRecentFile={removeRecentFile}
             onRemoveRecentFolder={removeRecentFolder}
             onWidthChange={(sidebarWidth) => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarWidth })}
@@ -604,7 +622,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         closeConfirmation: (title: string) => `关闭“${title}”？`, closeDocument: (title: string) => `关闭 ${title}`,
         currentDocument: '当前文档', discardChanges: '放弃更改', externalChange: '外部更改',
         externalChangesDetected: '检测到外部更改', folderBrowseFailed: '无法读取这个文件夹。',
-        edit: '编辑', read: '阅读', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', openFolder: '打开文件夹',
+        edit: '编辑', read: '阅读', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹',
         keepEditing: '继续编辑', lastSaveFailed: '上次保存失败。请保持文档打开、另存为，或放弃内存中的更改。', notSaved: '尚未保存',
         language: '语言', light: '浅色', newDocument: '新建文档', openDocument: '打开文档',
         openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置',
@@ -619,7 +637,8 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         editorLabel: (title: string) => `${title} Markdown 文档`,
         sidebar: {
           changeFolder: '更换', chooseFolder: '选择文件夹', clearRecent: '清空', currentFolder: '当前文件夹', empty: '打开一个文件夹，在这里浏览 Markdown 文件。', emptyFolder: '还没有选择文件夹',
-          files: '文件', recent: '最近使用', recentLabel: '最近使用的文件和文件夹', removeRecent: (name: string) => `从最近使用中移除 ${name}`,
+          emptyDirectory: '这个工作空间中还没有 Markdown 文件。', emptyRecent: '还没有最近使用的项目。', recent: '最近使用', recentLabel: '最近使用的文件和文件夹', removeRecent: (name: string) => `从最近使用中移除 ${name}`,
+          settings: '设置', workspace: '工作空间',
         },
         editor: {
           apply: '应用', blockquote: '引用', bold: '粗体', bulletList: '项目符号列表', cancel: '取消', codeBlock: '代码块',
@@ -640,7 +659,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         closeConfirmation: (title: string) => `Close “${title}”?`, closeDocument: (title: string) => `Close ${title}`,
         currentDocument: 'Current document', discardChanges: 'Discard changes', externalChange: 'External change',
         externalChangesDetected: 'External changes detected', folderBrowseFailed: 'Could not browse this folder.',
-        edit: 'Edit', read: 'Read', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', openFolder: 'Open folder',
+        edit: 'Edit', read: 'Read', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder',
         keepEditing: 'Keep editing', lastSaveFailed: 'The last save failed. Keep the document open, save it elsewhere, or discard the in-memory changes.', notSaved: 'Not saved',
         language: 'Language', light: 'Light', newDocument: 'New document', openDocument: 'Open document',
         openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences',
@@ -655,7 +674,8 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         editorLabel: (title: string) => `${title} Markdown document`,
         sidebar: {
           changeFolder: 'Change', chooseFolder: 'Choose folder', clearRecent: 'Clear', currentFolder: 'Current folder', empty: 'Open a folder to browse Markdown files here.', emptyFolder: 'No folder selected',
-          files: 'Files', recent: 'Recent', recentLabel: 'Recent files and folders', removeRecent: (name: string) => `Remove ${name} from recent`,
+          emptyDirectory: 'No Markdown files in this workspace.', emptyRecent: 'No recent items yet.', recent: 'Recent', recentLabel: 'Recent files and folders', removeRecent: (name: string) => `Remove ${name} from recent`,
+          settings: 'Settings', workspace: 'Workspace',
         },
         editor: {
           apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',
