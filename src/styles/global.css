@@ -2065,6 +2065,41 @@ button:focus-visible,
   max-width: 100%;
 }
 
+.remote-image-view {
+  display: block;
+  max-width: 100%;
+}
+
+.milkdown .ProseMirror .local-image-view[contenteditable="false"],
+.milkdown .ProseMirror .remote-image-view[contenteditable="false"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.milkdown .ProseMirror .local-image-view::selection,
+.milkdown .ProseMirror .local-image-view *::selection,
+.milkdown .ProseMirror .remote-image-view::selection,
+.milkdown .ProseMirror .remote-image-view *::selection {
+  background: transparent;
+}
+
+.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .local-image-view.ProseMirror-selectednode,
+.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .remote-image-view.ProseMirror-selectednode {
+  outline: none;
+}
+
+.milkdown-editor--read .ProseMirror .local-image-view.ProseMirror-selectednode,
+.milkdown-editor--read .ProseMirror .remote-image-view.ProseMirror-selectednode {
+  outline: none;
+}
+
+.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .local-image-view.ProseMirror-selectednode > img,
+.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .remote-image-view.ProseMirror-selectednode > img,
+.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .local-image-view.ProseMirror-selectednode > .local-image-placeholder {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .local-image-placeholder {
   display: inline-flex;
   max-width: 100%;

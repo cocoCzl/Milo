@@ -1323,7 +1323,7 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
   return (node) => {
     const source = String(node.attrs.src ?? '')
     const alt = String(node.attrs.alt ?? '')
-    if (isExternalHttpUrl(source)) return createRemoteImageView(source, alt, copyRef.current)
+    if (isExternalHttpUrl(source)) return createRemoteImageView(node, copyRef.current)
 
     // A few Markdown exporters put a .md file path in image syntax. Sending
     // it through Tauri's image asset protocol makes WebKit paint the protocol
@@ -1382,6 +1382,7 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
       clearCurrentImage()
       const nextSource = String(currentNode.attrs.src ?? '')
       const nextAlt = String(currentNode.attrs.alt ?? '')
+      const nextTitle = String(currentNode.attrs.title ?? '')
       if (!nextSource) {
         showPlaceholder('empty', nextAlt, token)
         return
@@ -1391,6 +1392,7 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
       const image = document.createElement('img')
       currentImage = image
       image.alt = nextAlt
+      if (nextTitle) image.title = nextTitle
       image.onload = () => {
         if (token !== generation || currentImage !== image) return
         root.dataset.imageState = 'loaded'
@@ -1434,29 +1436,63 @@ function isMarkdownDocumentPath(source: string) {
   return /\.(?:md|markdown|mdx)(?:[?#].*)?$/i.test(source.trim())
 }
 
-function createRemoteImageView(source: string, alt: string, copy: EditorCopy) {
+function createRemoteImageView(node: Parameters<NodeViewConstructor>[0], copy: EditorCopy) {
   const container = document.createElement('span')
+  container.className = 'remote-image-view'
+  container.setAttribute('contenteditable', 'false')
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'remote-image-control'
   button.textContent = copy.loadImage
-  button.setAttribute('aria-label', copy.loadRemoteImage(alt))
+  let currentNode = node
+  let currentImage: HTMLImageElement | null = null
+
+  const syncRuntimeAttributes = () => {
+    const alt = String(currentNode.attrs.alt ?? '')
+    const title = String(currentNode.attrs.title ?? '')
+    button.setAttribute('aria-label', copy.loadRemoteImage(alt))
+    if (!currentImage) return
+    currentImage.alt = alt
+    if (title) currentImage.title = title
+    else currentImage.removeAttribute('title')
+  }
+
+  syncRuntimeAttributes()
   button.addEventListener('click', () => {
     button.disabled = true
     button.textContent = copy.loadingImage
     const image = document.createElement('img')
-    image.alt = alt
+    currentImage = image
+    syncRuntimeAttributes()
     image.addEventListener('load', () => {
+      if (currentImage !== image) return
       container.replaceChildren(image)
     })
     image.addEventListener('error', () => {
+      if (currentImage !== image) return
       button.disabled = false
       button.textContent = copy.loadImageError
     })
-    image.src = source
+    image.src = String(currentNode.attrs.src ?? '')
   })
   container.append(button)
-  return { dom: container, ignoreMutation: () => true }
+  return {
+    dom: container,
+    update: (nextNode: Parameters<NodeViewConstructor>[0]) => {
+      if (
+        nextNode.type !== currentNode.type
+        || String(nextNode.attrs.src ?? '') !== String(currentNode.attrs.src ?? '')
+        || !isExternalHttpUrl(String(nextNode.attrs.src ?? ''))
+      ) return false
+      currentNode = nextNode
+      syncRuntimeAttributes()
+      return true
+    },
+    ignoreMutation: () => true,
+    destroy: () => {
+      currentImage = null
+    },
+  }
 }
 
 function resolveDocumentPath(documentPath: string, relativePath: string) {

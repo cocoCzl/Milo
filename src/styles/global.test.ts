@@ -75,9 +75,18 @@ describe('editor table typography', () => {
 describe('editor image integrity states', () => {
   it('keeps local image failure chrome contained and theme-token based', () => {
     expect(globalCss).toMatch(/\.local-image-view \{\s*display: block;\s*max-width: 100%;\s*\}/)
+    expect(globalCss).toMatch(/\.remote-image-view \{\s*display: block;\s*max-width: 100%;\s*\}/)
     expect(globalCss).toMatch(/\.local-image-placeholder \{[^}]*display: inline-flex;[^}]*max-width: 100%;[^}]*color: var\(--muted-ink\);[^}]*background: var\(--soft-fill\);[^}]*border: 1px solid var\(--line\);/s)
     expect(globalCss).toMatch(/\.local-image-placeholder__status \{[^}]*color: var\(--subtle-ink\);/s)
     expect(globalCss).not.toMatch(/\.local-image-placeholder[^}]*position:\s*(?:fixed|absolute)/s)
+  })
+
+  it('rings the rendered image or placeholder only in edit mode', () => {
+    expect(globalCss).toMatch(/\.milkdown-editor:not\(\.milkdown-editor--read\) \.ProseMirror \.local-image-view\.ProseMirror-selectednode,\s*\.milkdown-editor:not\(\.milkdown-editor--read\) \.ProseMirror \.remote-image-view\.ProseMirror-selectednode \{\s*outline: none;\s*\}/)
+    expect(globalCss).toMatch(/\.milkdown-editor:not\(\.milkdown-editor--read\)[^{]+\.local-image-view\.ProseMirror-selectednode > img,[^{]+\.remote-image-view\.ProseMirror-selectednode > img,[^{]+\.local-image-view\.ProseMirror-selectednode > \.local-image-placeholder \{[^}]*outline: 2px solid var\(--accent\);[^}]*outline-offset: 3px;/s)
+    expect(globalCss).toMatch(/\.milkdown-editor--read \.ProseMirror \.local-image-view\.ProseMirror-selectednode,\s*\.milkdown-editor--read \.ProseMirror \.remote-image-view\.ProseMirror-selectednode \{\s*outline: none;\s*\}/)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror \.local-image-view\[contenteditable="false"\],[^{]+\.remote-image-view\[contenteditable="false"\] \{\s*-webkit-user-select: none;\s*user-select: none;/s)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror \.local-image-view::selection,[^{]+\.remote-image-view \*::selection \{\s*background: transparent;/s)
   })
 })
 
