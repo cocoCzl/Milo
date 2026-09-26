@@ -3392,5 +3392,15 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .preferences-dialog__backdrop,
+  .preferences-dialog,
+  .milo-tooltip {
+    animation: none !important;
   }
 }

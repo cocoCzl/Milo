@@ -55,6 +55,14 @@ describe('editor typography baseline', () => {
 })
 
 describe('application shell foundation', () => {
+  it('reduces transitions, keyframe animations, and smooth scrolling without changing final UI states', () => {
+    expect(globalCss).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\*,\s*\*::before,\s*\*::after \{[^}]*scroll-behavior: auto !important;[^}]*transition-duration: 0\.01ms !important;[^}]*transition-delay: 0s !important;[^}]*animation-duration: 0\.01ms !important;[^}]*animation-delay: 0s !important;[^}]*animation-iteration-count: 1 !important;/s)
+    expect(globalCss).toContain('animation: preferences-backdrop-in 120ms ease-out;')
+    expect(globalCss).toContain('animation: preferences-dialog-in 140ms cubic-bezier(.2, .8, .2, 1);')
+    expect(globalCss).toContain('animation: milo-tooltip-in 100ms ease-out;')
+    expect(globalCss).toMatch(/\.preferences-dialog__backdrop,\s*\.preferences-dialog,\s*\.milo-tooltip \{\s*animation: none !important;/s)
+  })
+
   it('separates application, context, and editor surfaces with the compact navigation range', () => {
     expect(globalCss).toContain('--application-bar-height: 48px;')
     expect(globalCss).toContain('--document-context-height: 40px;')
