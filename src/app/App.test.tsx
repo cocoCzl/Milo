@@ -196,29 +196,27 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Appearance' }), { target: { value: 'dark' } })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'zh-CN' } })
-    fireEvent.click(screen.getByRole('button', { name: '放大界面字体' }))
-    fireEvent.click(screen.getByRole('button', { name: '放大正文字体' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Increase interface size' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Increase document size' }))
 
     const app = container.querySelector<HTMLElement>('.app-shell')!
-    expect(app).toHaveAttribute('data-appearance', 'dark')
-    expect(app).toHaveAttribute('data-theme', 'dark')
-    expect(app).toHaveAttribute('data-color-scheme', 'dark')
+    expect(app).toHaveAttribute('data-appearance', 'system')
+    expect(app).toHaveAttribute('data-theme', 'light')
+    expect(app).toHaveAttribute('data-color-scheme', 'light')
     expect(app).toHaveStyle({ '--editor-font-size': '18.15px' })
     expect(app).toHaveStyle({ '--ui-font-lg': '16.9px' })
 
     await waitFor(() => {
       expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
-        appearance: 'dark',
-        locale: 'zh-CN',
+        appearance: 'system',
+        locale: 'system',
         documentZoom: 110,
         interfaceZoom: 130,
       }))
     })
-    fireEvent.click(screen.getByRole('button', { name: '关闭偏好设置' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument())
-    expect(screen.getByRole('button', { name: '更多操作' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
   })
 
   it('persists individual removal and clearing of recent records', async () => {

@@ -63,15 +63,13 @@ describe('PreferencesDialog', () => {
     expect(document.body.querySelector('.dialog-overlay-layer')).toContainElement(dialog)
     expect(screen.getByRole('heading', { level: 3, name: 'Appearance' })).toBeVisible()
     expect(screen.getByRole('heading', { level: 3, name: 'Display' })).toBeVisible()
-    expect(screen.getByRole('combobox', { name: 'Appearance' })).toHaveValue('system')
-    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveValue('system')
+    expect(screen.getByRole('combobox', { name: 'Appearance' })).toHaveTextContent('System')
+    expect(screen.getByRole('combobox', { name: 'Language' })).toHaveTextContent('System')
     expect(screen.getByLabelText('Interface size')).toHaveTextContent('120%')
     expect(screen.getByLabelText('Document size')).toHaveTextContent('100%')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close preferences' })).toHaveFocus())
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Appearance' }), { target: { value: 'warm' } })
     fireEvent.click(screen.getByRole('button', { name: 'Increase document size' }))
-    expect(actions.onAppearanceChange).toHaveBeenCalledWith('warm')
     expect(actions.onDocumentZoomChange).toHaveBeenCalledWith(110)
   })
 

@@ -19,6 +19,7 @@
     "@milkdown/preset-commonmark": "^7.22.1",
     "@milkdown/preset-gfm": "^7.22.1",
     "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-select": "^2.3.7",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2.5.5",

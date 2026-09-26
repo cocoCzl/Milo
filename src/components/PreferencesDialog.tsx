@@ -3,6 +3,7 @@ import { Minus, Plus, X } from 'lucide-react'
 import { useRef, type CSSProperties, type RefObject } from 'react'
 
 import type { AppearancePreference, InterfaceLocale, ResolvedTheme } from '../settings/applicationSettings'
+import { Select } from './Select'
 
 type PreferencesDialogCopy = {
   appearance: string
@@ -81,20 +82,32 @@ export function PreferencesDialog({ appearance, copy, documentZoom, error, inter
               <div className="preferences-dialog__rows">
                 <label className="preferences-dialog__row">
                   <span>{copy.appearance}</span>
-                  <select value={appearance} onChange={(event) => onAppearanceChange(event.target.value as AppearancePreference)}>
-                    <option value="system">{copy.system}</option>
-                    <option value="light">{copy.light}</option>
-                    <option value="dark">{copy.dark}</option>
-                    <option value="warm">{copy.warm}</option>
-                  </select>
+                  <Select
+                    aria-label={copy.appearance}
+                    options={[
+                      { label: copy.system, value: 'system' },
+                      { label: copy.light, value: 'light' },
+                      { label: copy.dark, value: 'dark' },
+                      { label: copy.warm, value: 'warm' },
+                    ]}
+                    portalContainer={portalContainer}
+                    value={appearance}
+                    onValueChange={(value) => onAppearanceChange(value as AppearancePreference)}
+                  />
                 </label>
                 <label className="preferences-dialog__row">
                   <span>{copy.language}</span>
-                  <select value={locale} onChange={(event) => onLocaleChange(event.target.value as InterfaceLocale)}>
-                    <option value="system">{copy.system}</option>
-                    <option value="en">English</option>
-                    <option value="zh-CN">简体中文</option>
-                  </select>
+                  <Select
+                    aria-label={copy.language}
+                    options={[
+                      { label: copy.system, value: 'system' },
+                      { label: 'English', value: 'en' },
+                      { label: '简体中文', value: 'zh-CN' },
+                    ]}
+                    portalContainer={portalContainer}
+                    value={locale}
+                    onValueChange={(value) => onLocaleChange(value as InterfaceLocale)}
+                  />
                 </label>
               </div>
             </section>

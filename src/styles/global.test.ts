@@ -72,16 +72,17 @@ describe('application shell foundation', () => {
   })
 
   it('owns overlays through semantic layers and shared floating surfaces', () => {
-    for (const token of ['overlay-sticky-chrome', 'overlay-floating-editor', 'overlay-popover', 'overlay-drawer', 'overlay-application-popover', 'overlay-dialog', 'overlay-tooltip', 'overlay-critical-alert']) {
+    for (const token of ['overlay-sticky-chrome', 'overlay-floating-editor', 'overlay-popover', 'overlay-drawer', 'overlay-application-popover', 'overlay-dialog', 'overlay-select', 'overlay-tooltip', 'overlay-critical-alert']) {
       expect(globalCss).toContain(`--${token}:`)
     }
-    for (const token of ['floating-surface', 'floating-border', 'floating-radius-sm', 'floating-radius-md', 'floating-shadow', 'floating-row-height', 'floating-padding']) {
+    for (const token of ['floating-surface', 'floating-border', 'floating-radius-sm', 'floating-radius-md', 'floating-shadow', 'floating-row-height', 'floating-padding', 'floating-hover', 'floating-active', 'floating-divider']) {
       expect(globalCss).toContain(`--${token}:`)
     }
     expect(globalCss).toMatch(/\.outline-drawer-layer \{[^}]*z-index: var\(--overlay-drawer\);/s)
     expect(globalCss).toMatch(/\.window-bar \{[^}]*z-index: var\(--overlay-application-popover\);/s)
     expect(globalCss).toMatch(/\.application-more-menu__surface \{[^}]*z-index: var\(--overlay-application-popover\);/s)
     expect(globalCss).toMatch(/\.dialog-overlay-layer \{[^}]*z-index: var\(--overlay-dialog\);/s)
+    expect(globalCss).toMatch(/\.milo-select__content \{[^}]*z-index: var\(--overlay-select\);/s)
     expect(globalCss).toMatch(/\.milo-tooltip \{[^}]*z-index: var\(--overlay-tooltip\);/s)
     expect(globalCss).toMatch(/\.milo-tooltip \{[^}]*font-size: 12px;[^}]*line-height: 1\.25;/s)
     expect(globalCss).not.toMatch(/z-index:\s*(40|45|50|60|70|80);/)

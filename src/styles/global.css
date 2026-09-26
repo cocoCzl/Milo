@@ -56,12 +56,16 @@
   --floating-radius-md: 12px;
   --floating-row-height: 32px;
   --floating-padding: 6px;
+  --floating-hover: var(--bg-hover);
+  --floating-active: var(--accent-soft);
+  --floating-divider: var(--border-subtle);
   --overlay-sticky-chrome: 100;
   --overlay-floating-editor: 200;
   --overlay-popover: 300;
   --overlay-drawer: 400;
   --overlay-application-popover: 450;
   --overlay-dialog: 500;
+  --overlay-select: 550;
   --overlay-tooltip: 600;
   --overlay-critical-alert: 700;
 
@@ -732,16 +736,92 @@ button:focus-visible,
   border-top: 1px solid var(--context-line);
 }
 
-.preferences-dialog select {
+.milo-select__trigger {
+  display: inline-flex;
   width: 180px;
   max-width: 50%;
-  height: 29px;
-  padding: 3px 24px 3px 8px;
+  height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 0 8px 0 9px;
   color: inherit;
+  cursor: pointer;
   background: var(--control);
   border: 1px solid var(--line-strong);
   border-radius: var(--floating-radius-sm);
-  font: inherit;
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.milo-select__trigger:hover { background: var(--floating-hover); }
+
+.milo-select__trigger:focus-visible {
+  border-color: var(--focus-ring);
+  outline: 2px solid color-mix(in srgb, var(--focus-ring) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.milo-select__icon {
+  display: grid;
+  flex: 0 0 auto;
+  color: var(--muted-ink);
+  place-items: center;
+}
+
+.milo-select__content {
+  position: relative;
+  z-index: var(--overlay-select);
+  min-width: var(--radix-select-trigger-width);
+  max-height: var(--radix-select-content-available-height);
+  padding: 4px;
+  overflow: hidden;
+  color: var(--ink);
+  pointer-events: auto;
+  background: var(--floating-surface);
+  border: 1px solid var(--floating-border);
+  border-radius: 9px;
+  box-shadow: var(--floating-shadow);
+}
+
+.milo-select__viewport { max-height: inherit; overflow-y: auto; }
+
+.milo-select__item {
+  position: relative;
+  display: flex;
+  min-height: 29px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--floating-radius-sm);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.2;
+  outline: none;
+  user-select: none;
+}
+
+.milo-select__item[data-highlighted] {
+  color: var(--text-primary);
+  background: var(--floating-hover);
+}
+
+.milo-select__item[data-state="checked"] {
+  color: var(--accent);
+  background: var(--floating-active);
+}
+
+.milo-select__item[data-state="checked"][data-highlighted] { background: var(--floating-active); }
+
+.milo-select__indicator {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
 }
 
 .preferences-dialog__zoom > div {
