@@ -722,6 +722,7 @@ button:focus-visible,
 }
 
 .document-area {
+  position: relative;
   display: grid;
   grid-template-rows: var(--document-context-height) minmax(0, 1fr);
   min-width: 0;
@@ -916,6 +917,32 @@ button:focus-visible,
 
 .app-shell--focus-mode .document-area { grid-template-rows: minmax(0, 1fr); }
 .app-shell--focus-mode .document-context { display: none; }
+
+.focus-mode-outline-trigger {
+  position: fixed;
+  z-index: 60;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--muted-ink);
+  cursor: pointer;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  place-items: center;
+}
+
+.focus-mode-outline-trigger:hover,
+.focus-mode-outline-trigger:focus-visible,
+.focus-mode-outline-trigger[aria-expanded="true"] {
+  color: var(--ink);
+  background: var(--hover-fill);
+  border-color: var(--line-strong);
+}
 
 .app-shell--focus-mode .document-stage {
   grid-column: 1;
@@ -1404,15 +1431,14 @@ button:focus-visible,
   display: contents;
 }
 
-/* A portal target for the compact outline.  It is deliberately a sibling of
-   .app-workspace rather than a descendant of .document-stage: WKWebView can
-   clip a fixed descendant of an overflow scroll container even though its AX
-   node remains exposed. */
+/* A portal target for the compact outline. It belongs to the non-scrolling
+   document-area layer rather than document-stage, so it stays viewport-stable
+   without crossing WKWebView's root-grid compositor boundary. */
 .outline-drawer-layer {
   /* This is a real viewport-sized layer, not a zero-sized grid item.  In
      WKWebView a fixed child of the latter can be present in the AX tree while
      its paint and hit-test bounds collapse to the document-stage. */
-  position: fixed;
+  position: absolute;
   z-index: 70;
   inset: 0;
   isolation: isolate;
@@ -1421,6 +1447,7 @@ button:focus-visible,
 
 .outline-drawer-layer .outline-backdrop,
 .outline-drawer-layer .editor-outline--drawer {
+  position: absolute;
   pointer-events: auto;
 }
 
@@ -1850,7 +1877,7 @@ button:focus-visible,
      fixed-layer compositor.  Relative values inside the isolated layer are
      less error-prone than competing page-level stacking contexts. */
   z-index: 1;
-  top: var(--top-region-height);
+  top: 0;
   right: 0;
   bottom: 0;
   grid-column: auto;
@@ -1861,19 +1888,13 @@ button:focus-visible,
   background-color: var(--bg-elevated);
   border-left: 1px solid var(--border-default);
   box-shadow: var(--shadow-floating);
-  animation: outline-drawer-in 150ms ease;
 }
 
 .outline-backdrop {
   position: fixed;
   z-index: 0;
-  inset: var(--top-region-height) 0 0;
+  inset: 0;
   background: rgb(0 0 0 / 1.5%);
-}
-
-@keyframes outline-drawer-in {
-  from { opacity: 0; transform: translateX(12px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 .editor-outline__header {
@@ -2993,8 +3014,16 @@ button:focus-visible,
   grid-template-columns: minmax(0, min(var(--reading-width), 100%));
 }
 
-.app-shell--focus-mode .editor-outline {
+.app-shell--focus-mode .editor-outline:not(.editor-outline--drawer) {
   display: none;
+}
+
+.app-shell--focus-mode .editor-outline--drawer {
+  top: 0;
+}
+
+.app-shell--focus-mode .outline-backdrop {
+  inset: 0;
 }
 
 .app-shell--focus-mode .milkdown-editor__empty-state,

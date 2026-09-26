@@ -7,6 +7,7 @@ const preferenceMocks = vi.hoisted(() => ({
 }))
 
 const editorMocks = vi.hoisted(() => ({
+  hasHeadings: true,
   markdownChanges: new Map<string, (markdown: string) => void>(),
 }))
 
@@ -17,9 +18,13 @@ vi.mock('../editor/milkdown/MilkdownEditor', () => ({
     if (onMarkdownChange) editorMocks.markdownChanges.set(editorId, onMarkdownChange)
     return <div aria-label={ariaLabel} data-markdown={initialMarkdown} data-presentation-mode={presentationMode} role="textbox">
       {(outlineLayout === 'inline' || outlineOpen) && active ? (
-        <nav aria-label="Outline" id={outlineLayout === 'inline' ? undefined : 'outline-drawer'}>
-          <button type="button" onClick={onCloseOutline}>Example heading</button>
-        </nav>
+        <>
+          {outlineOpen && outlineLayout === 'drawer' ? <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} /> : null}
+          <nav aria-label="Outline" className={outlineLayout === 'drawer' ? 'editor-outline--drawer' : undefined} id={outlineLayout === 'inline' ? undefined : 'outline-drawer'}>
+            {outlineLayout === 'drawer' ? <button type="button" aria-label="Close outline" onClick={onCloseOutline}>Close</button> : null}
+            {editorMocks.hasHeadings ? <button type="button" onClick={onCloseOutline}>Example heading</button> : <p>Headings will appear here.</p>}
+          </nav>
+        </>
       ) : null}
     </div>
   },
@@ -37,6 +42,7 @@ vi.mock('../settings/applicationSettings', async (importOriginal) => {
 beforeEach(() => {
   preferenceMocks.load.mockClear()
   preferenceMocks.save.mockClear()
+  editorMocks.hasHeadings = true
   editorMocks.markdownChanges.clear()
   preferenceMocks.load.mockResolvedValue({ settingsVersion: 3, appearance: 'system', locale: 'system', documentZoom: 100, interfaceZoom: 120 })
   preferenceMocks.save.mockImplementation(async (settings) => settings)
@@ -60,6 +66,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Read' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Open outline' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open document' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Open folder' })).toBeVisible()
     const newDocument = screen.getByRole('button', { name: 'New document' })
@@ -287,10 +294,11 @@ describe('App', () => {
 
     expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
     expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-presentation-mode', 'read')
+    expect(screen.getByRole('button', { name: 'Open outline' })).toBeVisible()
   })
 
-  it('keeps the compact outline available, closes its drawer from every expected action, and hides it in focus mode', async () => {
-    render(<App />)
+  it('keeps the compact outline available on demand while the persistent shell is hidden in focus mode', async () => {
+    const { container } = render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     const outlineToggle = screen.getByRole('button', { name: 'Outline' })
@@ -307,7 +315,87 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
     expect(screen.queryByRole('button', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(container.querySelector('.application-bar')).toBeInTheDocument()
+    const focusOutlineTrigger = screen.getByRole('button', { name: 'Open outline' })
+    expect(focusOutlineTrigger).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(focusOutlineTrigger)
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute('id', 'outline-drawer')
+    expect(focusOutlineTrigger).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Example heading' }))
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    await waitFor(() => expect(focusOutlineTrigger).toHaveFocus())
+  })
+
+  it('keeps drawer close actions inside focus mode and gives the drawer first Escape priority', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
+    const focusOutlineTrigger = screen.getByRole('button', { name: 'Open outline' })
+
+    fireEvent.click(focusOutlineTrigger)
+    fireEvent.mouseDown(document.querySelector('.outline-backdrop')!)
+    expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    await waitFor(() => expect(focusOutlineTrigger).toHaveFocus())
+
+    fireEvent.click(focusOutlineTrigger)
+    fireEvent.click(screen.getByRole('button', { name: 'Close outline' }))
+    expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+
+    fireEvent.click(focusOutlineTrigger)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('button', { name: 'Open outline' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+    await waitFor(() => expect(focusOutlineTrigger).toHaveFocus())
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass('app-shell--focus-mode')
+    expect(screen.queryByRole('button', { name: 'Open outline' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Outline' })).toBeVisible()
+  })
+
+  it('opens the existing drawer from focus mode even when the normal workspace uses an inline outline', async () => {
+    let notify: (() => void) | undefined
+    const OriginalResizeObserver = window.ResizeObserver
+    class ResizeObserverMock {
+      constructor(callback: () => void) { notify = callback }
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    }
+    Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: ResizeObserverMock })
+
+    try {
+      const { container } = render(<App />)
+      fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+      const stage = container.querySelector<HTMLElement>('.document-stage')!
+      Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1200 })
+      notify?.()
+      await waitFor(() => expect(screen.getByRole('navigation', { name: 'Outline' })).not.toHaveAttribute('id'))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
+      expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
+      expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute('id', 'outline-drawer')
+    } finally {
+      Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: OriginalResizeObserver })
+    }
+  })
+
+  it('keeps the focus outline entry stable when the active document has no headings', () => {
+    editorMocks.hasHeadings = false
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
+
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveTextContent('Headings will appear here.')
   })
 
   it('switches between inline and drawer navigation from the actual document workspace width', async () => {

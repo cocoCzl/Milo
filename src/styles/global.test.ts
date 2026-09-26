@@ -70,6 +70,18 @@ describe('application shell foundation', () => {
     expect(globalCss).toMatch(/\.app-shell\[data-theme="dark"\] \{[^}]*--surface-context:/s)
     expect(globalCss).toMatch(/\.app-shell\[data-theme="warm"\] \{[^}]*--surface-context:/s)
   })
+
+  it('keeps the focus outline entry viewport-fixed while allowing only the drawer outline', () => {
+    expect(globalCss).toMatch(/\.focus-mode-outline-trigger \{[^}]*position: fixed;[^}]*background: var\(--surface-raised\);[^}]*border: 1px solid var\(--line\);/s)
+    expect(globalCss).toMatch(/\.app-shell--focus-mode \.editor-outline:not\(\.editor-outline--drawer\) \{\s*display: none;\s*\}/)
+    expect(globalCss).not.toMatch(/\.app-shell--focus-mode \.editor-outline \{\s*display: none;/)
+    expect(globalCss).toMatch(/\.document-area \{[^}]*position: relative;/s)
+    expect(globalCss).toMatch(/\.outline-drawer-layer \{[^}]*position: absolute;[^}]*inset: 0;/s)
+    expect(globalCss).toMatch(/\.outline-drawer-layer \.outline-backdrop,\s*\.outline-drawer-layer \.editor-outline--drawer \{[^}]*position: absolute;/s)
+    expect(globalCss).not.toMatch(/\.editor-outline--drawer \{[^}]*transform:/s)
+    expect(globalCss).toMatch(/\.app-shell--focus-mode \.editor-outline--drawer \{[^}]*top: 0;/s)
+    expect(globalCss).toMatch(/\.app-shell--focus-mode \.outline-backdrop \{[^}]*inset: 0;/s)
+  })
 })
 
 describe('editor table typography', () => {

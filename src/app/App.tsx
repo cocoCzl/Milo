@@ -1,4 +1,4 @@
-import { FileText, Focus, FolderOpen, FolderTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, X } from 'lucide-react'
+import { FileText, Focus, FolderOpen, FolderTree, ListTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { ApplicationMoreMenu } from '../components/ApplicationMoreMenu'
@@ -50,6 +50,7 @@ export function App() {
   const previousActiveTabIdRef = useRef<DocumentTab['id'] | null>(null)
   const documentViewStatesRef = useRef<Record<DocumentTab['id'], DocumentViewState>>({})
   const outlineToggleRef = useRef<HTMLButtonElement>(null)
+  const focusOutlineTriggerRef = useRef<HTMLButtonElement>(null)
   const [outlineDrawerMount, setOutlineDrawerMount] = useState<HTMLElement | null>(null)
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
@@ -60,6 +61,24 @@ export function App() {
   const activeDocumentIsProtected = session.document.protectionReason !== null
   const sidebarAvailable = !sidebarResponsiveHidden
   const sidebarVisible = settings.sidebarVisible && sidebarAvailable
+  const activeOutlineOpen = activeTabId !== null && (outlineOpen[activeTabId] ?? false)
+
+  const closeActiveOutline = useCallback(() => {
+    if (activeTabId === null) return
+    setOutlineOpen((current) => current[activeTabId]
+      ? { ...current, [activeTabId]: false }
+      : current)
+  }, [activeTabId])
+
+  const toggleFocusMode = useCallback(() => {
+    closeActiveOutline()
+    setFocusMode((active) => !active)
+  }, [closeActiveOutline])
+
+  const exitFocusMode = useCallback(() => {
+    closeActiveOutline()
+    setFocusMode(false)
+  }, [closeActiveOutline])
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined
@@ -302,7 +321,7 @@ export function App() {
       case 'save-as': saveActiveDocumentAs(); break
       case 'open-folder': openFolder(); break
       case 'toggle-sidebar': updateWorkspaceSettings({ sidebarVisible: !settings.sidebarVisible }); break
-      case 'toggle-focus-mode': setFocusMode((active) => !active); break
+      case 'toggle-focus-mode': toggleFocusMode(); break
       case 'zoom-in': setDocumentZoom(settings.documentZoom + 10); break
       case 'zoom-out': setDocumentZoom(settings.documentZoom - 10); break
       case 'zoom-reset': setDocumentZoom(100); break
@@ -335,15 +354,23 @@ export function App() {
 
   useEffect(() => {
     const handleFocusShortcut = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && focusMode) setFocusMode(false)
+      if (event.key === 'Escape' && focusMode) {
+        event.preventDefault()
+        if (activeOutlineOpen) {
+          closeActiveOutline()
+          queueMicrotask(() => focusOutlineTriggerRef.current?.focus())
+          return
+        }
+        exitFocusMode()
+      }
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
         event.preventDefault()
-        setFocusMode((active) => !active)
+        toggleFocusMode()
       }
     }
     window.addEventListener('keydown', handleFocusShortcut)
     return () => window.removeEventListener('keydown', handleFocusShortcut)
-  }, [focusMode])
+  }, [activeOutlineOpen, closeActiveOutline, exitFocusMode, focusMode, toggleFocusMode])
 
   useEffect(() => {
     if (!preferencesOpen) return
@@ -445,7 +472,7 @@ export function App() {
             {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
               <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
             ) : null}
-            <IconButton className="application-bar__focus-toggle" label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
+            <IconButton className="application-bar__focus-toggle" label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={toggleFocusMode}>
               <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
             </IconButton>
           </div>
@@ -541,6 +568,20 @@ export function App() {
         ) : null}
         {folderError ? <div className="folder-error" role="status">{folderError}</div> : null}
         <section className={`document-area${activeTab ? '' : ' document-area--empty'}`} aria-label={copy.currentDocument}>
+          {focusMode && activeTabId !== null && !activeDocumentIsProtected ? (
+            <button
+              ref={focusOutlineTriggerRef}
+              aria-controls="outline-drawer"
+              aria-expanded={activeOutlineOpen}
+              aria-label={copy.openOutline}
+              className="focus-mode-outline-trigger"
+              title={copy.openOutline}
+              type="button"
+              onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))}
+            >
+              <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
+            </button>
+          ) : null}
           {activeTabId !== null && activeTab ? (
             <DocumentContext
               copy={copy}
@@ -570,8 +611,8 @@ export function App() {
                 copy={copy}
                 title={displayDocumentTitle(tab, copy)}
                 active={tab.id === session.activeTabId}
-                outlineLayout={outlineLayout}
-                outlineOpen={!focusMode && outlineLayout === 'drawer' && (outlineOpen[tab.id] ?? false)}
+                outlineLayout={focusMode ? 'drawer' : outlineLayout}
+                outlineOpen={(focusMode || outlineLayout === 'drawer') && (outlineOpen[tab.id] ?? false)}
                 presentationMode={presentationModes[tab.id] ?? 'edit'}
                 onMarkdownChange={(markdown) => session.updateMarkdown({
                   tabId: tab.id,
@@ -590,19 +631,19 @@ export function App() {
                 onRetry={() => void session.retrySave(tab.id)}
                 onCloseOutline={() => {
                   setOutlineOpen((current) => ({ ...current, [tab.id]: false }))
-                  queueMicrotask(() => outlineToggleRef.current?.focus())
+                  queueMicrotask(() => (focusMode ? focusOutlineTriggerRef : outlineToggleRef).current?.focus())
                 }}
                 outlineDrawerMount={outlineDrawerMount}
                 contextualOverlayMount={contextualOverlayMount}
               />
             ))}
           </section>
+          {/* Keep the drawer portal in the non-scrolling document-area layer.
+              WKWebView can expose a root-grid overlay in the AX tree without
+              reliably painting it above the document-stage compositor. */}
+          <div ref={setOutlineDrawerMount} className="outline-drawer-layer" />
         </section>
       </section>
-      {/* Drawer content must live outside the scrolling document stage.  WebKit
-          otherwise keeps it in the accessibility tree but can clip its fixed
-          layer behind the editor's scroll surface. */}
-      <div ref={setOutlineDrawerMount} className="outline-drawer-layer" />
       <div ref={setContextualOverlayMount} className="contextual-overlay-layer" />
       {closingTab ? (
         <section className="close-confirmation" role="alertdialog" aria-labelledby="close-confirmation-title">
@@ -647,7 +688,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         closeConfirmation: (title: string) => `关闭“${title}”？`, closeDocument: (title: string) => `关闭 ${title}`,
         currentDocument: '当前文档', discardChanges: '放弃更改', externalChange: '外部更改',
         externalChangesDetected: '检测到外部更改', folderBrowseFailed: '无法读取这个文件夹。',
-        edit: '编辑', read: '阅读', emptyDocumentTitle: '打开一篇文档', emptyDocumentDescription: '打开现有 Markdown 文件或文件夹，开始继续写作。', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹',
+        edit: '编辑', read: '阅读', emptyDocumentTitle: '打开一篇文档', emptyDocumentDescription: '打开现有 Markdown 文件或文件夹，开始继续写作。', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹', openOutline: '打开大纲',
         keepEditing: '继续编辑', lastSaveFailed: '上次保存失败。请保持文档打开、另存为，或放弃内存中的更改。', notSaved: '尚未保存',
         language: '语言', light: '浅色', moreActions: '更多操作', newDocument: '新建文档', openDocument: '打开文档',
         openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置',
@@ -684,7 +725,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         closeConfirmation: (title: string) => `Close “${title}”?`, closeDocument: (title: string) => `Close ${title}`,
         currentDocument: 'Current document', discardChanges: 'Discard changes', externalChange: 'External change',
         externalChangesDetected: 'External changes detected', folderBrowseFailed: 'Could not browse this folder.',
-        edit: 'Edit', read: 'Read', emptyDocumentTitle: 'Open a document', emptyDocumentDescription: 'Open a Markdown file or folder to continue writing.', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder',
+        edit: 'Edit', read: 'Read', emptyDocumentTitle: 'Open a document', emptyDocumentDescription: 'Open a Markdown file or folder to continue writing.', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder', openOutline: 'Open outline',
         keepEditing: 'Keep editing', lastSaveFailed: 'The last save failed. Keep the document open, save it elsewhere, or discard the in-memory changes.', notSaved: 'Not saved',
         language: 'Language', light: 'Light', moreActions: 'More actions', newDocument: 'New document', openDocument: 'Open document',
         openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences',
