@@ -15,7 +15,7 @@ import {
   gfm,
 } from '@milkdown/preset-gfm'
 import { splitBlockAs } from '@milkdown/prose/commands'
-import { Plugin, TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
+import { NodeSelection, Plugin, TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
 import { CellSelection, deleteColumn, deleteRow, TableView } from '@milkdown/prose/tables'
 import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
 import { callCommand } from '@milkdown/utils'
@@ -32,6 +32,7 @@ import { EditorLinkPopover, type EditorLinkPopoverCopy, type LinkPopoverMode } f
 import { EditorOutline, type EditorHeading } from './EditorOutline'
 import { ContextualEditorStore, createContextualEditorPlugin } from './contextualEditorStore'
 import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
+import { focusEditorViewPreservingSelection } from './editorFocus'
 import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
 import { createSafariCompositionHardbreakPlugin, miloSafariCompositionHardbreakSchema } from './safariCompositionHardbreak'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
@@ -48,6 +49,8 @@ type EditorMenu = {
   top: number
   left: number
 }
+
+type ContextMenuSelection = Pick<EditorMenu, 'hasSelection' | 'inTable' | 'link' | 'selection'>
 
 type MilkdownEditorProps = {
   active?: boolean
@@ -96,7 +99,7 @@ const defaultEditorCopy: EditorCopy = {
   copy: 'Copy', cut: 'Cut', divider: 'Divider', formattingToolbar: 'Formatting', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3',
   heading4: 'Heading 4', heading5: 'Heading 5', heading6: 'Heading 6', moreHeadings: 'More Headings',
   inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', orderedList: 'Numbered list', paragraph: 'Body text',
-  paste: 'Paste', selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', addBlock: 'Add block',
+  selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', addBlock: 'Add block',
   addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',
   codeBlockLanguage: 'Code block language', closeOutline: 'Close outline', deleteColumn: 'Delete column', deleteRow: 'Delete row', loadImage: 'Load image',
   loadImageError: 'Could not load image — try again', loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
@@ -123,7 +126,10 @@ const languageOptions = [
 
 // eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the production mouseup path.
 export function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
-  if (editorView.state.selection instanceof CellSelection) return true
+  if (
+    editorView.state.selection instanceof CellSelection
+    || editorView.state.selection instanceof NodeSelection
+  ) return true
 
   const domSelection = editorView.dom.ownerDocument.getSelection()
 
@@ -149,6 +155,31 @@ export function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean
     // A Link operation must never guess from a previous editor selection.
     return false
   }
+}
+
+// A contextmenu event is too late to trust WebKit's DOM Range: on macOS a
+// secondary click over a collapsed caret can temporarily expand that Range to
+// a word or block. ProseMirror has already synchronized genuine mouse
+// selections through the editor's mouseup path, so the editor state is the
+// authoritative context-menu selection and must be read without dispatching.
+// eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the real contextmenu capture path.
+export function readContextMenuSelection(editorView: EditorView): ContextMenuSelection {
+  const selection = editorView.state.selection
+  const snapshot: EditorSelectionSnapshot = {
+    doc: editorView.state.doc,
+    from: selection.from,
+    to: selection.to,
+    text: editorView.state.doc.textBetween(selection.from, selection.to, '\n', '\n'),
+  }
+  const link = selection.$from.marks().some((mark) => mark.type.name === 'link')
+  let inTable = false
+  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+    if (selection.$from.node(depth).type.name === 'table') {
+      inTable = true
+      break
+    }
+  }
+  return { hasSelection: !selection.empty, inTable, link, selection: snapshot }
 }
 
 function linkHrefAtSelection(selection: EditorSelectionSnapshot): string | null {
@@ -547,15 +578,10 @@ export function MilkdownEditor({
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (event.target instanceof Node && !contextMenuRef.current?.contains(event.target)) setContextMenu(null)
     }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setContextMenu(null)
-    }
 
     document.addEventListener('pointerdown', closeOnOutsidePress)
-    window.addEventListener('keydown', closeOnEscape)
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsidePress)
-      window.removeEventListener('keydown', closeOnEscape)
     }
   }, [contextMenu])
 
@@ -620,8 +646,16 @@ export function MilkdownEditor({
   }, [])
 
   const focusEditorView = useCallback(() => {
-    editorRef.current?.action((ctx) => ctx.get(editorViewCtx).focus())
+    editorRef.current?.action((ctx) => focusEditorViewPreservingSelection(ctx.get(editorViewCtx)))
   }, [])
+
+  const dismissContextMenu = useCallback(() => {
+    setContextMenu(null)
+    // EditorView#focus restores the existing ProseMirror selection without
+    // dispatching a transaction or coercing CellSelection/NodeSelection to a
+    // TextSelection.
+    focusEditorView()
+  }, [focusEditorView])
 
   const syncEditorSelectionFromDOM = useCallback(() => editorRef.current?.action((ctx) => {
     const editorView = ctx.get(editorViewCtx)
@@ -969,34 +1003,26 @@ export function MilkdownEditor({
     const editor = editorRef.current
     if (!editor || !(target instanceof Element) || !target.closest('.ProseMirror')) return
 
-    // Menu clicks move focus outside the editor.  Capture the exact current
-    // ProseMirror range before rendering the menu, so an Insert Link command
-    // cannot fall back to a stale or collapsed selection elsewhere.
-    const snapshot = captureEditorSelection(true)
-    if (!snapshot) return
-    const menuState = editor.action((ctx) => {
-      const selection = ctx.get(editorViewCtx).state.selection
-      const link = selection.$from.marks().some((mark) => mark.type.name === 'link')
-      let inTable = false
-      for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
-        if (selection.$from.node(depth).type.name === 'table') {
-          inTable = true
-          break
-        }
-      }
-      return { hasSelection: !selection.empty, inTable, link }
-    })
-
+    // Menu focus moves outside the editor. Read the already-synchronized PM
+    // selection without importing WebKit's transient secondary-click Range.
     event.preventDefault()
+    const menuState = editor.action((ctx) => {
+      const editorView = ctx.get(editorViewCtx)
+      const nextMenu = readContextMenuSelection(editorView)
+      // WebKit may paint a transient word/block Range before delivering the
+      // contextmenu event. Reassert the unchanged PM selection synchronously;
+      // the menu receives focus in its layout effect immediately afterward.
+      focusEditorViewPreservingSelection(editorView)
+      return nextMenu
+    })
     setContextMenu({
       ...menuState,
-      selection: snapshot,
       top: Math.max(8, Math.min(event.clientY, window.innerHeight - (menuState.inTable ? 420 : 250))),
       left: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
     })
-  }, [captureEditorSelection])
+  }, [])
 
-  const runContextCommand = useCallback((command: 'cut' | 'copy' | 'paste' | 'select-all' | 'bold' | 'italic' | 'link') => {
+  const runContextCommand = useCallback((command: 'cut' | 'copy' | 'select-all' | 'bold' | 'italic' | 'link') => {
     const selection = contextMenu?.selection
     const anchor = contextMenu ? { left: contextMenu.left, top: contextMenu.top } : null
     setContextMenu(null)
@@ -1013,16 +1039,7 @@ export function MilkdownEditor({
     }
     if (command === 'cut' || command === 'copy') {
       document.execCommand(command)
-      return
     }
-
-    if (document.execCommand('paste')) return
-    const clipboard = navigator.clipboard
-    if (!clipboard) return
-    void clipboard.readText().then((text) => {
-      focusEditor()
-      document.execCommand('insertText', false, text)
-    }).catch(() => undefined)
   }, [contextMenu, editorCommands, focusEditor, openLinkEditorForSelection])
 
   const runContextTableCommand = useCallback((command: 'row-before' | 'row-after' | 'column-before' | 'column-after' | 'delete-row' | 'delete-column') => {
@@ -1181,6 +1198,7 @@ export function MilkdownEditor({
           linkLabel={contextMenu.link ? editorCopy.editLink : contextMenu.hasSelection ? editorCopy.addLink : editorCopy.insertLink}
           position={{ left: contextMenu.left, top: contextMenu.top }}
           onCommand={runContextCommand}
+          onDismiss={dismissContextMenu}
           onTableCommand={runContextTableCommand}
         />
       ) : null}

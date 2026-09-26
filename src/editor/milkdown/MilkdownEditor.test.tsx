@@ -9,7 +9,8 @@ import { CellSelection, tableEditing, tableNodes } from '@milkdown/prose/tables'
 import { EditorView } from '@milkdown/prose/view'
 
 import { blockTargetAtPosition } from './blockControls'
-import { createImageNodeView, MilkdownEditor, syncProseMirrorSelectionFromDOM } from './MilkdownEditor'
+import { createImageNodeView, MilkdownEditor, readContextMenuSelection, syncProseMirrorSelectionFromDOM } from './MilkdownEditor'
+import { focusEditorViewPreservingSelection } from './editorFocus'
 
 afterEach(cleanup)
 
@@ -130,6 +131,29 @@ function setDOMTextSelection(node: Text, from: number, to: number) {
   window.getSelection()?.addRange(range)
 }
 
+function headingSelectionTestView() {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'block+' },
+      heading: { attrs: { level: { default: 1 } }, content: 'text*', group: 'block', toDOM: () => ['h1', 0] },
+      paragraph: { content: 'text*', group: 'block', toDOM: () => ['p', 0] },
+      text: { group: 'inline' },
+    },
+  })
+  const doc = schema.nodes.doc.create(null, [
+    schema.nodes.heading.create(null, schema.text('Heading target')),
+    schema.nodes.paragraph.create(null, schema.text('Paragraph target text')),
+  ])
+  const mount = document.body.appendChild(document.createElement('div'))
+  const view = new EditorView(mount, {
+    state: EditorState.create({ doc }),
+    dispatchTransaction(transaction) {
+      view.updateState(view.state.apply(transaction))
+    },
+  })
+  return { mount, view }
+}
+
 async function openBlockMenu(overlayMount: HTMLElement) {
   const handle = await within(overlayMount).findByRole('button', { name: 'Add block' })
   fireEvent.click(handle)
@@ -170,6 +194,44 @@ function setStageGeometry(
 }
 
 describe('MilkdownEditor', () => {
+  it('reads context-menu selection from PM state without importing WebKit transient DOM ranges', () => {
+    const { mount, view } = headingSelectionTestView()
+    try {
+      const headingText = view.dom.querySelector('h1')!.firstChild as Text
+      const paragraphText = view.dom.querySelector('p')!.firstChild as Text
+
+      const paragraphCaret = TextSelection.create(view.state.doc, view.posAtDOM(paragraphText, 4))
+      view.dispatch(view.state.tr.setSelection(paragraphCaret))
+      setDOMTextSelection(paragraphText, 0, paragraphText.data.length)
+      const paragraphMenu = readContextMenuSelection(view)
+      expect(view.state.selection).toBe(paragraphCaret)
+      expect(paragraphMenu.selection?.from).toBe(paragraphCaret.from)
+      expect(paragraphMenu.selection?.to).toBe(paragraphCaret.to)
+      expect(paragraphMenu.hasSelection).toBe(false)
+
+      const headingCaret = TextSelection.create(view.state.doc, view.posAtDOM(headingText, headingText.data.length))
+      view.dispatch(view.state.tr.setSelection(headingCaret))
+      setDOMTextSelection(headingText, 0, headingText.data.length)
+      const headingMenu = readContextMenuSelection(view)
+      expect(view.state.selection).toBe(headingCaret)
+      expect(headingMenu.selection?.from).toBe(headingCaret.from)
+      expect(headingMenu.selection?.to).toBe(headingCaret.to)
+      expect(headingMenu.hasSelection).toBe(false)
+
+      const textSelection = TextSelection.create(view.state.doc, view.posAtDOM(paragraphText, 0), view.posAtDOM(paragraphText, 9))
+      view.dispatch(view.state.tr.setSelection(textSelection))
+      setDOMTextSelection(headingText, 0, headingText.data.length)
+      const selectedMenu = readContextMenuSelection(view)
+      expect(view.state.selection).toBe(textSelection)
+      expect(selectedMenu.selection?.from).toBe(textSelection.from)
+      expect(selectedMenu.selection?.to).toBe(textSelection.to)
+      expect(selectedMenu.hasSelection).toBe(true)
+    } finally {
+      view.destroy()
+      mount.remove()
+    }
+  })
+
   it('preserves a complete CellSelection through mouseup DOM-selection sync and clipboard serialization', () => {
     const { cellPositions, mount, view } = cellSelectionTestView()
     try {
@@ -251,6 +313,40 @@ describe('MilkdownEditor', () => {
     } finally {
       view.destroy()
       mount.remove()
+    }
+  })
+
+  it('restores EditorView focus without replacing TextSelection, CellSelection, or NodeSelection', () => {
+    const table = cellSelectionTestView()
+    const image = imageSelectionTestView()
+    try {
+      const paragraphPosition = table.view.posAtDOM(table.view.dom.querySelector(':scope > p')!.firstChild!, 2)
+      const textSelection = TextSelection.create(table.view.state.doc, paragraphPosition, paragraphPosition + 3)
+      table.view.dispatch(table.view.state.tr.setSelection(textSelection))
+      focusEditorViewPreservingSelection(table.view)
+      expect(table.view.state.selection).toBe(textSelection)
+
+      const cellSelection = CellSelection.create(table.view.state.doc, table.cellPositions[8], table.cellPositions[4])
+      table.view.dispatch(table.view.state.tr.setSelection(cellSelection))
+      focusEditorViewPreservingSelection(table.view)
+      expect(table.view.state.selection).toBe(cellSelection)
+      expect(table.view.dom.querySelectorAll('.selectedCell')).toHaveLength(4)
+
+      const nodeSelection = NodeSelection.create(image.view.state.doc, 1)
+      image.view.dispatch(image.view.state.tr.setSelection(nodeSelection))
+      focusEditorViewPreservingSelection(image.view)
+      expect(image.view.state.selection).toBe(nodeSelection)
+      expect(image.view.dom.querySelector('.local-image-view')).toHaveClass('ProseMirror-selectednode')
+
+      const followingText = image.view.dom.querySelector('p')!.lastChild as Text
+      setDOMTextSelection(followingText, followingText.data.length, followingText.data.length)
+      expect(syncProseMirrorSelectionFromDOM(image.view)).toBe(true)
+      expect(image.view.state.selection).toBe(nodeSelection)
+    } finally {
+      table.view.destroy()
+      table.mount.remove()
+      image.view.destroy()
+      image.mount.remove()
     }
   })
 
@@ -1045,6 +1141,7 @@ describe('MilkdownEditor', () => {
     range.collapse(true)
     window.getSelection()?.removeAllRanges()
     window.getSelection()?.addRange(range)
+    fireEvent.mouseUp(editor)
     fireEvent.contextMenu(editor, { clientX: 120, clientY: 160 })
     fireEvent.click(getByRole('menuitem', { name: /Insert link/ }))
     fireEvent.change(await within(overlayMount).findByRole('textbox', { name: 'Link text' }), { target: { value: '百度' } })
@@ -2216,7 +2313,6 @@ describe('MilkdownEditor', () => {
       copy: '复制',
       cut: '剪切',
       italic: '斜体',
-      paste: '粘贴',
       selectAll: '全选',
     }
     const { container, getByRole, queryByRole } = render(<MilkdownEditor copy={copy} initialMarkdown="右键编辑" />)
@@ -2230,8 +2326,118 @@ describe('MilkdownEditor', () => {
 
     expect(getByRole('menu')).toBeVisible()
     expect(getByRole('menuitem', { name: /复制/ })).toBeInTheDocument()
-    expect(getByRole('menuitem', { name: /粘贴/ })).toBeInTheDocument()
+    expect(queryByRole('menuitem', { name: /粘贴/ })).not.toBeInTheDocument()
     expect(queryByRole('menuitem', { name: /^Copy/ })).not.toBeInTheDocument()
+  })
+
+  it('restores editor focus on Context Menu Escape and closes outside without changing Markdown', async () => {
+    const onMarkdownChange = vi.fn()
+    const { container, getByRole, queryByRole } = render(
+      <MilkdownEditor initialMarkdown="Stable paragraph" onMarkdownChange={onMarkdownChange} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    onMarkdownChange.mockClear()
+
+    fireEvent.contextMenu(editor, { clientX: 120, clientY: 160 })
+    const firstEnabled = getByRole('menuitem', { name: /Bold/ })
+    expect(firstEnabled).toHaveFocus()
+    fireEvent.keyDown(firstEnabled, { key: 'Escape' })
+    await waitFor(() => expect(queryByRole('menu')).not.toBeInTheDocument())
+    expect(editor).toHaveFocus()
+    expect(onMarkdownChange).not.toHaveBeenCalled()
+
+    fireEvent.contextMenu(editor, { clientX: 120, clientY: 160 })
+    expect(getByRole('menu')).toBeVisible()
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => expect(queryByRole('menu')).not.toBeInTheDocument())
+    expect(onMarkdownChange).not.toHaveBeenCalled()
+    expect(editor).toHaveTextContent('Stable paragraph')
+  })
+
+  it('leaves the native contextmenu event untouched in Read Mode', async () => {
+    const { container, queryByRole } = render(
+      <MilkdownEditor initialMarkdown="Readable paragraph" presentationMode="read" />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+
+    expect(fireEvent.contextMenu(editor, { clientX: 120, clientY: 160 })).toBe(true)
+    expect(queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['paragraph', 'Copy paragraph text', 'p'],
+    ['table cell', '| A | B |\n| --- | --- |\n| Copy cell text | Value |', 'td p'],
+    ['code block', '```java\nString text = "Copy code text";\n```', '.code-block-card__content'],
+  ])('dispatches clipboard commands through the existing browser path for %s TextSelection', async (_name, markdown, selector) => {
+    const originalExecCommand = document.execCommand
+    const execCommand = vi.fn(() => true)
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
+    try {
+      const { container, getByRole } = render(<MilkdownEditor initialMarkdown={markdown} />)
+      const editor = await waitFor(() => {
+        const element = container.querySelector<HTMLElement>('.ProseMirror')
+        expect(element).toBeInTheDocument()
+        return element!
+      })
+      const content = await waitFor(() => {
+        const element = editor.querySelector<HTMLElement>(selector)
+        expect(element).toBeInTheDocument()
+        return element!
+      })
+      const text = content.textContent ? content.firstChild! : content
+      const selectContent = () => {
+        const range = document.createRange()
+        range.selectNodeContents(text)
+        window.getSelection()?.removeAllRanges()
+        window.getSelection()?.addRange(range)
+        fireEvent.mouseUp(editor)
+      }
+
+      selectContent()
+      fireEvent.contextMenu(content, { clientX: 120, clientY: 160 })
+      expect(getByRole('menu')).not.toHaveTextContent('Paste')
+      fireEvent.click(getByRole('menuitem', { name: /Copy/ }))
+      expect(execCommand).toHaveBeenLastCalledWith('copy')
+
+      selectContent()
+      fireEvent.contextMenu(content, { clientX: 120, clientY: 160 })
+      fireEvent.click(getByRole('menuitem', { name: /Cut/ }))
+      expect(execCommand).toHaveBeenLastCalledWith('cut')
+    } finally {
+      Object.defineProperty(document, 'execCommand', { configurable: true, value: originalExecCommand })
+    }
+  })
+
+  it('runs table Context Menu commands through the existing command chain with Undo and Redo', async () => {
+    const source = '| A | B |\n| --- | --- |\n| 1 | 2 |'
+    const { container, getByRole } = render(<MilkdownEditor initialMarkdown={source} />)
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    const cell = editor.querySelector<HTMLElement>('td p')!
+    const range = document.createRange()
+    range.selectNodeContents(cell)
+    range.collapse(true)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+
+    fireEvent.contextMenu(cell, { clientX: 120, clientY: 160 })
+    fireEvent.click(getByRole('menuitem', { name: 'Add row below' }))
+    await waitFor(() => expect(editor.querySelectorAll('tr')).toHaveLength(3))
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(editor.querySelectorAll('tr')).toHaveLength(2))
+    fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, shiftKey: true })
+    await waitFor(() => expect(editor.querySelectorAll('tr')).toHaveLength(3))
   })
 
   it('renders GFM task lists and tables in the editing surface', async () => {

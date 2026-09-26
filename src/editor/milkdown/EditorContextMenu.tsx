@@ -1,5 +1,5 @@
-import { Bold, ClipboardPaste, Copy, Italic, Link2, MousePointer2, Scissors } from 'lucide-react'
-import { forwardRef } from 'react'
+import { Bold, Copy, Italic, Link2, MousePointer2, Scissors } from 'lucide-react'
+import { forwardRef, useLayoutEffect, useRef } from 'react'
 
 export type EditorContextMenuCopy = {
   addColumnLeft: string
@@ -15,7 +15,6 @@ export type EditorContextMenuCopy = {
   addLink: string
   editLink: string
   insertLink: string
-  paste: string
   selectAll: string
 }
 
@@ -24,7 +23,8 @@ type EditorContextMenuProps = {
   hasSelection: boolean
   inTable: boolean
   linkLabel: string
-  onCommand: (command: 'cut' | 'copy' | 'paste' | 'select-all' | 'bold' | 'italic' | 'link') => void
+  onCommand: (command: 'cut' | 'copy' | 'select-all' | 'bold' | 'italic' | 'link') => void
+  onDismiss: () => void
   onTableCommand: (command: 'row-before' | 'row-after' | 'column-before' | 'column-after' | 'delete-row' | 'delete-column') => void
   position: { left: number; top: number }
 }
@@ -35,21 +35,70 @@ export const EditorContextMenu = forwardRef<HTMLDivElement, EditorContextMenuPro
   inTable,
   linkLabel,
   onCommand,
+  onDismiss,
   onTableCommand,
   position,
-}, ref) {
+}, forwardedRef) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    rootRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true })
+  }, [])
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(rootRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])
+    const current = items.indexOf(document.activeElement as HTMLButtonElement)
+    let next = current
+
+    switch (event.key) {
+      case 'ArrowDown':
+        next = current < 0 ? 0 : (current + 1) % items.length
+        break
+      case 'ArrowUp':
+        next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length
+        break
+      case 'Home':
+        next = 0
+        break
+      case 'End':
+        next = items.length - 1
+        break
+      case 'Enter':
+      case ' ':
+        event.preventDefault()
+        event.stopPropagation()
+        items[current]?.click()
+        return
+      case 'Escape':
+        event.preventDefault()
+        event.stopPropagation()
+        onDismiss()
+        return
+      default:
+        return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    items[next]?.focus({ preventScroll: true })
+  }
+
   return (
     <div
-      ref={ref}
+      ref={(node) => {
+        rootRef.current = node
+        if (typeof forwardedRef === 'function') forwardedRef(node)
+        else if (forwardedRef) forwardedRef.current = node
+      }}
       className="editor-context-menu"
       role="menu"
       style={position}
       onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={handleKeyDown}
       onMouseDown={(event) => event.preventDefault()}
     >
       <MenuButton disabled={!hasSelection} icon={<Scissors />} label={copy.cut} shortcut="⌘X" onClick={() => onCommand('cut')} />
       <MenuButton disabled={!hasSelection} icon={<Copy />} label={copy.copy} shortcut="⌘C" onClick={() => onCommand('copy')} />
-      <MenuButton icon={<ClipboardPaste />} label={copy.paste} shortcut="⌘V" onClick={() => onCommand('paste')} />
       <span className="editor-context-menu__divider" aria-hidden="true" />
       <MenuButton icon={<Bold />} label={copy.bold} shortcut="⌘B" onClick={() => onCommand('bold')} />
       <MenuButton icon={<Italic />} label={copy.italic} shortcut="⌘I" onClick={() => onCommand('italic')} />
@@ -89,8 +138,10 @@ function MenuButton({
   return (
     <button
       className={danger ? 'editor-context-menu__danger' : undefined}
+      aria-disabled={disabled || undefined}
       disabled={disabled}
       role="menuitem"
+      tabIndex={-1}
       type="button"
       onClick={onClick}
     >
