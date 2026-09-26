@@ -56,13 +56,22 @@ describe('App', () => {
     expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
     expect(editorMocks.markdownChanges.size).toBe(0)
-    expect(screen.getByRole('button', { name: 'Save document' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'New document' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Save document' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Read' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Open document' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Open folder' })).toBeVisible()
+    const newDocument = screen.getByRole('button', { name: 'New document' })
+    expect(newDocument).toBeVisible()
+    expect(newDocument.closest('.application-bar__tabs')?.querySelector('.tab-strip')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(newDocument)
     expect(screen.getByRole('tab', { name: 'Untitled' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Untitled' }).querySelector('.document-tab__icon')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toBeVisible()
     expect(container.querySelector('.document-context')).toHaveTextContent('UntitledNot saved')
+    expect(container.querySelector('.document-context')).toContainElement(screen.getByRole('button', { name: 'Save document' }))
     expect(container.querySelector('.document-area > .document-stage')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Untitled' }))
@@ -96,6 +105,8 @@ describe('App', () => {
 
     act(() => editorMocks.markdownChanges.values().next().value?.('Changed'))
     expect(context).toHaveTextContent('Unsaved changes')
+    expect(context).toHaveClass('document-context--dirty')
+    expect(screen.getByRole('button', { name: 'Save document' })).toBeEnabled()
   })
 
   it('keeps document context synchronized with the active tab', () => {
@@ -176,7 +187,8 @@ describe('App', () => {
   it('updates and persists global preferences without touching the document', async () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Preferences' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
     fireEvent.change(screen.getByLabelText('Appearance'), { target: { value: 'dark' } })
     fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'zh-CN' } })
     fireEvent.click(screen.getByRole('button', { name: '放大界面字体' }))
@@ -197,7 +209,7 @@ describe('App', () => {
         interfaceZoom: 130,
       }))
     })
-    expect(screen.getByRole('button', { name: '偏好设置' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '更多操作' })).toBeVisible()
   })
 
   it('persists individual removal and clearing of recent records', async () => {
@@ -334,14 +346,17 @@ describe('App', () => {
   it('closes preferences when pressing outside or Escape', () => {
     render(<App />)
 
-    const preferences = screen.getByRole('button', { name: 'Preferences' })
-    fireEvent.click(preferences)
+    const openPreferences = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
+    }
+    openPreferences()
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
 
     fireEvent.pointerDown(screen.getByRole('region', { name: 'Current document' }))
     expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument()
 
-    fireEvent.click(preferences)
+    openPreferences()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument()
   })
@@ -351,7 +366,24 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
-    expect(screen.getAllByRole('button', { name: 'Preferences' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Preferences' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
+  })
+
+  it('keeps low-frequency file actions in More and enables Save As only for a document', () => {
+    const { container } = render(<App />)
+
+    expect(container.querySelector('.window-bar__actions')).not.toHaveTextContent('Open document')
+    expect(container.querySelector('.window-bar__actions')).not.toHaveTextContent('Open folder')
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Open document…' })).toBeEnabled()
+    expect(screen.getByRole('menuitem', { name: 'Open folder…' })).toBeEnabled()
+    expect(screen.getByRole('menuitem', { name: 'Save As…' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Save As…' })).toBeEnabled()
   })
 
   it('temporarily hides sidebar affordances at narrow widths without changing the persisted preference', async () => {

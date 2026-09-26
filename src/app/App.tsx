@@ -1,6 +1,7 @@
-import { FilePlus2, FileText, Focus, FolderOpen, FolderTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, Settings2, X } from 'lucide-react'
+import { FileText, Focus, FolderOpen, FolderTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
+import { ApplicationMoreMenu } from '../components/ApplicationMoreMenu'
 import { FileSidebar } from '../components/FileSidebar'
 import { IconButton } from '../components/IconButton'
 import { ModeSwitch } from '../components/ModeSwitch'
@@ -264,6 +265,17 @@ export function App() {
     setCurrentFolder(folder)
   }
 
+  const createNewDocument = () => session.createNewDocument()
+  const openDocument = () => { void session.openDocument() }
+  const openFolder = () => { void chooseCurrentFolder() }
+  const saveActiveDocument = () => {
+    if (activeTabId !== null) void session.saveDocument(activeTabId)
+  }
+  const saveActiveDocumentAs = () => {
+    if (activeTabId !== null) void session.saveAsDocument(activeTabId)
+  }
+  const openPreferences = () => setPreferencesOpen(true)
+
   const setCurrentFolder = (folder: string) => {
     updateWorkspaceSettings({
       currentFolder: folder,
@@ -284,11 +296,11 @@ export function App() {
 
   useNativeCommandListener((command) => {
     switch (command) {
-      case 'new-document': session.createNewDocument(); break
-      case 'open-document': void session.openDocument(); break
-      case 'save-document': void session.saveDocument(); break
-      case 'save-as': void session.saveAsDocument(); break
-      case 'open-folder': void chooseCurrentFolder(); break
+      case 'new-document': createNewDocument(); break
+      case 'open-document': openDocument(); break
+      case 'save-document': saveActiveDocument(); break
+      case 'save-as': saveActiveDocumentAs(); break
+      case 'open-folder': openFolder(); break
       case 'toggle-sidebar': updateWorkspaceSettings({ sidebarVisible: !settings.sidebarVisible }); break
       case 'toggle-focus-mode': setFocusMode((active) => !active); break
       case 'zoom-in': setDocumentZoom(settings.documentZoom + 10); break
@@ -354,6 +366,10 @@ export function App() {
   }, [preferencesOpen])
 
   useEffect(() => {
+    if (focusMode) setPreferencesOpen(false)
+  }, [focusMode])
+
+  useEffect(() => {
     const closeOutlineOnEscape = (event: KeyboardEvent) => {
       if (activeTabId === null || event.key !== 'Escape' || focusMode || outlineLayout !== 'drawer' || !outlineOpen[activeTabId]) return
       setOutlineOpen((current) => ({ ...current, [activeTabId]: false }))
@@ -374,30 +390,36 @@ export function App() {
       style={appStyle}
     >
       <header className="application-bar window-bar">
-        <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
-          {session.tabs.map((tab) => (
-            <div key={tab.id} className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab.id === session.activeTabId}
-                aria-controls={`document-panel-${tab.id}`}
-                onClick={() => selectTab(tab.id)}
-              >
-                <span className="document-tab__dirty" aria-hidden="true">{tab.document.isDirty ? '•' : ''}</span>
-                <span className="document-tab__title">{displayDocumentTitle(tab, copy)}</span>
-              </button>
-              <button
-                className="document-tab__close"
-                type="button"
-                aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
-                onClick={() => session.requestCloseTab(tab.id)}
-              >
-                <X aria-hidden="true" size={13} strokeWidth={1.8} />
-              </button>
-            </div>
-          ))}
-        </nav>
+        <div className="application-bar__tabs">
+          <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
+            {session.tabs.map((tab) => (
+              <div key={tab.id} className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.id === session.activeTabId}
+                  aria-controls={`document-panel-${tab.id}`}
+                  onClick={() => selectTab(tab.id)}
+                >
+                  <FileText aria-hidden="true" className="document-tab__icon" size={14} strokeWidth={1.7} />
+                  <span className="document-tab__dirty" aria-hidden="true">{tab.document.isDirty ? '•' : ''}</span>
+                  <span className="document-tab__title">{displayDocumentTitle(tab, copy)}</span>
+                </button>
+                <button
+                  className="document-tab__close"
+                  type="button"
+                  aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
+                  onClick={() => session.requestCloseTab(tab.id)}
+                >
+                  <X aria-hidden="true" size={13} strokeWidth={1.8} />
+                </button>
+              </div>
+            ))}
+          </nav>
+          <IconButton className="application-bar__new-document" label={copy.newDocument} onClick={createNewDocument}>
+            <Plus aria-hidden="true" size={16} strokeWidth={1.8} />
+          </IconButton>
+        </div>
         <div className="window-bar__actions">
           <div className="application-bar__group application-bar__group--primary">
             <ModeSwitch
@@ -411,10 +433,8 @@ export function App() {
             />
           </div>
           <div className="application-bar__group application-bar__group--layout">
-            {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
-              <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
-            ) : null}
             <IconButton
+              className="application-bar__sidebar-toggle"
               aria-pressed={sidebarVisible}
               disabled={!sidebarAvailable}
               label={!sidebarAvailable ? copy.sidebarUnavailable : settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar}
@@ -422,38 +442,30 @@ export function App() {
             >
               {sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
             </IconButton>
-            <IconButton label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
+            {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
+              <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
+            ) : null}
+            <IconButton className="application-bar__focus-toggle" label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={() => setFocusMode((active) => !active)}>
               <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
             </IconButton>
           </div>
-          <div className="application-bar__group application-bar__group--document">
-            <IconButton label={copy.newDocument} onClick={session.createNewDocument}>
-              <FilePlus2 aria-hidden="true" size={16} strokeWidth={1.7} />
-            </IconButton>
-            <IconButton label={copy.openDocument} onClick={() => void session.openDocument()}>
-              <FolderOpen aria-hidden="true" size={16} strokeWidth={1.7} />
-            </IconButton>
-            <IconButton label={copy.openFolder} onClick={() => void chooseCurrentFolder()}>
-              <FolderTree aria-hidden="true" size={16} strokeWidth={1.7} />
-            </IconButton>
-            <IconButton
-              label={copy.saveDocument}
-              disabled={!hasActiveDocument || session.activity !== 'idle' || session.document.protectionReason !== null}
-              title={session.document.protectionReason ? copy.protectedSave : undefined}
-              onClick={() => void session.saveDocument()}
-            >
-              <Save aria-hidden="true" size={16} strokeWidth={1.7} />
-            </IconButton>
-          </div>
-          <div className="preferences-menu application-bar__group application-bar__group--settings" ref={preferencesRef}>
-            <IconButton
-              aria-expanded={preferencesOpen}
-              aria-haspopup="dialog"
-              label={copy.preferences}
-              onClick={() => setPreferencesOpen((open) => !open)}
-            >
-              <Settings2 aria-hidden="true" size={16} strokeWidth={1.7} />
-            </IconButton>
+          <div className="preferences-menu application-bar__group application-bar__group--overflow" ref={preferencesRef}>
+            <ApplicationMoreMenu
+              dismissed={focusMode}
+              labels={{
+                more: copy.moreActions,
+                open: `${copy.openDocument}…`,
+                openFolder: `${copy.openFolder}…`,
+                saveAs: `${copy.saveAs}…`,
+                settings: `${copy.sidebar.settings}…`,
+              }}
+              onOpen={openDocument}
+              onOpenFolder={openFolder}
+              onOpenSettings={openPreferences}
+              onSaveAs={saveActiveDocumentAs}
+              saveAsDisabled={!hasActiveDocument || session.activity !== 'idle' || activeDocumentIsProtected}
+              shortcuts={{ open: '⌘O', openFolder: '⇧⌘O', saveAs: '⇧⌘S' }}
+            />
             {preferencesOpen ? (
               <section className="preferences-popover" aria-labelledby="preferences-title" role="dialog">
                 <h2 id="preferences-title">{copy.preferences}</h2>
@@ -534,10 +546,23 @@ export function App() {
               copy={copy}
               document={activeTab.document}
               folder={settings.currentFolder}
+              onSave={saveActiveDocument}
+              saveDisabled={activeTab.activity !== 'idle' || activeTab.document.protectionReason !== null}
               tab={activeTab}
             />
           ) : null}
           <section className="document-stage" ref={documentStageRef}>
+            {!activeTab ? (
+              <div className="document-empty-state">
+                <span aria-hidden="true" className="document-empty-state__icon"><FileText size={22} strokeWidth={1.5} /></span>
+                <strong>{copy.emptyDocumentTitle}</strong>
+                <p>{copy.emptyDocumentDescription}</p>
+                <div className="document-empty-state__actions">
+                  <button type="button" onClick={openDocument}><FolderOpen aria-hidden="true" size={15} strokeWidth={1.7} />{copy.openDocument}</button>
+                  <button type="button" onClick={openFolder}><FolderTree aria-hidden="true" size={15} strokeWidth={1.7} />{copy.openFolder}</button>
+                </div>
+              </div>
+            ) : null}
             {session.tabs.map((tab) => (
               <DocumentPanel
                 key={tab.id}
@@ -622,9 +647,9 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         closeConfirmation: (title: string) => `关闭“${title}”？`, closeDocument: (title: string) => `关闭 ${title}`,
         currentDocument: '当前文档', discardChanges: '放弃更改', externalChange: '外部更改',
         externalChangesDetected: '检测到外部更改', folderBrowseFailed: '无法读取这个文件夹。',
-        edit: '编辑', read: '阅读', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹',
+        edit: '编辑', read: '阅读', emptyDocumentTitle: '打开一篇文档', emptyDocumentDescription: '打开现有 Markdown 文件或文件夹，开始继续写作。', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹',
         keepEditing: '继续编辑', lastSaveFailed: '上次保存失败。请保持文档打开、另存为，或放弃内存中的更改。', notSaved: '尚未保存',
-        language: '语言', light: '浅色', newDocument: '新建文档', openDocument: '打开文档',
+        language: '语言', light: '浅色', moreActions: '更多操作', newDocument: '新建文档', openDocument: '打开文档',
         openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置',
         protectedDocument: '受保护的文档', protectedDocumentDescription: '为保护此文件，已设为只读', protectedSave: '受保护的文档无法在 Milo 中保存',
         protectionReason: (reason: string) => reason ? '此文档包含原始 HTML，Milo 暂时无法在所见即所得模式中安全保留这部分内容。' : '',
@@ -659,9 +684,9 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         closeConfirmation: (title: string) => `Close “${title}”?`, closeDocument: (title: string) => `Close ${title}`,
         currentDocument: 'Current document', discardChanges: 'Discard changes', externalChange: 'External change',
         externalChangesDetected: 'External changes detected', folderBrowseFailed: 'Could not browse this folder.',
-        edit: 'Edit', read: 'Read', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder',
+        edit: 'Edit', read: 'Read', emptyDocumentTitle: 'Open a document', emptyDocumentDescription: 'Open a Markdown file or folder to continue writing.', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder',
         keepEditing: 'Keep editing', lastSaveFailed: 'The last save failed. Keep the document open, save it elsewhere, or discard the in-memory changes.', notSaved: 'Not saved',
-        language: 'Language', light: 'Light', newDocument: 'New document', openDocument: 'Open document',
+        language: 'Language', light: 'Light', moreActions: 'More actions', newDocument: 'New document', openDocument: 'Open document',
         openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences',
         protectedDocument: 'Protected Markdown document', protectedDocumentDescription: 'Read-only to protect this file', protectedSave: 'Protected documents cannot be saved from Milo',
         protectionReason: (reason: string) => reason,
@@ -697,9 +722,24 @@ function displayDocumentTitle(tab: Pick<DocumentTab, 'document'>, copy: ReturnTy
   return tab.document.path ? tab.document.title : copy.untitled
 }
 
-function DocumentContext({ copy, document, folder, tab }: { copy: ReturnType<typeof interfaceCopy>; document: DocumentTab['document']; folder: string | null; tab: DocumentTab }) {
+function DocumentContext({
+  copy,
+  document,
+  folder,
+  onSave,
+  saveDisabled,
+  tab,
+}: {
+  copy: ReturnType<typeof interfaceCopy>
+  document: DocumentTab['document']
+  folder: string | null
+  onSave: () => void
+  saveDisabled: boolean
+  tab: DocumentTab
+}) {
   const title = displayDocumentTitle({ document }, copy)
   const workspace = folder ? fileName(folder) : null
+  const tone = statusTone(tab)
   const status = tab.saveFeedback === 'pending'
     ? copy.savingSoon
     : tab.saveFeedback === 'saving'
@@ -709,7 +749,7 @@ function DocumentContext({ copy, document, folder, tab }: { copy: ReturnType<typ
         : documentStatus(tab, copy)
 
   return (
-    <div className="document-context" aria-live="polite">
+    <div className={`document-context document-context--${tone}`} aria-live="polite">
       <div className="document-context__identity">
         <span className="document-context__icon" aria-hidden="true"><FileText size={15} strokeWidth={1.7} /></span>
         <span className="document-context__path">
@@ -717,9 +757,20 @@ function DocumentContext({ copy, document, folder, tab }: { copy: ReturnType<typ
           <strong title={title}>{title}</strong>
         </span>
       </div>
-      <div className="document-context__status">
-        <span className={`document-context__status-dot document-context__status-dot--${statusTone(tab)}`} aria-hidden="true" />
-        <span>{status}</span>
+      <div className="document-context__actions">
+        <div className="document-context__status">
+          <span className={`document-context__status-dot document-context__status-dot--${tone}`} aria-hidden="true" />
+          <span>{status}</span>
+        </div>
+        <IconButton
+          className="document-context__save"
+          disabled={saveDisabled}
+          label={copy.saveDocument}
+          title={document.protectionReason ? copy.protectedSave : undefined}
+          onClick={onSave}
+        >
+          <Save aria-hidden="true" size={15} strokeWidth={1.7} />
+        </IconButton>
       </div>
     </div>
   )

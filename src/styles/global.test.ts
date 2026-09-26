@@ -40,7 +40,7 @@ describe('editor typography baseline', () => {
 describe('application shell foundation', () => {
   it('separates application, context, and editor surfaces with the compact navigation range', () => {
     expect(globalCss).toContain('--application-bar-height: 48px;')
-    expect(globalCss).toContain('--document-context-height: 48px;')
+    expect(globalCss).toContain('--document-context-height: 40px;')
     expect(globalCss).toMatch(/\.document-area \{[^}]*grid-template-rows: var\(--document-context-height\) minmax\(0, 1fr\);/s)
     expect(globalCss).toMatch(/\.document-stage \{[^}]*overflow: auto;[^}]*background: var\(--surface-editor\);/s)
     expect(globalCss).toMatch(/\.file-sidebar \{[^}]*grid-template-rows: auto minmax\(0, 1fr\) auto;[^}]*min-width: 208px;[^}]*max-width: 320px;[^}]*overflow: hidden;/s)
@@ -53,6 +53,14 @@ describe('application shell foundation', () => {
     expect(globalCss).toMatch(/\.window-bar \{[^}]*-webkit-app-region: drag;/s)
     expect(globalCss).toMatch(/\.window-bar__actions \{[^}]*-webkit-app-region: no-drag;/s)
     expect(globalCss).toMatch(/\.document-tab \{[^}]*-webkit-app-region: no-drag;/s)
+    expect(globalCss).toMatch(/\.application-bar__tabs > \.icon-button-shell \{[^}]*-webkit-app-region: no-drag;/s)
+  })
+
+  it('keeps tabs usable while progressively removing unavailable layout controls', () => {
+    expect(globalCss).toMatch(/\.application-bar__tabs \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*overflow: hidden;/s)
+    expect(globalCss).toMatch(/\.tab-strip \{[^}]*flex: 1 1 auto;[^}]*min-width: 0;[^}]*overflow-x: auto;/s)
+    expect(globalCss).toMatch(/@media \(max-width: 900px\) \{[^}]*\.application-bar__sidebar-toggle \{\s*display: none;/s)
+    expect(globalCss).toMatch(/@media \(max-width: 720px\) \{[^}]*\.application-bar__focus-toggle \{\s*display: none;/s)
   })
 
   it('defines theme-specific semantic shell surfaces', () => {

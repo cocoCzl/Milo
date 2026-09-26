@@ -119,7 +119,7 @@ button:focus-visible,
   --editor-heading-space-before: var(--editor-font-size);
   --reading-width: 820px;
   --application-bar-height: 48px;
-  --document-context-height: 48px;
+  --document-context-height: 40px;
   --top-region-height: var(--application-bar-height);
   --editor-rail-width: 48px;
   /* The layout reserves a slim gutter; the fixed outline itself can use the
@@ -231,11 +231,22 @@ button:focus-visible,
 }
 
 .application-bar__group--layout,
-.application-bar__group--document,
-.application-bar__group--settings {
+.application-bar__group--overflow {
   border-left: 1px solid var(--line);
   padding-left: 6px;
   margin-left: 4px;
+}
+
+.application-bar__group--layout {
+  gap: 1px;
+  padding-top: 1px;
+  padding-right: 3px;
+  padding-bottom: 1px;
+  background: var(--bg-control);
+  border-top: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 .window-bar__brand,
@@ -284,6 +295,15 @@ button:focus-visible,
   opacity: 0.5;
 }
 
+.application-bar__tabs {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  overflow: hidden;
+}
+
 .tab-strip {
   display: flex;
   flex: 1 1 auto;
@@ -299,6 +319,23 @@ button:focus-visible,
   -ms-overflow-style: none;
   scrollbar-width: none;
   -webkit-app-region: drag;
+}
+
+.application-bar__tabs > .icon-button-shell {
+  flex: 0 0 auto;
+  -webkit-app-region: no-drag;
+}
+
+.application-bar__new-document {
+  color: var(--subtle-ink);
+  border: 1px solid transparent;
+}
+
+.application-bar__new-document:hover,
+.application-bar__new-document:focus-visible {
+  color: var(--ink);
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
 }
 
 .tab-strip::-webkit-scrollbar {
@@ -342,9 +379,18 @@ button:focus-visible,
 
 .document-tab > [role="tab"] {
   display: flex;
-  gap: 3px;
+  gap: 5px;
   align-items: center;
   max-width: 190px;
+}
+
+.document-tab__icon {
+  flex: 0 0 auto;
+  color: var(--subtle-ink);
+}
+
+.document-tab--active .document-tab__icon {
+  color: var(--accent);
 }
 
 .document-tab__title {
@@ -354,8 +400,8 @@ button:focus-visible,
 }
 
 .document-tab__dirty {
-  width: 7px;
-  color: #637690;
+  width: 5px;
+  color: var(--accent);
   font-size: var(--ui-font-lg);
   line-height: 1;
 }
@@ -421,6 +467,77 @@ button:focus-visible,
 .preferences-menu {
   position: relative;
   display: flex;
+}
+
+.application-more-menu {
+  position: relative;
+  display: flex;
+}
+
+.application-more-menu__surface {
+  position: absolute;
+  z-index: 45;
+  top: 36px;
+  right: 0;
+  display: grid;
+  width: 224px;
+  padding: 5px;
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 18px 46px rgb(31 35 40 / 16%), 0 2px 7px rgb(31 35 40 / 8%);
+  -webkit-app-region: no-drag;
+}
+
+.application-more-menu__item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  color: var(--ink);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: var(--ui-font-md);
+  text-align: left;
+}
+
+.application-more-menu__item:hover,
+.application-more-menu__item:focus-visible {
+  background: var(--hover-fill);
+}
+
+.application-more-menu__item:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.application-more-menu__item-icon {
+  display: grid;
+  color: var(--muted-ink);
+  place-items: center;
+}
+
+.application-more-menu__item:disabled .application-more-menu__item-icon {
+  color: var(--text-disabled);
+}
+
+.application-more-menu__shortcut {
+  color: var(--subtle-ink);
+  font-size: var(--ui-font-sm);
+  letter-spacing: 0.01em;
+}
+
+.application-more-menu__separator {
+  height: 1px;
+  margin: 4px 7px;
+  background: var(--line);
 }
 
 .preferences-popover {
@@ -588,7 +705,8 @@ button:focus-visible,
   transform: translateY(0);
 }
 
-.preferences-menu .icon-button[aria-expanded="true"] + .icon-button__tooltip {
+.preferences-menu .icon-button[aria-expanded="true"] + .icon-button__tooltip,
+.application-more-menu .icon-button[aria-expanded="true"] + .icon-button__tooltip {
   display: none;
 }
 
@@ -628,6 +746,7 @@ button:focus-visible,
 }
 
 .document-context__identity,
+.document-context__actions,
 .document-context__status {
   display: inline-flex;
   align-items: center;
@@ -672,6 +791,35 @@ button:focus-visible,
   white-space: nowrap;
 }
 
+.document-context__actions {
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.document-context__save {
+  width: 28px;
+  height: 28px;
+  color: var(--subtle-ink);
+  opacity: 0.66;
+}
+
+.document-context--dirty .document-context__save {
+  color: var(--accent);
+  background: var(--accent-soft);
+  opacity: 1;
+}
+
+.document-context--error .document-context__save {
+  color: var(--status-error);
+  opacity: 1;
+}
+
+.document-context__save:hover:not(:disabled),
+.document-context__save:focus-visible {
+  color: var(--ink);
+  opacity: 1;
+}
+
 .document-context__status-dot {
   width: 7px;
   height: 7px;
@@ -693,6 +841,66 @@ button:focus-visible,
   padding: clamp(28px, 4vh, 46px) max(20px, calc((100% - var(--workspace-width)) / 2)) 36px;
   overflow: auto;
   background: var(--surface-editor);
+}
+
+.document-empty-state {
+  display: grid;
+  align-self: center;
+  justify-self: center;
+  max-width: 360px;
+  padding: 28px;
+  color: var(--muted-ink);
+  text-align: center;
+  place-items: center;
+}
+
+.document-empty-state__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  place-items: center;
+}
+
+.document-empty-state strong {
+  color: var(--ink);
+  font-size: var(--ui-font-lg);
+  font-weight: 650;
+}
+
+.document-empty-state p {
+  margin: 7px 0 16px;
+  line-height: 1.5;
+}
+
+.document-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.document-empty-state__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  color: var(--ink);
+  cursor: pointer;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.document-empty-state__actions button:hover,
+.document-empty-state__actions button:focus-visible {
+  background: var(--hover-fill);
+  border-color: var(--line-strong);
 }
 
 .app-shell--focus-mode {
@@ -717,6 +925,10 @@ button:focus-visible,
 }
 
 @media (max-width: 1150px) {
+  .document-tab {
+    max-width: 190px;
+  }
+
   .document-panel,
   .milkdown-editor {
     grid-template-columns: var(--editor-rail-width) minmax(0, 1fr);
@@ -725,6 +937,14 @@ button:focus-visible,
 }
 
 @media (max-width: 900px) {
+  .application-bar__sidebar-toggle {
+    display: none;
+  }
+
+  .document-tab {
+    max-width: 160px;
+  }
+
   .app-shell--with-sidebar .app-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1812,6 +2032,16 @@ button:focus-visible,
 .outline-toggle:focus-visible,
 .outline-toggle[aria-expanded="true"] { color: var(--text-primary); background: var(--bg-hover); }
 
+.application-bar__group--layout .outline-toggle {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.application-bar__group--layout .outline-toggle span {
+  display: none;
+}
+
 .milkdown .ProseMirror h1,
 .milkdown .ProseMirror h2,
 .milkdown .ProseMirror h3,
@@ -2549,6 +2779,7 @@ button:focus-visible,
 
 .app-shell[data-color-scheme="dark"] .close-confirmation,
 .app-shell[data-color-scheme="dark"] .preferences-popover,
+.app-shell[data-color-scheme="dark"] .application-more-menu__surface,
 .app-shell[data-color-scheme="dark"] .editor-context-menu,
 .app-shell[data-color-scheme="dark"] .block-menu,
 .app-shell[data-color-scheme="dark"] .block-menu__submenu,
@@ -2717,6 +2948,20 @@ button:focus-visible,
 }
 
 @media (max-width: 720px) {
+  .application-bar__focus-toggle {
+    display: none;
+  }
+
+  .window-bar {
+    gap: var(--space-2);
+    padding-inline: 9px;
+  }
+
+  .mode-switch button {
+    min-width: 38px;
+    padding-inline: 7px;
+  }
+
   .document-panel,
   .milkdown-editor {
     grid-template-columns: minmax(0, 1fr);
