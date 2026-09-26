@@ -192,16 +192,16 @@ describe('App', () => {
   })
 
   it('updates and persists global preferences without touching the document', async () => {
-    render(<App />)
+    const { container } = render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
-    fireEvent.change(screen.getByLabelText('Appearance'), { target: { value: 'dark' } })
-    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'zh-CN' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Appearance' }), { target: { value: 'dark' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'zh-CN' } })
     fireEvent.click(screen.getByRole('button', { name: '放大界面字体' }))
     fireEvent.click(screen.getByRole('button', { name: '放大正文字体' }))
 
-    const app = screen.getByRole('main', { name: 'Milo Markdown 编辑器' })
+    const app = container.querySelector<HTMLElement>('.app-shell')!
     expect(app).toHaveAttribute('data-appearance', 'dark')
     expect(app).toHaveAttribute('data-theme', 'dark')
     expect(app).toHaveAttribute('data-color-scheme', 'dark')
@@ -216,6 +216,8 @@ describe('App', () => {
         interfaceZoom: 130,
       }))
     })
+    fireEvent.click(screen.getByRole('button', { name: '关闭偏好设置' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: '更多操作' })).toBeVisible()
   })
 
@@ -301,7 +303,7 @@ describe('App', () => {
     const { container } = render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
-    const outlineToggle = screen.getByRole('button', { name: 'Outline' })
+    const outlineToggle = screen.getByRole('button', { name: 'Open outline' })
     fireEvent.click(outlineToggle)
     expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute('id', 'outline-drawer')
 
@@ -314,7 +316,7 @@ describe('App', () => {
     await waitFor(() => expect(outlineToggle).toHaveFocus())
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
-    expect(screen.queryByRole('button', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(container.querySelector('.outline-toggle')).not.toBeInTheDocument()
     expect(container.querySelector('.application-bar')).toBeInTheDocument()
     const focusOutlineTrigger = screen.getByRole('button', { name: 'Open outline' })
     expect(focusOutlineTrigger).toHaveAttribute('aria-expanded', 'false')
@@ -355,9 +357,8 @@ describe('App', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass('app-shell--focus-mode')
-    expect(screen.queryByRole('button', { name: 'Open outline' })).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Outline' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Open outline' })).toBeVisible()
   })
 
   it('opens the existing drawer from focus mode even when the normal workspace uses an inline outline', async () => {
@@ -417,13 +418,13 @@ describe('App', () => {
       notify?.()
       await waitFor(() => {
         expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--inline-outline')
-        expect(screen.queryByRole('button', { name: 'Outline' })).not.toBeInTheDocument()
+        expect(container.querySelector('.outline-toggle')).not.toBeInTheDocument()
       })
 
       Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1000 })
       notify?.()
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Outline' })).toBeVisible()
+        expect(screen.getByRole('button', { name: 'Open outline' })).toBeVisible()
         expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass('app-shell--inline-outline')
       })
     } finally {
@@ -431,7 +432,7 @@ describe('App', () => {
     }
   })
 
-  it('closes preferences when pressing outside or Escape', () => {
+  it('closes modal preferences from its backdrop or Escape', async () => {
     render(<App />)
 
     const openPreferences = () => {
@@ -441,21 +442,82 @@ describe('App', () => {
     openPreferences()
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
 
-    fireEvent.pointerDown(screen.getByRole('region', { name: 'Current document' }))
-    expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument()
+    const backdrop = document.querySelector('.preferences-dialog__backdrop')!
+    fireEvent.pointerDown(backdrop, { button: 0, pointerType: 'mouse' })
+    fireEvent.click(backdrop)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
 
     openPreferences()
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
   })
 
-  it('opens the existing preferences surface from the pinned sidebar footer', () => {
+  it('opens the same modal preferences from the pinned sidebar footer and restores that trigger', async () => {
     render(<App />)
+
+    const settingsTrigger = screen.getByRole('button', { name: 'Settings' })
+    fireEvent.click(settingsTrigger)
+    expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Preferences' })).toHaveAttribute('aria-modal', 'true')
+    expect(screen.queryByRole('button', { name: 'Preferences' })).not.toBeInTheDocument()
+    expect(document.querySelector('.application-more-menu__trigger')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
+    await waitFor(() => expect(settingsTrigger).toHaveFocus())
+  })
+
+  it('opens sidebar preferences above an open outline drawer without changing drawer state', async () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Preferences' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
+    expect(container.querySelector('.editor-outline--drawer')).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
+  })
+
+  it('keeps an open outline drawer isolated below preferences and restores More focus without changing drawer state', async () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
+
+    const moreTrigger = screen.getByRole('button', { name: 'More actions' })
+    fireEvent.click(moreTrigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
+
+    expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
+    expect(container.querySelector('.outline-drawer-layer')).toBeInTheDocument()
+    expect(container.querySelector('.preferences-dialog-layer .dialog-overlay-layer')).toContainElement(screen.getByRole('dialog', { name: 'Preferences' }))
+    expect(container.querySelector('.editor-outline--drawer')).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
+    await waitFor(() => expect(moreTrigger).toHaveFocus())
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
+  })
+
+  it('gives normal and focus-only outline controls the shared keyboard tooltip', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    const outlineToggle = screen.getByRole('button', { name: 'Open outline' })
+
+    fireEvent.focus(outlineToggle)
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline'), { timeout: 700 })
+    fireEvent.blur(outlineToggle)
+    fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
+
+    const focusOutlineTrigger = screen.getByRole('button', { name: 'Open outline' })
+    expect(focusOutlineTrigger).not.toHaveAttribute('title')
+    fireEvent.focus(focusOutlineTrigger)
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline'), { timeout: 700 })
   })
 
   it('keeps low-frequency file actions in More and enables Save As only for a document', () => {

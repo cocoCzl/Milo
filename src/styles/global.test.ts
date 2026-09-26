@@ -71,6 +71,29 @@ describe('application shell foundation', () => {
     expect(globalCss).toMatch(/\.app-shell\[data-theme="warm"\] \{[^}]*--surface-context:/s)
   })
 
+  it('owns overlays through semantic layers and shared floating surfaces', () => {
+    for (const token of ['overlay-sticky-chrome', 'overlay-floating-editor', 'overlay-popover', 'overlay-drawer', 'overlay-application-popover', 'overlay-dialog', 'overlay-tooltip', 'overlay-critical-alert']) {
+      expect(globalCss).toContain(`--${token}:`)
+    }
+    for (const token of ['floating-surface', 'floating-border', 'floating-radius-sm', 'floating-radius-md', 'floating-shadow', 'floating-row-height', 'floating-padding']) {
+      expect(globalCss).toContain(`--${token}:`)
+    }
+    expect(globalCss).toMatch(/\.outline-drawer-layer \{[^}]*z-index: var\(--overlay-drawer\);/s)
+    expect(globalCss).toMatch(/\.window-bar \{[^}]*z-index: var\(--overlay-application-popover\);/s)
+    expect(globalCss).toMatch(/\.application-more-menu__surface \{[^}]*z-index: var\(--overlay-application-popover\);/s)
+    expect(globalCss).toMatch(/\.dialog-overlay-layer \{[^}]*z-index: var\(--overlay-dialog\);/s)
+    expect(globalCss).toMatch(/\.milo-tooltip \{[^}]*z-index: var\(--overlay-tooltip\);/s)
+    expect(globalCss).toMatch(/\.milo-tooltip \{[^}]*font-size: 12px;[^}]*line-height: 1\.25;/s)
+    expect(globalCss).not.toMatch(/z-index:\s*(40|45|50|60|70|80);/)
+  })
+
+  it('centers a responsive modal preferences surface above its backdrop', () => {
+    expect(globalCss).toMatch(/\.preferences-dialog \{[^}]*position: fixed;[^}]*top: 50%;[^}]*left: 50%;[^}]*width: min\(520px, calc\(100vw - 32px\)\);[^}]*max-height: calc\(100vh - 48px\);/s)
+    expect(globalCss).toMatch(/\.preferences-dialog__backdrop \{[^}]*position: fixed;[^}]*inset: 0;/s)
+    expect(globalCss).toMatch(/\.preferences-dialog \{[^}]*background: var\(--floating-surface\);[^}]*border: 1px solid var\(--floating-border\);/s)
+    expect(globalCss).toMatch(/body:has\(\.preferences-dialog__portal\) \.milo-tooltip \{\s*display: none;/)
+  })
+
   it('keeps the focus outline entry viewport-fixed while allowing only the drawer outline', () => {
     expect(globalCss).toMatch(/\.focus-mode-outline-trigger \{[^}]*position: fixed;[^}]*background: var\(--surface-raised\);[^}]*border: 1px solid var\(--line\);/s)
     expect(globalCss).toMatch(/\.app-shell--focus-mode \.editor-outline:not\(\.editor-outline--drawer\) \{\s*display: none;\s*\}/)

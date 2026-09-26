@@ -12,7 +12,7 @@ type ApplicationMoreMenuProps = {
   }
   onOpen: () => void
   onOpenFolder: () => void
-  onOpenSettings: () => void
+  onOpenSettings: (trigger: HTMLButtonElement) => void
   onSaveAs: () => void
   saveAsDisabled?: boolean
   shortcuts: {
@@ -158,7 +158,9 @@ export function ApplicationMoreMenu({
           <div className="application-more-menu__separator" role="separator" />
           <MenuAction
             icon={<Settings2 aria-hidden="true" size={15} strokeWidth={1.7} />}
-            onSelect={() => select(onOpenSettings)}
+            onSelect={() => select(() => {
+              if (triggerRef.current) onOpenSettings(triggerRef.current)
+            })}
             setRef={(element) => { itemRefs.current[3] = element }}
           >
             {labels.settings}

@@ -1,4 +1,4 @@
-import { FileText, Focus, FolderOpen, FolderTree, ListTree, Minus, PanelLeftClose, PanelLeftOpen, Plus, Save, X } from 'lucide-react'
+import { FileText, Focus, FolderOpen, FolderTree, ListTree, PanelLeftClose, PanelLeftOpen, Plus, Save, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { ApplicationMoreMenu } from '../components/ApplicationMoreMenu'
@@ -6,6 +6,8 @@ import { FileSidebar } from '../components/FileSidebar'
 import { IconButton } from '../components/IconButton'
 import { ModeSwitch } from '../components/ModeSwitch'
 import { OutlineToggle } from '../components/OutlineToggle'
+import { PreferencesDialog } from '../components/PreferencesDialog'
+import { Tooltip } from '../components/Tooltip'
 import { MilkdownEditor } from '../editor/milkdown/MilkdownEditor'
 import { browseMarkdownFolder, pickMarkdownFolder, type MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
 import { initialLaunchMarkdownFile } from '../file-system/launchFile'
@@ -45,13 +47,14 @@ export function App() {
   const didRestoreStartupSession = useRef(false)
   const didOpenLaunchFile = useRef(false)
   const lastRecordedRecentPathRef = useRef<string | null | undefined>(undefined)
-  const preferencesRef = useRef<HTMLDivElement>(null)
+  const preferencesReturnFocusRef = useRef<HTMLElement | null>(null)
   const documentStageRef = useRef<HTMLElement>(null)
   const previousActiveTabIdRef = useRef<DocumentTab['id'] | null>(null)
   const documentViewStatesRef = useRef<Record<DocumentTab['id'], DocumentViewState>>({})
   const outlineToggleRef = useRef<HTMLButtonElement>(null)
   const focusOutlineTriggerRef = useRef<HTMLButtonElement>(null)
   const [outlineDrawerMount, setOutlineDrawerMount] = useState<HTMLElement | null>(null)
+  const [preferencesDialogMount, setPreferencesDialogMount] = useState<HTMLElement | null>(null)
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
   const activeTabId = session.activeTabId
@@ -293,7 +296,13 @@ export function App() {
   const saveActiveDocumentAs = () => {
     if (activeTabId !== null) void session.saveAsDocument(activeTabId)
   }
-  const openPreferences = () => setPreferencesOpen(true)
+  const openPreferences = (returnFocusTarget?: HTMLElement | null) => {
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    preferencesReturnFocusRef.current = returnFocusTarget
+      ?? activeElement?.closest('.application-more-menu')?.querySelector<HTMLElement>('.application-more-menu__trigger')
+      ?? activeElement
+    setPreferencesOpen(true)
+  }
 
   const setCurrentFolder = (folder: string) => {
     updateWorkspaceSettings({
@@ -354,6 +363,7 @@ export function App() {
 
   useEffect(() => {
     const handleFocusShortcut = (event: KeyboardEvent) => {
+      if (preferencesOpen) return
       if (event.key === 'Escape' && focusMode) {
         event.preventDefault()
         if (activeOutlineOpen) {
@@ -370,45 +380,21 @@ export function App() {
     }
     window.addEventListener('keydown', handleFocusShortcut)
     return () => window.removeEventListener('keydown', handleFocusShortcut)
-  }, [activeOutlineOpen, closeActiveOutline, exitFocusMode, focusMode, toggleFocusMode])
-
-  useEffect(() => {
-    if (!preferencesOpen) return
-
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      if (event.target instanceof Node && !preferencesRef.current?.contains(event.target)) {
-        setPreferencesOpen(false)
-      }
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPreferencesOpen(false)
-    }
-
-    document.addEventListener('pointerdown', closeOnOutsidePress)
-    window.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePress)
-      window.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [preferencesOpen])
-
-  useEffect(() => {
-    if (focusMode) setPreferencesOpen(false)
-  }, [focusMode])
+  }, [activeOutlineOpen, closeActiveOutline, exitFocusMode, focusMode, preferencesOpen, toggleFocusMode])
 
   useEffect(() => {
     const closeOutlineOnEscape = (event: KeyboardEvent) => {
-      if (activeTabId === null || event.key !== 'Escape' || focusMode || outlineLayout !== 'drawer' || !outlineOpen[activeTabId]) return
+      if (activeTabId === null || event.key !== 'Escape' || focusMode || preferencesOpen || outlineLayout !== 'drawer' || !outlineOpen[activeTabId]) return
       setOutlineOpen((current) => ({ ...current, [activeTabId]: false }))
       queueMicrotask(() => outlineToggleRef.current?.focus())
     }
     window.addEventListener('keydown', closeOutlineOnEscape)
     return () => window.removeEventListener('keydown', closeOutlineOnEscape)
-  }, [activeTabId, focusMode, outlineLayout, outlineOpen])
+  }, [activeTabId, focusMode, outlineLayout, outlineOpen, preferencesOpen])
 
   return (
     <main
-      className={`app-shell${sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' ? ' app-shell--inline-outline' : ''}`}
+      className={`app-shell${sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' ? ' app-shell--inline-outline' : ''}${preferencesOpen ? ' app-shell--dialog-open' : ''}`}
       aria-label={copy.appLabel}
       data-appearance={settings.appearance}
       data-theme={colorScheme}
@@ -470,13 +456,19 @@ export function App() {
               {sidebarVisible ? <PanelLeftClose aria-hidden="true" size={16} strokeWidth={1.7} /> : <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />}
             </IconButton>
             {activeTabId !== null && !focusMode && outlineLayout === 'drawer' && !activeDocumentIsProtected ? (
-              <OutlineToggle buttonRef={outlineToggleRef} expanded={outlineOpen[activeTabId] ?? false} label={copy.editor.outline} onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))} />
+              <OutlineToggle
+                buttonRef={outlineToggleRef}
+                expanded={outlineOpen[activeTabId] ?? false}
+                label={copy.editor.outline}
+                tooltipLabel={outlineOpen[activeTabId] ? copy.editor.closeOutline : copy.openOutline}
+                onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))}
+              />
             ) : null}
             <IconButton className="application-bar__focus-toggle" label={focusMode ? copy.exitFocusMode : copy.enterFocusMode} onClick={toggleFocusMode}>
               <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
             </IconButton>
           </div>
-          <div className="preferences-menu application-bar__group application-bar__group--overflow" ref={preferencesRef}>
+          <div className="preferences-menu application-bar__group application-bar__group--overflow">
             <ApplicationMoreMenu
               dismissed={focusMode}
               labels={{
@@ -488,61 +480,11 @@ export function App() {
               }}
               onOpen={openDocument}
               onOpenFolder={openFolder}
-              onOpenSettings={openPreferences}
+              onOpenSettings={(trigger) => openPreferences(trigger)}
               onSaveAs={saveActiveDocumentAs}
               saveAsDisabled={!hasActiveDocument || session.activity !== 'idle' || activeDocumentIsProtected}
               shortcuts={{ open: '⌘O', openFolder: '⇧⌘O', saveAs: '⇧⌘S' }}
             />
-            {preferencesOpen ? (
-              <section className="preferences-popover" aria-labelledby="preferences-title" role="dialog">
-                <h2 id="preferences-title">{copy.preferences}</h2>
-                <div className="preferences-popover__body">
-                  <label>
-                    <span>{copy.appearance}</span>
-                    <select value={settings.appearance} onChange={(event) => setAppearance(event.target.value as typeof settings.appearance)}>
-                      <option value="system">{copy.system}</option>
-                      <option value="light">{copy.light}</option>
-                      <option value="dark">{copy.dark}</option>
-                      <option value="warm">{copy.warm}</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>{copy.language}</span>
-                    <select value={settings.locale} onChange={(event) => setLocale(event.target.value as InterfaceLocale)}>
-                      <option value="system">{copy.system}</option>
-                      <option value="en">English</option>
-                      <option value="zh-CN">简体中文</option>
-                    </select>
-                  </label>
-                  <div className="preferences-popover__zoom">
-                    <span>{copy.interfaceSize}</span>
-                    <div>
-                      <button type="button" aria-label={copy.decreaseInterfaceSize} onClick={() => setInterfaceZoom(settings.interfaceZoom - 10)}>
-                        <Minus aria-hidden="true" size={13} strokeWidth={1.8} />
-                      </button>
-                      <output aria-label={copy.interfaceSize}>{settings.interfaceZoom}%</output>
-                      <button type="button" aria-label={copy.increaseInterfaceSize} onClick={() => setInterfaceZoom(settings.interfaceZoom + 10)}>
-                        <Plus aria-hidden="true" size={13} strokeWidth={1.8} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="preferences-popover__zoom">
-                    <span>{copy.zoom}</span>
-                    <div>
-                      <button type="button" aria-label={copy.decreaseZoom} onClick={() => setDocumentZoom(settings.documentZoom - 10)}>
-                        <Minus aria-hidden="true" size={13} strokeWidth={1.8} />
-                      </button>
-                      <output aria-label={copy.zoom}>{settings.documentZoom}%</output>
-                      <button type="button" aria-label={copy.increaseZoom} onClick={() => setDocumentZoom(settings.documentZoom + 10)}>
-                        <Plus aria-hidden="true" size={13} strokeWidth={1.8} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <span className="preferences-popover__shortcut">⌘+ · ⌘− · ⌘0</span>
-                {settingsError ? <span className="preferences-popover__error">{settingsError}</span> : null}
-              </section>
-            ) : null}
           </div>
         </div>
       </header>
@@ -558,7 +500,7 @@ export function App() {
             onClearRecent={clearRecent}
             onOpenFile={(path) => void openSidebarFile(path)}
             onOpenFolder={setCurrentFolder}
-            onOpenPreferences={() => setPreferencesOpen(true)}
+            onOpenPreferences={() => openPreferences(document.querySelector<HTMLElement>('.file-sidebar__footer button'))}
             onRemoveRecentFile={removeRecentFile}
             onRemoveRecentFolder={removeRecentFolder}
             onWidthChange={(sidebarWidth) => updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarWidth })}
@@ -569,18 +511,19 @@ export function App() {
         {folderError ? <div className="folder-error" role="status">{folderError}</div> : null}
         <section className={`document-area${activeTab ? '' : ' document-area--empty'}`} aria-label={copy.currentDocument}>
           {focusMode && activeTabId !== null && !activeDocumentIsProtected ? (
-            <button
-              ref={focusOutlineTriggerRef}
-              aria-controls="outline-drawer"
-              aria-expanded={activeOutlineOpen}
-              aria-label={copy.openOutline}
-              className="focus-mode-outline-trigger"
-              title={copy.openOutline}
-              type="button"
-              onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))}
-            >
-              <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
-            </button>
+            <Tooltip content={copy.openOutline} disabled={activeOutlineOpen}>
+              <button
+                ref={focusOutlineTriggerRef}
+                aria-controls="outline-drawer"
+                aria-expanded={activeOutlineOpen}
+                aria-label={copy.openOutline}
+                className="focus-mode-outline-trigger"
+                type="button"
+                onClick={() => setOutlineOpen((current) => ({ ...current, [activeTabId]: !current[activeTabId] }))}
+              >
+                <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
+              </button>
+            </Tooltip>
           ) : null}
           {activeTabId !== null && activeTab ? (
             <DocumentContext
@@ -642,9 +585,44 @@ export function App() {
               WKWebView can expose a root-grid overlay in the AX tree without
               reliably painting it above the document-stage compositor. */}
           <div ref={setOutlineDrawerMount} className="outline-drawer-layer" />
+          <div ref={setPreferencesDialogMount} className="preferences-dialog-layer" />
         </section>
       </section>
       <div ref={setContextualOverlayMount} className="contextual-overlay-layer" />
+      <PreferencesDialog
+        appearance={settings.appearance}
+        copy={{
+          appearance: copy.appearance,
+          appearanceSection: copy.preferencesAppearance,
+          close: copy.closePreferences,
+          dark: copy.dark,
+          decreaseDocumentSize: copy.decreaseZoom,
+          decreaseInterfaceSize: copy.decreaseInterfaceSize,
+          displaySection: copy.preferencesDisplay,
+          documentSize: copy.zoom,
+          increaseDocumentSize: copy.increaseZoom,
+          increaseInterfaceSize: copy.increaseInterfaceSize,
+          interfaceSize: copy.interfaceSize,
+          language: copy.language,
+          light: copy.light,
+          system: copy.system,
+          title: copy.preferences,
+          warm: copy.warm,
+        }}
+        documentZoom={settings.documentZoom}
+        error={settingsError}
+        interfaceZoom={settings.interfaceZoom}
+        locale={settings.locale}
+        onAppearanceChange={setAppearance}
+        onDocumentZoomChange={setDocumentZoom}
+        onInterfaceZoomChange={setInterfaceZoom}
+        onLocaleChange={setLocale}
+        onOpenChange={setPreferencesOpen}
+        open={preferencesOpen}
+        portalContainer={preferencesDialogMount}
+        returnFocusRef={preferencesReturnFocusRef}
+        theme={colorScheme}
+      />
       {closingTab ? (
         <section className="close-confirmation" role="alertdialog" aria-labelledby="close-confirmation-title">
           <strong id="close-confirmation-title">{copy.closeConfirmation(displayDocumentTitle(closingTab, copy))}</strong>
@@ -691,7 +669,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         edit: '编辑', read: '阅读', emptyDocumentTitle: '打开一篇文档', emptyDocumentDescription: '打开现有 Markdown 文件或文件夹，开始继续写作。', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹', openOutline: '打开大纲',
         keepEditing: '继续编辑', lastSaveFailed: '上次保存失败。请保持文档打开、另存为，或放弃内存中的更改。', notSaved: '尚未保存',
         language: '语言', light: '浅色', moreActions: '更多操作', newDocument: '新建文档', openDocument: '打开文档',
-        openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置',
+        closePreferences: '关闭偏好设置', openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置', preferencesAppearance: '外观', preferencesDisplay: '显示',
         protectedDocument: '受保护的文档', protectedDocumentDescription: '为保护此文件，已设为只读', protectedSave: '受保护的文档无法在 Milo 中保存',
         protectionReason: (reason: string) => reason ? '此文档包含原始 HTML，Milo 暂时无法在所见即所得模式中安全保留这部分内容。' : '',
         reloadFile: '重新载入文件', retainLocal: '保留本地更改', saveAndClose: '保存并关闭',
@@ -728,7 +706,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         edit: 'Edit', read: 'Read', emptyDocumentTitle: 'Open a document', emptyDocumentDescription: 'Open a Markdown file or folder to continue writing.', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder', openOutline: 'Open outline',
         keepEditing: 'Keep editing', lastSaveFailed: 'The last save failed. Keep the document open, save it elsewhere, or discard the in-memory changes.', notSaved: 'Not saved',
         language: 'Language', light: 'Light', moreActions: 'More actions', newDocument: 'New document', openDocument: 'Open document',
-        openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences',
+        closePreferences: 'Close preferences', openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences', preferencesAppearance: 'Appearance', preferencesDisplay: 'Display',
         protectedDocument: 'Protected Markdown document', protectedDocumentDescription: 'Read-only to protect this file', protectedSave: 'Protected documents cannot be saved from Milo',
         protectionReason: (reason: string) => reason,
         reloadFile: 'Reload file', retainLocal: 'Keep local edits', saveAndClose: 'Save and close',

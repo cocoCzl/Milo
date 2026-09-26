@@ -52,6 +52,19 @@
   --shadow-md: 0 6px 18px rgb(0 0 0 / 7%);
   --shadow-floating: 0 12px 32px rgb(0 0 0 / 9%);
 
+  --floating-radius-sm: 7px;
+  --floating-radius-md: 12px;
+  --floating-row-height: 32px;
+  --floating-padding: 6px;
+  --overlay-sticky-chrome: 100;
+  --overlay-floating-editor: 200;
+  --overlay-popover: 300;
+  --overlay-drawer: 400;
+  --overlay-application-popover: 450;
+  --overlay-dialog: 500;
+  --overlay-tooltip: 600;
+  --overlay-critical-alert: 700;
+
   --font-ui-xs: 11px;
   --font-ui-sm: 12px;
   --font-ui-md: 13px;
@@ -111,6 +124,10 @@ button:focus-visible,
   --outline-scrollbar-thumb-hover: color-mix(in srgb, var(--ink) 30%, transparent);
   --soft-fill: var(--bg-hover);
   --hover-fill: var(--bg-hover);
+  --floating-surface: var(--surface-raised);
+  --floating-border: var(--line-strong);
+  --floating-shadow: 0 18px 46px rgb(31 35 40 / 16%), 0 2px 7px rgb(31 35 40 / 8%);
+  --dialog-backdrop: rgb(24 27 31 / 24%);
   --ui-font-lg: var(--font-ui-md);
   --ui-font-mark: 12.5px;
   --ui-font-md: var(--font-ui-sm);
@@ -206,7 +223,10 @@ button:focus-visible,
 
 .window-bar {
   position: relative;
-  z-index: 20;
+  /* Application chrome must remain interactive above document drawers. The
+     More menu is rendered inside this stacking context, so the bar owns the
+     application-level layer rather than the lower sticky-chrome layer. */
+  z-index: var(--overlay-application-popover);
   display: flex;
   align-items: center;
   min-width: 0;
@@ -479,17 +499,17 @@ button:focus-visible,
 
 .application-more-menu__surface {
   position: absolute;
-  z-index: 45;
+  z-index: var(--overlay-application-popover);
   top: 36px;
   right: 0;
   display: grid;
   width: 224px;
-  padding: 5px;
+  padding: var(--floating-padding);
   color: var(--ink);
-  background: var(--surface-raised);
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  box-shadow: 0 18px 46px rgb(31 35 40 / 16%), 0 2px 7px rgb(31 35 40 / 8%);
+  background: var(--floating-surface);
+  border: 1px solid var(--floating-border);
+  border-radius: var(--floating-radius-md);
+  box-shadow: var(--floating-shadow);
   -webkit-app-region: no-drag;
 }
 
@@ -499,7 +519,7 @@ button:focus-visible,
   gap: 8px;
   align-items: center;
   width: 100%;
-  min-height: 32px;
+  min-height: var(--floating-row-height);
   padding: 0 8px;
   color: var(--ink);
   cursor: pointer;
@@ -543,93 +563,235 @@ button:focus-visible,
   background: var(--line);
 }
 
-.preferences-popover {
+.dialog-overlay-layer {
+  position: fixed;
+  z-index: var(--overlay-dialog);
+  inset: 0;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+/* WKWebView can expose body/root-grid portals in the accessibility tree while
+   omitting their composited pixels. Keep the Radix portal in the same stable,
+   non-scrolling workspace layer used by the proven Outline drawer portal. */
+.preferences-dialog-layer {
   position: absolute;
-  z-index: 40;
-  top: 36px;
-  right: 0;
+  z-index: var(--overlay-dialog);
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.preferences-dialog__portal {
+  --ink: var(--text-primary);
+  --muted-ink: var(--text-secondary);
+  --subtle-ink: var(--text-tertiary);
+  --control: var(--bg-control);
+  --line: var(--border-default);
+  --line-strong: var(--border-strong);
+  --context-line: var(--border-subtle);
+  --hover-fill: var(--bg-hover);
+  --floating-surface: var(--bg-elevated);
+  --floating-border: var(--border-strong);
+  --floating-shadow: 0 18px 46px rgb(31 35 40 / 16%), 0 2px 7px rgb(31 35 40 / 8%);
+  --dialog-backdrop: rgb(24 27 31 / 24%);
+}
+
+.preferences-dialog__portal[data-theme="dark"] {
+  --bg-elevated: #27292d;
+  --bg-control: #2b2e32;
+  --bg-hover: rgb(255 255 255 / 7%);
+  --text-primary: #e8e9eb;
+  --text-secondary: #b1b5bb;
+  --text-tertiary: #7f858e;
+  --border-subtle: rgb(255 255 255 / 5.5%);
+  --border-default: rgb(255 255 255 / 9%);
+  --border-strong: rgb(255 255 255 / 15%);
+  --focus-ring: #80b2f5;
+  --status-error: #df8072;
+  --floating-shadow: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 8px rgb(0 0 0 / 24%);
+  --dialog-backdrop: rgb(5 7 10 / 50%);
+  color-scheme: dark;
+}
+
+.preferences-dialog__portal[data-theme="warm"] {
+  --bg-elevated: #fffdf9;
+  --bg-control: #efebe3;
+  --bg-hover: rgb(74 66 54 / 6%);
+  --text-primary: #272521;
+  --text-secondary: #6f6a62;
+  --text-tertiary: #9a948a;
+  --border-subtle: rgb(73 64 51 / 7%);
+  --border-default: rgb(73 64 51 / 11%);
+  --border-strong: rgb(73 64 51 / 17%);
+  --focus-ring: #3b7bc4;
+  --status-error: #b96658;
+}
+
+.preferences-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  background: var(--dialog-backdrop);
+  backdrop-filter: blur(1.5px);
+  animation: preferences-backdrop-in 120ms ease-out;
+}
+
+.preferences-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
   display: grid;
-  gap: 12px;
-  width: 260px;
-  padding: 14px;
+  width: min(520px, calc(100vw - 32px));
+  min-width: 0;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
   color: var(--ink);
-  background: var(--surface-raised);
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  box-shadow: 0 18px 46px rgb(31 35 40 / 16%), 0 2px 7px rgb(31 35 40 / 8%);
+  background: var(--floating-surface);
+  border: 1px solid var(--floating-border);
+  border-radius: var(--floating-radius-md);
+  box-shadow: var(--floating-shadow);
   font-size: var(--ui-font-md);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  animation: preferences-dialog-in 140ms cubic-bezier(.2, .8, .2, 1);
   -webkit-app-region: no-drag;
 }
 
-.preferences-popover h2 {
-  margin: 0;
-  font-size: var(--ui-font-lg);
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.preferences-popover__body {
-  display: grid;
-  gap: 10px;
-}
-
-.preferences-popover label,
-.preferences-popover__zoom {
+.preferences-dialog__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  min-height: 50px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--context-line);
 }
 
-.preferences-popover select {
-  width: 118px;
-  max-width: 118px;
-  height: 27px;
+.preferences-dialog__header h2 {
+  margin: 0;
+  font-size: var(--ui-font-lg);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.preferences-dialog__close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--muted-ink);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--floating-radius-sm);
+  place-items: center;
+}
+
+.preferences-dialog__close:hover {
+  color: var(--ink);
+  background: var(--hover-fill);
+}
+
+.preferences-dialog__body {
+  display: grid;
+  gap: 22px;
+  padding: 20px 22px 18px;
+  overflow-y: auto;
+}
+
+.preferences-dialog__section {
+  display: grid;
+  gap: 8px;
+}
+
+.preferences-dialog__section h3 {
+  margin: 0 2px;
+  color: var(--subtle-ink);
+  font-size: var(--ui-font-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.preferences-dialog__rows {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--floating-radius-sm);
+}
+
+.preferences-dialog__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: 18px;
+  padding: 7px 10px 7px 12px;
+}
+
+.preferences-dialog__row + .preferences-dialog__row {
+  border-top: 1px solid var(--context-line);
+}
+
+.preferences-dialog select {
+  width: 180px;
+  max-width: 50%;
+  height: 29px;
   padding: 3px 24px 3px 8px;
   color: inherit;
   background: var(--control);
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--floating-radius-sm);
   font: inherit;
 }
 
-.preferences-popover__zoom > div {
+.preferences-dialog__zoom > div {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
-.preferences-popover__zoom button {
+.preferences-dialog__zoom button {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   color: inherit;
   cursor: pointer;
   background: var(--control);
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--floating-radius-sm);
   place-items: center;
 }
 
-.preferences-popover__zoom button:hover {
+.preferences-dialog__zoom button:hover {
   background: var(--hover-fill);
 }
 
-.preferences-popover output {
-  width: 38px;
+.preferences-dialog output {
+  width: 42px;
   color: var(--muted-ink);
   text-align: center;
 }
 
-.preferences-popover__shortcut,
-.preferences-popover__error {
+.preferences-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--subtle-ink);
   font-size: var(--ui-font-xs);
 }
 
-.preferences-popover__error {
-  color: #9b5548;
+.preferences-dialog__error {
+  color: var(--status-error);
+}
+
+@keyframes preferences-backdrop-in {
+  from { opacity: 0; }
+}
+
+@keyframes preferences-dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% - 5px)) scale(.99); }
 }
 
 .icon-button-shell {
@@ -668,7 +830,7 @@ button:focus-visible,
 
 .icon-button__tooltip {
   position: absolute;
-  z-index: 50;
+  z-index: var(--overlay-tooltip);
   top: calc(100% + 7px);
   left: 50%;
   width: max-content;
@@ -679,7 +841,7 @@ button:focus-visible,
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 6px;
   box-shadow: 0 5px 16px rgb(0 0 0 / 18%);
-  font-size: var(--ui-font-sm);
+  font-size: 12px;
   line-height: 1.25;
   pointer-events: none;
   opacity: 0;
@@ -687,6 +849,31 @@ button:focus-visible,
   transition: opacity 100ms ease 350ms, transform 100ms ease 350ms, visibility 0s linear 450ms;
   visibility: hidden;
   white-space: normal;
+}
+
+.milo-tooltip {
+  position: fixed;
+  z-index: var(--overlay-tooltip);
+  width: max-content;
+  max-width: min(220px, calc(100vw - 16px));
+  padding: 5px 7px;
+  color: #f6f7f8;
+  background: #2c2e31;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: var(--floating-radius-sm);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 18%);
+  font-size: 12px;
+  line-height: 1.25;
+  pointer-events: none;
+  animation: milo-tooltip-in 100ms ease-out;
+}
+
+body:has(.preferences-dialog__portal) .milo-tooltip {
+  display: none;
+}
+
+@keyframes milo-tooltip-in {
+  from { opacity: 0; transform: translateY(-3px); }
 }
 
 .icon-button-shell:hover .icon-button__tooltip,
@@ -923,7 +1110,7 @@ button:focus-visible,
 
 .focus-mode-outline-trigger {
   position: fixed;
-  z-index: 60;
+  z-index: var(--overlay-sticky-chrome);
   top: 16px;
   right: 16px;
   display: grid;
@@ -1442,7 +1629,7 @@ button:focus-visible,
      WKWebView a fixed child of the latter can be present in the AX tree while
      its paint and hit-test bounds collapse to the document-stage. */
   position: absolute;
-  z-index: 70;
+  z-index: var(--overlay-drawer);
   inset: 0;
   isolation: isolate;
   pointer-events: none;
@@ -1458,7 +1645,7 @@ button:focus-visible,
    viewport CSS pixels too, including Milo's font-based zoom settings. */
 .contextual-overlay-layer {
   position: fixed;
-  z-index: 80;
+  z-index: var(--overlay-popover);
   inset: 0;
   pointer-events: none;
   isolation: isolate;
@@ -2848,6 +3035,8 @@ button:focus-visible,
   --soft-fill: rgb(255 255 255 / 8%);
   --hover-fill: rgb(255 255 255 / 12%);
   --focus-ring: #80b2f5;
+  --floating-shadow: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 8px rgb(0 0 0 / 24%);
+  --dialog-backdrop: rgb(5 7 10 / 50%);
   color-scheme: dark;
 }
 
@@ -2862,7 +3051,6 @@ button:focus-visible,
 }
 
 .app-shell[data-color-scheme="dark"] .close-confirmation,
-.app-shell[data-color-scheme="dark"] .preferences-popover,
 .app-shell[data-color-scheme="dark"] .application-more-menu__surface,
 .app-shell[data-color-scheme="dark"] .editor-context-menu,
 .app-shell[data-color-scheme="dark"] .block-menu,
