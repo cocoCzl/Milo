@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { clampDocumentZoom, clampInterfaceZoom, clampSidebarWidth, defaultApplicationSettings, normalizeAppearancePreference, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './applicationSettings'
+import { clampDocumentZoom, clampInterfaceZoom, clampSidebarWidth, defaultApplicationSettings, normalizeAppearancePreference, normalizeDocumentFontStyle, normalizeLineHeight, normalizeReadingWidth, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './applicationSettings'
 
 describe('Application Settings', () => {
   it('starts with system appearance, system locale, and readable zoom defaults', () => {
     expect(defaultApplicationSettings).toEqual({
-      settingsVersion: 4,
+      settingsVersion: 5,
       appearance: 'system',
       locale: 'system',
       documentZoom: 100,
       interfaceZoom: 120,
+      documentFontStyle: 'sans',
+      readingWidth: 'standard',
+      lineHeight: 'standard',
       currentFolder: null,
       recentFiles: [],
       recentFolders: [],
@@ -46,5 +49,16 @@ describe('Application Settings', () => {
     expect(normalizeAppearancePreference('warm')).toBe('warm')
     expect(normalizeAppearancePreference('midnight')).toBe('system')
     expect(normalizeAppearancePreference(null)).toBe('system')
+  })
+
+  it('normalizes semantic reading preferences without storing presentation numbers', () => {
+    expect(normalizeDocumentFontStyle('serif')).toBe('serif')
+    expect(normalizeDocumentFontStyle('comic')).toBe('sans')
+    expect(normalizeReadingWidth('narrow')).toBe('narrow')
+    expect(normalizeReadingWidth('wide')).toBe('wide')
+    expect(normalizeReadingWidth(920)).toBe('standard')
+    expect(normalizeLineHeight('compact')).toBe('compact')
+    expect(normalizeLineHeight('relaxed')).toBe('relaxed')
+    expect(normalizeLineHeight(1.82)).toBe('standard')
   })
 })

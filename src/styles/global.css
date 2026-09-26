@@ -137,8 +137,12 @@ button:focus-visible,
   --ui-font-md: var(--font-ui-sm);
   --ui-font-sm: var(--font-ui-xs);
   --ui-font-xs: 10px;
-  --editor-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --editor-sans-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --editor-serif-font-family: ui-serif, "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", SimSun, Georgia, serif;
+  --editor-body-font-family: var(--editor-sans-font-family);
+  --editor-heading-font-family: var(--editor-sans-font-family);
   --editor-font-size: 16.5px;
+  --editor-line-height: 1.7;
   --editor-heading-line-height: 1.22;
   --editor-heading-space-before: var(--editor-font-size);
   --reading-width: 820px;
@@ -160,6 +164,15 @@ button:focus-visible,
   background: var(--canvas);
   color-scheme: light;
 }
+
+.app-shell[data-document-font-style="serif"] {
+  --editor-body-font-family: var(--editor-serif-font-family);
+}
+
+.app-shell[data-reading-width="narrow"] { --reading-width: 720px; }
+.app-shell[data-reading-width="wide"] { --reading-width: 920px; }
+.app-shell[data-line-height="compact"] { --editor-line-height: 1.58; }
+.app-shell[data-line-height="relaxed"] { --editor-line-height: 1.82; }
 
 .app-shell[data-theme="dark"] {
   --bg-app: #191a1d;
@@ -2421,10 +2434,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 
 .milkdown-editor__placeholder {
   color: var(--subtle-ink);
-  font-family: var(--editor-font-family);
+  font-family: var(--editor-body-font-family);
   font-size: var(--editor-font-size);
   letter-spacing: 0;
-  line-height: 1.7;
+  line-height: var(--editor-line-height);
 }
 
 .milkdown-editor__hint {
@@ -2456,9 +2469,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   outline: 0;
   direction: ltr;
   text-align: left;
-  font-family: var(--editor-font-family);
+  font-family: var(--editor-body-font-family);
   font-size: var(--editor-font-size);
-  line-height: 1.7;
+  line-height: var(--editor-line-height);
   letter-spacing: 0;
 }
 
@@ -2482,7 +2495,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .milkdown .ProseMirror h5,
 .milkdown .ProseMirror h6 {
   color: var(--ink);
-  font-family: var(--editor-font-family);
+  font-family: var(--editor-heading-font-family);
   letter-spacing: -0.035em;
   line-height: var(--editor-heading-line-height);
   margin-top: var(--editor-heading-space-before);
@@ -2919,7 +2932,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   border-collapse: separate;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: var(--editor-heading-font-family);
   font-size: inherit;
   letter-spacing: -0.006em;
   line-height: 1.5;

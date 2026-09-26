@@ -3,6 +3,9 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 export type AppearancePreference = 'system' | 'light' | 'dark' | 'warm'
 export type ResolvedTheme = 'light' | 'dark' | 'warm'
 export type InterfaceLocale = 'system' | 'en' | 'zh-CN'
+export type DocumentFontStyle = 'sans' | 'serif'
+export type ReadingWidthPreference = 'narrow' | 'standard' | 'wide'
+export type LineHeightPreference = 'compact' | 'standard' | 'relaxed'
 
 export type StartupSession = {
   activeDocumentPath: string | null
@@ -15,6 +18,9 @@ export type ApplicationSettings = {
   locale: InterfaceLocale
   documentZoom: number
   interfaceZoom: number
+  documentFontStyle: DocumentFontStyle
+  readingWidth: ReadingWidthPreference
+  lineHeight: LineHeightPreference
   currentFolder: string | null
   recentFiles: string[]
   recentFolders: string[]
@@ -28,11 +34,14 @@ export const SIDEBAR_MIN_WIDTH = 208
 export const SIDEBAR_MAX_WIDTH = 320
 
 export const defaultApplicationSettings: ApplicationSettings = {
-  settingsVersion: 4,
+  settingsVersion: 5,
   appearance: 'system',
   locale: 'system',
   documentZoom: 100,
   interfaceZoom: 120,
+  documentFontStyle: 'sans',
+  readingWidth: 'standard',
+  lineHeight: 'standard',
   currentFolder: null,
   recentFiles: [],
   recentFolders: [],
@@ -75,4 +84,16 @@ export function normalizeAppearancePreference(value: unknown): AppearancePrefere
   return value === 'light' || value === 'dark' || value === 'warm' || value === 'system'
     ? value
     : 'system'
+}
+
+export function normalizeDocumentFontStyle(value: unknown): DocumentFontStyle {
+  return value === 'serif' ? 'serif' : 'sans'
+}
+
+export function normalizeReadingWidth(value: unknown): ReadingWidthPreference {
+  return value === 'narrow' || value === 'wide' ? value : 'standard'
+}
+
+export function normalizeLineHeight(value: unknown): LineHeightPreference {
+  return value === 'compact' || value === 'relaxed' ? value : 'standard'
 }

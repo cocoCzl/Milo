@@ -3,7 +3,7 @@ use std::{fs, io::Write, path::{Path, PathBuf}};
 use tauri::{AppHandle, Manager};
 
 const SETTINGS_FILE_NAME: &str = "settings.json";
-const CURRENT_SETTINGS_VERSION: u8 = 4;
+const CURRENT_SETTINGS_VERSION: u8 = 5;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -48,6 +48,32 @@ pub enum InterfaceLocale {
     SimplifiedChinese,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocumentFontStyle {
+    Serif,
+    #[serde(other)]
+    Sans,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReadingWidthPreference {
+    Narrow,
+    Wide,
+    #[serde(other)]
+    Standard,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineHeightPreference {
+    Compact,
+    Relaxed,
+    #[serde(other)]
+    Standard,
+}
+
 #[derive(Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct StartupSession {
@@ -64,6 +90,9 @@ pub struct ApplicationSettings {
     pub locale: InterfaceLocale,
     pub document_zoom: u8,
     pub interface_zoom: u8,
+    pub document_font_style: DocumentFontStyle,
+    pub reading_width: ReadingWidthPreference,
+    pub line_height: LineHeightPreference,
     pub current_folder: Option<String>,
     pub recent_files: Vec<String>,
     pub recent_folders: Vec<String>,
@@ -80,6 +109,9 @@ impl Default for ApplicationSettings {
             locale: InterfaceLocale::System,
             document_zoom: 100,
             interface_zoom: 120,
+            document_font_style: DocumentFontStyle::Sans,
+            reading_width: ReadingWidthPreference::Standard,
+            line_height: LineHeightPreference::Standard,
             current_folder: None,
             recent_files: Vec::new(),
             recent_folders: Vec::new(),
@@ -188,7 +220,7 @@ fn write_settings(path: &Path, settings: &ApplicationSettings) -> Result<(), Str
 
 #[cfg(test)]
 mod tests {
-    use super::{read_settings, write_settings, ApplicationSettings, AppearancePreference, InterfaceLocale, StartupSession, CURRENT_SETTINGS_VERSION};
+    use super::{read_settings, write_settings, ApplicationSettings, AppearancePreference, DocumentFontStyle, InterfaceLocale, LineHeightPreference, ReadingWidthPreference, StartupSession, CURRENT_SETTINGS_VERSION};
     use std::{fs, time::{SystemTime, UNIX_EPOCH}};
 
     #[test]
@@ -204,6 +236,9 @@ mod tests {
             locale: InterfaceLocale::SimplifiedChinese,
             document_zoom: 140,
             interface_zoom: 120,
+            document_font_style: DocumentFontStyle::Serif,
+            reading_width: ReadingWidthPreference::Wide,
+            line_height: LineHeightPreference::Relaxed,
             current_folder: Some("/tmp/milo".to_owned()),
             recent_files: vec!["/tmp/milo/note.md".to_owned()],
             recent_folders: vec!["/tmp/milo".to_owned()],
@@ -222,6 +257,9 @@ mod tests {
         assert!(matches!(restored.locale, InterfaceLocale::SimplifiedChinese));
         assert_eq!(restored.document_zoom, 140);
         assert_eq!(restored.interface_zoom, 120);
+        assert!(matches!(restored.document_font_style, DocumentFontStyle::Serif));
+        assert!(matches!(restored.reading_width, ReadingWidthPreference::Wide));
+        assert!(matches!(restored.line_height, LineHeightPreference::Relaxed));
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -311,6 +349,58 @@ mod tests {
         assert_eq!(migrated.startup_session.active_document_path.as_deref(), Some("/tmp/milo/a.md"));
         assert_eq!(migrated.sidebar_width, 300);
         assert!(!migrated.sidebar_visible);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn version_four_settings_gain_reading_defaults_without_losing_existing_preferences() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-settings-v4-reading-migration-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let settings_path = directory.join("settings.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            &settings_path,
+            r#"{"settingsVersion":4,"appearance":"warm","locale":"zh-CN","documentZoom":130,"interfaceZoom":125,"currentFolder":"/tmp/milo","recentFiles":["/tmp/milo/a.md"],"recentFolders":["/tmp/milo"],"sidebarVisible":false,"sidebarWidth":300,"startupSession":{"activeDocumentPath":"/tmp/milo/a.md","openDocumentPaths":["/tmp/milo/a.md"]}}"#,
+        ).unwrap();
+
+        let migrated = read_settings(&settings_path).unwrap();
+        assert_eq!(migrated.settings_version, CURRENT_SETTINGS_VERSION);
+        assert!(matches!(migrated.document_font_style, DocumentFontStyle::Sans));
+        assert!(matches!(migrated.reading_width, ReadingWidthPreference::Standard));
+        assert!(matches!(migrated.line_height, LineHeightPreference::Standard));
+        assert!(matches!(migrated.appearance, AppearancePreference::Warm));
+        assert_eq!(migrated.document_zoom, 130);
+        assert_eq!(migrated.interface_zoom, 125);
+        assert_eq!(migrated.sidebar_width, 300);
+        assert!(!migrated.sidebar_visible);
+        assert_eq!(migrated.recent_files, vec!["/tmp/milo/a.md"]);
+        assert_eq!(migrated.startup_session.active_document_path.as_deref(), Some("/tmp/milo/a.md"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn invalid_reading_preferences_fall_back_without_resetting_other_settings() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-settings-reading-fallback-test-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let settings_path = directory.join("settings.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            &settings_path,
+            r#"{"settingsVersion":5,"appearance":"dark","locale":"en","documentZoom":120,"interfaceZoom":115,"documentFontStyle":"comic","readingWidth":"cinema","lineHeight":"double","currentFolder":"/tmp/milo","recentFiles":["/tmp/milo/a.md"],"recentFolders":["/tmp/milo"],"sidebarVisible":false,"sidebarWidth":280,"startupSession":{"activeDocumentPath":"/tmp/milo/a.md","openDocumentPaths":["/tmp/milo/a.md"]}}"#,
+        ).unwrap();
+
+        let restored = read_settings(&settings_path).unwrap();
+        assert!(matches!(restored.document_font_style, DocumentFontStyle::Sans));
+        assert!(matches!(restored.reading_width, ReadingWidthPreference::Standard));
+        assert!(matches!(restored.line_height, LineHeightPreference::Standard));
+        assert!(matches!(restored.appearance, AppearancePreference::Dark));
+        assert_eq!(restored.document_zoom, 120);
+        assert_eq!(restored.sidebar_width, 280);
+        assert_eq!(restored.recent_files, vec!["/tmp/milo/a.md"]);
         fs::remove_dir_all(directory).unwrap();
     }
 

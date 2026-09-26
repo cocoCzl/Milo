@@ -7,10 +7,16 @@ import {
   defaultApplicationSettings,
   loadApplicationSettings,
   normalizeAppearancePreference,
+  normalizeDocumentFontStyle,
+  normalizeLineHeight,
+  normalizeReadingWidth,
   saveApplicationSettings,
   type ApplicationSettings,
   type AppearancePreference,
   type InterfaceLocale,
+  type DocumentFontStyle,
+  type LineHeightPreference,
+  type ReadingWidthPreference,
   type StartupSession,
 } from './applicationSettings'
 
@@ -81,6 +87,18 @@ export function useApplicationSettings() {
     updateSettings({ interfaceZoom: clampInterfaceZoom(interfaceZoom) })
   }, [updateSettings])
 
+  const setDocumentFontStyle = useCallback((documentFontStyle: DocumentFontStyle) => {
+    updateSettings({ documentFontStyle })
+  }, [updateSettings])
+
+  const setReadingWidth = useCallback((readingWidth: ReadingWidthPreference) => {
+    updateSettings({ readingWidth })
+  }, [updateSettings])
+
+  const setLineHeight = useCallback((lineHeight: LineHeightPreference) => {
+    updateSettings({ lineHeight })
+  }, [updateSettings])
+
   const updateWorkspaceSettings = useCallback((update: Partial<Pick<ApplicationSettings, 'currentFolder' | 'recentFiles' | 'recentFolders' | 'sidebarVisible' | 'sidebarWidth'>>) => {
     updateSettings(update)
   }, [updateSettings])
@@ -92,8 +110,11 @@ export function useApplicationSettings() {
   return {
     setAppearance,
     setDocumentZoom,
+    setDocumentFontStyle,
     setInterfaceZoom,
+    setLineHeight,
     setLocale,
+    setReadingWidth,
     settings,
     settingsError,
     isLoading,
@@ -106,8 +127,11 @@ function normalizeSettings(settings: ApplicationSettings): ApplicationSettings {
   const merged = { ...defaultApplicationSettings, ...settings }
   return {
     ...merged,
-    settingsVersion: 4,
+    settingsVersion: 5,
     appearance: normalizeAppearancePreference(merged.appearance),
+    documentFontStyle: normalizeDocumentFontStyle(merged.documentFontStyle),
+    readingWidth: normalizeReadingWidth(merged.readingWidth),
+    lineHeight: normalizeLineHeight(merged.lineHeight),
     documentZoom: clampDocumentZoom(merged.documentZoom),
     interfaceZoom: clampInterfaceZoom(merged.interfaceZoom),
     sidebarWidth: clampSidebarWidth(merged.sidebarWidth),

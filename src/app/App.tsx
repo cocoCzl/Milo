@@ -26,7 +26,7 @@ type DocumentViewState = {
 const SIDEBAR_RESPONSIVE_QUERY = '(max-width: 900px)'
 
 export function App() {
-  const { isLoading, setAppearance, setDocumentZoom, setInterfaceZoom, setLocale, setStartupSession, settings, settingsError, updateWorkspaceSettings } = useApplicationSettings()
+  const { isLoading, setAppearance, setDocumentFontStyle, setDocumentZoom, setInterfaceZoom, setLineHeight, setLocale, setReadingWidth, setStartupSession, settings, settingsError, updateWorkspaceSettings } = useApplicationSettings()
   const locale = resolveLocale(settings.locale)
   const copy = useMemo(() => interfaceCopy(locale), [locale])
   const session = useDocumentSession(copy.untitled)
@@ -399,6 +399,9 @@ export function App() {
       data-appearance={settings.appearance}
       data-theme={colorScheme}
       data-color-scheme={colorScheme}
+      data-document-font-style={settings.documentFontStyle}
+      data-line-height={settings.lineHeight}
+      data-reading-width={settings.readingWidth}
       lang={locale}
       style={appStyle}
     >
@@ -596,6 +599,8 @@ export function App() {
           appearanceSection: copy.preferencesAppearance,
           close: copy.closePreferences,
           dark: copy.dark,
+          documentFont: copy.documentFont,
+          editingSection: copy.preferencesReading,
           decreaseDocumentSize: copy.decreaseZoom,
           decreaseInterfaceSize: copy.decreaseInterfaceSize,
           displaySection: copy.preferencesDisplay,
@@ -604,22 +609,38 @@ export function App() {
           increaseInterfaceSize: copy.increaseInterfaceSize,
           interfaceSize: copy.interfaceSize,
           language: copy.language,
+          lineHeight: copy.lineHeight,
+          lineHeightCompact: copy.lineHeightCompact,
+          lineHeightRelaxed: copy.lineHeightRelaxed,
+          lineHeightStandard: copy.lineHeightStandard,
           light: copy.light,
           system: copy.system,
+          readingSerif: copy.readingSerif,
+          readingWidth: copy.readingWidth,
+          readingWidthNarrow: copy.readingWidthNarrow,
+          readingWidthStandard: copy.readingWidthStandard,
+          readingWidthWide: copy.readingWidthWide,
+          systemSans: copy.systemSans,
           title: copy.preferences,
           warm: copy.warm,
         }}
         documentZoom={settings.documentZoom}
+        documentFontStyle={settings.documentFontStyle}
         error={settingsError}
         interfaceZoom={settings.interfaceZoom}
+        lineHeight={settings.lineHeight}
         locale={settings.locale}
         onAppearanceChange={setAppearance}
         onDocumentZoomChange={setDocumentZoom}
+        onDocumentFontStyleChange={setDocumentFontStyle}
         onInterfaceZoomChange={setInterfaceZoom}
         onLocaleChange={setLocale}
+        onLineHeightChange={setLineHeight}
         onOpenChange={setPreferencesOpen}
+        onReadingWidthChange={setReadingWidth}
         open={preferencesOpen}
         portalContainer={preferencesDialogMount}
+        readingWidth={settings.readingWidth}
         returnFocusRef={preferencesReturnFocusRef}
         theme={colorScheme}
       />
@@ -662,14 +683,14 @@ function resolveLocale(locale: InterfaceLocale): 'en' | 'zh-CN' {
 function interfaceCopy(locale: 'en' | 'zh-CN') {
   return locale === 'zh-CN'
     ? {
-        appLabel: 'Milo Markdown 编辑器', appearance: '外观', dark: '深色', decreaseInterfaceSize: '缩小界面字体', decreaseZoom: '缩小正文字体', increaseInterfaceSize: '放大界面字体', increaseZoom: '放大正文字体', interfaceSize: '界面字号', warm: '米色',
+        appLabel: 'Milo Markdown 编辑器', appearance: '外观', dark: '深色', decreaseInterfaceSize: '缩小界面大小', decreaseZoom: '缩小文档大小', increaseInterfaceSize: '放大界面大小', increaseZoom: '放大文档大小', interfaceSize: '界面大小', warm: '米色',
         closeConfirmation: (title: string) => `关闭“${title}”？`, closeDocument: (title: string) => `关闭 ${title}`,
         currentDocument: '当前文档', discardChanges: '放弃更改', externalChange: '外部更改',
         externalChangesDetected: '检测到外部更改', folderBrowseFailed: '无法读取这个文件夹。',
         edit: '编辑', read: '阅读', emptyDocumentTitle: '打开一篇文档', emptyDocumentDescription: '打开现有 Markdown 文件或文件夹，开始继续写作。', enterFocusMode: '进入专注模式', exitFocusMode: '退出专注模式', hideSidebar: '隐藏侧边栏', showSidebar: '显示侧边栏', sidebarUnavailable: '当前窗口宽度下侧边栏不可用', openFolder: '打开文件夹', openOutline: '打开大纲',
         keepEditing: '继续编辑', lastSaveFailed: '上次保存失败。请保持文档打开、另存为，或放弃内存中的更改。', notSaved: '尚未保存',
         language: '语言', light: '浅色', moreActions: '更多操作', newDocument: '新建文档', openDocument: '打开文档',
-        closePreferences: '关闭偏好设置', openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置', preferencesAppearance: '外观', preferencesDisplay: '显示',
+        closePreferences: '关闭偏好设置', documentFont: '正文字体', lineHeight: '行距', lineHeightCompact: '紧凑', lineHeightRelaxed: '宽松', lineHeightStandard: '标准', openDocuments: '打开的文档', overwriteExternal: '覆盖外部版本', preferences: '偏好设置', preferencesAppearance: '外观', preferencesDisplay: '显示', preferencesReading: '阅读与编辑', readingSerif: '衬线（宋体风格）', readingWidth: '阅读宽度', readingWidthNarrow: '窄', readingWidthStandard: '标准', readingWidthWide: '宽', systemSans: '无衬线',
         protectedDocument: '受保护的文档', protectedDocumentDescription: '为保护此文件，已设为只读', protectedSave: '受保护的文档无法在 Milo 中保存',
         protectionReason: (reason: string) => reason ? '此文档包含原始 HTML，Milo 暂时无法在所见即所得模式中安全保留这部分内容。' : '',
         reloadFile: '重新载入文件', retainLocal: '保留本地更改', saveAndClose: '保存并关闭',
@@ -677,7 +698,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         saving: '正在保存', savingSoon: '即将保存', system: '跟随系统', tryAgain: '重试',
         unsavedChanges: '此文档有未保存的更改。', unsavedStatus: '未保存的更改', untitled: '未命名',
         pausedSaving: 'Milo 已暂停保存，避免本地编辑覆盖文件。', retainedSaving: '保留本地编辑期间，自动保存已暂停。',
-        zoom: '正文字号',
+        zoom: '文档大小',
         editorLabel: (title: string) => `${title} Markdown 文档`,
         sidebar: {
           changeFolder: '更换', chooseFolder: '选择文件夹', clearRecent: '清空', currentFolder: '当前文件夹', empty: '打开一个文件夹，在这里浏览 Markdown 文件。', emptyFolder: '还没有选择文件夹',
@@ -706,7 +727,7 @@ function interfaceCopy(locale: 'en' | 'zh-CN') {
         edit: 'Edit', read: 'Read', emptyDocumentTitle: 'Open a document', emptyDocumentDescription: 'Open a Markdown file or folder to continue writing.', enterFocusMode: 'Enter focus mode', exitFocusMode: 'Exit focus mode', hideSidebar: 'Hide sidebar', showSidebar: 'Show sidebar', sidebarUnavailable: 'Sidebar unavailable at this window width', openFolder: 'Open folder', openOutline: 'Open outline',
         keepEditing: 'Keep editing', lastSaveFailed: 'The last save failed. Keep the document open, save it elsewhere, or discard the in-memory changes.', notSaved: 'Not saved',
         language: 'Language', light: 'Light', moreActions: 'More actions', newDocument: 'New document', openDocument: 'Open document',
-        closePreferences: 'Close preferences', openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences', preferencesAppearance: 'Appearance', preferencesDisplay: 'Display',
+        closePreferences: 'Close preferences', documentFont: 'Document font', lineHeight: 'Line spacing', lineHeightCompact: 'Compact', lineHeightRelaxed: 'Relaxed', lineHeightStandard: 'Standard', openDocuments: 'Open documents', overwriteExternal: 'Overwrite external version', preferences: 'Preferences', preferencesAppearance: 'Appearance', preferencesDisplay: 'Display', preferencesReading: 'Reading & Editing', readingSerif: 'Serif (Songti style)', readingWidth: 'Reading width', readingWidthNarrow: 'Narrow', readingWidthStandard: 'Standard', readingWidthWide: 'Wide', systemSans: 'Sans Serif',
         protectedDocument: 'Protected Markdown document', protectedDocumentDescription: 'Read-only to protect this file', protectedSave: 'Protected documents cannot be saved from Milo',
         protectionReason: (reason: string) => reason,
         reloadFile: 'Reload file', retainLocal: 'Keep local edits', saveAndClose: 'Save and close',

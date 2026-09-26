@@ -193,6 +193,9 @@ describe('App', () => {
 
   it('updates and persists global preferences without touching the document', async () => {
     const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    const editor = screen.getByRole('textbox', { name: 'Untitled Markdown document' })
+    const originalMarkdown = editor.getAttribute('data-markdown')
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
@@ -203,8 +206,14 @@ describe('App', () => {
     expect(app).toHaveAttribute('data-appearance', 'system')
     expect(app).toHaveAttribute('data-theme', 'light')
     expect(app).toHaveAttribute('data-color-scheme', 'light')
+    expect(app).toHaveAttribute('data-document-font-style', 'sans')
+    expect(app).toHaveAttribute('data-reading-width', 'standard')
+    expect(app).toHaveAttribute('data-line-height', 'standard')
     expect(app).toHaveStyle({ '--editor-font-size': '18.15px' })
     expect(app).toHaveStyle({ '--ui-font-lg': '16.9px' })
+    expect(editor).toHaveAttribute('data-markdown', originalMarkdown)
+    expect(editorMocks.markdownChanges.size).toBe(1)
+    expect(container.querySelector('.document-context')).toHaveTextContent('Not saved')
 
     await waitFor(() => {
       expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -217,6 +226,36 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
+  })
+
+  it('applies persisted reading preferences as presentation-only shell attributes', async () => {
+    preferenceMocks.load.mockResolvedValue({
+      settingsVersion: 5,
+      appearance: 'dark',
+      locale: 'en',
+      documentZoom: 100,
+      interfaceZoom: 120,
+      documentFontStyle: 'serif',
+      readingWidth: 'narrow',
+      lineHeight: 'relaxed',
+    })
+    const { container } = render(<App />)
+    const app = screen.getByRole('main', { name: 'Milo Markdown editor' })
+    await waitFor(() => expect(app).toHaveAttribute('data-document-font-style', 'serif'))
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+
+    expect(app).toHaveAttribute('data-reading-width', 'narrow')
+    expect(app).toHaveAttribute('data-line-height', 'relaxed')
+    expect(app).toHaveStyle({ '--editor-font-size': '16.5px' })
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-markdown', '')
+    expect(container.querySelector('.document-context')).toHaveTextContent('Not saved')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read' }))
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-presentation-mode', 'read')
+    expect(app).toHaveAttribute('data-document-font-style', 'serif')
+    expect(app).toHaveAttribute('data-reading-width', 'narrow')
+    expect(app).toHaveAttribute('data-line-height', 'relaxed')
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-markdown', '')
   })
 
   it('persists individual removal and clearing of recent records', async () => {

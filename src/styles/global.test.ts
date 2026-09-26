@@ -12,10 +12,27 @@ afterEach(() => {
 
 describe('editor typography baseline', () => {
   it('defines the Variant C body typography without changing the accepted rhythm', () => {
-    expect(globalCss).toContain('--editor-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;')
+    expect(globalCss).toContain('--editor-sans-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;')
+    expect(globalCss).toContain('--editor-serif-font-family: ui-serif, "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", SimSun, Georgia, serif;')
+    expect(globalCss).toContain('--editor-body-font-family: var(--editor-sans-font-family);')
+    expect(globalCss).toContain('--editor-heading-font-family: var(--editor-sans-font-family);')
     expect(globalCss).toContain('--editor-font-size: 16.5px;')
-    expect(globalCss).toMatch(/\.milkdown \.ProseMirror \{[^}]*font-family: var\(--editor-font-family\);[^}]*font-size: var\(--editor-font-size\);[^}]*line-height: 1\.7;[^}]*letter-spacing: 0;/s)
+    expect(globalCss).toContain('--editor-line-height: 1.7;')
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror \{[^}]*font-family: var\(--editor-body-font-family\);[^}]*font-size: var\(--editor-font-size\);[^}]*line-height: var\(--editor-line-height\);[^}]*letter-spacing: 0;/s)
     expect(globalCss).toMatch(/\.milkdown \.ProseMirror > p:has\(\+ p\) \{\s*margin-bottom: 0\.75em;\s*\}/)
+  })
+
+  it('maps semantic reading preferences while keeping structured content typography stable', () => {
+    expect(globalCss).toMatch(/\.app-shell\[data-document-font-style="serif"\] \{\s*--editor-body-font-family: var\(--editor-serif-font-family\);\s*\}/)
+    expect(globalCss).toContain('--reading-width: 820px;')
+    expect(globalCss).toMatch(/\.app-shell\[data-reading-width="narrow"\] \{ --reading-width: 720px; \}/)
+    expect(globalCss).toMatch(/\.app-shell\[data-reading-width="wide"\] \{ --reading-width: 920px; \}/)
+    expect(globalCss).toMatch(/\.app-shell\[data-line-height="compact"\] \{ --editor-line-height: 1\.58; \}/)
+    expect(globalCss).toMatch(/\.app-shell\[data-line-height="relaxed"\] \{ --editor-line-height: 1\.82; \}/)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror h1,[\s\S]*?\.milkdown \.ProseMirror h6 \{[^}]*font-family: var\(--editor-heading-font-family\);[^}]*line-height: var\(--editor-heading-line-height\);/s)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror table \{[^}]*font-family: var\(--editor-heading-font-family\);[^}]*font-size: inherit;[^}]*line-height: 1\.5;/s)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror code \{[^}]*font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;/s)
+    expect(globalCss).toMatch(/\.milkdown \.ProseMirror \.code-block-card__content \{[^}]*font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;[^}]*font-size: 0\.77em;[^}]*line-height: 1\.62;/s)
   })
 
   it('authors every heading level instead of falling back to WebKit defaults', () => {

@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Minus, Plus, X } from 'lucide-react'
 import { useRef, type CSSProperties, type RefObject } from 'react'
 
-import type { AppearancePreference, InterfaceLocale, ResolvedTheme } from '../settings/applicationSettings'
+import type { AppearancePreference, DocumentFontStyle, InterfaceLocale, LineHeightPreference, ReadingWidthPreference, ResolvedTheme } from '../settings/applicationSettings'
 import { Select } from './Select'
 
 type PreferencesDialogCopy = {
@@ -10,12 +10,24 @@ type PreferencesDialogCopy = {
   appearanceSection: string
   close: string
   dark: string
+  documentFont: string
+  editingSection: string
   displaySection: string
   documentSize: string
   interfaceSize: string
   language: string
+  lineHeight: string
+  lineHeightCompact: string
+  lineHeightRelaxed: string
+  lineHeightStandard: string
   light: string
   system: string
+  readingSerif: string
+  readingWidth: string
+  readingWidthNarrow: string
+  readingWidthStandard: string
+  readingWidthWide: string
+  systemSans: string
   title: string
   warm: string
   decreaseInterfaceSize: string
@@ -28,21 +40,27 @@ type PreferencesDialogProps = {
   appearance: AppearancePreference
   copy: PreferencesDialogCopy
   documentZoom: number
+  documentFontStyle: DocumentFontStyle
   error: string | null
   interfaceZoom: number
   locale: InterfaceLocale
+  lineHeight: LineHeightPreference
+  readingWidth: ReadingWidthPreference
   onAppearanceChange: (appearance: AppearancePreference) => void
   onDocumentZoomChange: (zoom: number) => void
+  onDocumentFontStyleChange: (style: DocumentFontStyle) => void
   onInterfaceZoomChange: (zoom: number) => void
   onLocaleChange: (locale: InterfaceLocale) => void
+  onLineHeightChange: (lineHeight: LineHeightPreference) => void
   onOpenChange: (open: boolean) => void
+  onReadingWidthChange: (width: ReadingWidthPreference) => void
   open: boolean
   portalContainer: HTMLElement | null
   returnFocusRef: RefObject<HTMLElement | null>
   theme: ResolvedTheme
 }
 
-export function PreferencesDialog({ appearance, copy, documentZoom, error, interfaceZoom, locale, onAppearanceChange, onDocumentZoomChange, onInterfaceZoomChange, onLocaleChange, onOpenChange, open, portalContainer, returnFocusRef, theme }: PreferencesDialogProps) {
+export function PreferencesDialog({ appearance, copy, documentFontStyle, documentZoom, error, interfaceZoom, lineHeight, locale, onAppearanceChange, onDocumentFontStyleChange, onDocumentZoomChange, onInterfaceZoomChange, onLineHeightChange, onLocaleChange, onOpenChange, onReadingWidthChange, open, portalContainer, readingWidth, returnFocusRef, theme }: PreferencesDialogProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const portalStyle = {
     '--ui-font-lg': `${Number((13 * (interfaceZoom / 100)).toFixed(2))}px`,
@@ -107,6 +125,52 @@ export function PreferencesDialog({ appearance, copy, documentZoom, error, inter
                     portalContainer={portalContainer}
                     value={locale}
                     onValueChange={(value) => onLocaleChange(value as InterfaceLocale)}
+                  />
+                </label>
+              </div>
+            </section>
+            <section className="preferences-dialog__section" aria-labelledby="preferences-reading-heading">
+              <h3 id="preferences-reading-heading">{copy.editingSection}</h3>
+              <div className="preferences-dialog__rows">
+                <label className="preferences-dialog__row">
+                  <span>{copy.documentFont}</span>
+                  <Select
+                    aria-label={copy.documentFont}
+                    options={[
+                      { label: copy.systemSans, value: 'sans' },
+                      { label: copy.readingSerif, value: 'serif' },
+                    ]}
+                    portalContainer={portalContainer}
+                    value={documentFontStyle}
+                    onValueChange={(value) => onDocumentFontStyleChange(value as DocumentFontStyle)}
+                  />
+                </label>
+                <label className="preferences-dialog__row">
+                  <span>{copy.readingWidth}</span>
+                  <Select
+                    aria-label={copy.readingWidth}
+                    options={[
+                      { label: copy.readingWidthNarrow, value: 'narrow' },
+                      { label: copy.readingWidthStandard, value: 'standard' },
+                      { label: copy.readingWidthWide, value: 'wide' },
+                    ]}
+                    portalContainer={portalContainer}
+                    value={readingWidth}
+                    onValueChange={(value) => onReadingWidthChange(value as ReadingWidthPreference)}
+                  />
+                </label>
+                <label className="preferences-dialog__row">
+                  <span>{copy.lineHeight}</span>
+                  <Select
+                    aria-label={copy.lineHeight}
+                    options={[
+                      { label: copy.lineHeightCompact, value: 'compact' },
+                      { label: copy.lineHeightStandard, value: 'standard' },
+                      { label: copy.lineHeightRelaxed, value: 'relaxed' },
+                    ]}
+                    portalContainer={portalContainer}
+                    value={lineHeight}
+                    onValueChange={(value) => onLineHeightChange(value as LineHeightPreference)}
                   />
                 </label>
               </div>
