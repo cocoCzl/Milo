@@ -62,7 +62,7 @@ export function EditorOutline({ activePosition, closeLabel, drawer, emptyLabel, 
               <li key={heading.key}>
                 <button
                   aria-current={heading.pos === activePosition ? 'location' : undefined}
-                  className={`editor-outline__item editor-outline__item--level-${Math.min(heading.level, 3)}${heading.pos === activePosition ? ' editor-outline__item--active' : ''}`}
+                  className={`editor-outline__item editor-outline__item--level-${Math.min(Math.max(heading.level, 1), 6)}${heading.pos === activePosition ? ' editor-outline__item--active' : ''}`}
                   data-heading-id={heading.id}
                   data-heading-key={heading.key}
                   data-heading-pos={heading.pos}

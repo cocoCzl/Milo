@@ -82,6 +82,32 @@ describe('application shell foundation', () => {
     expect(globalCss).toMatch(/\.app-shell--focus-mode \.editor-outline--drawer \{[^}]*top: 0;/s)
     expect(globalCss).toMatch(/\.app-shell--focus-mode \.outline-backdrop \{[^}]*inset: 0;/s)
   })
+
+  it('polishes inline and drawer outlines without changing their layout roles', () => {
+    expect(globalCss).toContain('--outline-width: 230px;')
+    expect(globalCss).toMatch(/\.editor-outline--drawer \{[^}]*width: min\(280px, calc\(100vw - 24px\)\);/s)
+    expect(globalCss).toMatch(/\.editor-outline \{[^}]*background: var\(--surface-outline\);/s)
+    expect(globalCss).toMatch(/\.editor-outline__header \{[^}]*height: var\(--document-context-height\);[^}]*border-bottom: 1px solid var\(--context-line\);/s)
+    expect(globalCss).toMatch(/\.editor-outline__item \{[^}]*position: relative;[^}]*min-height: 32px;/s)
+    expect(globalCss).toMatch(/\.editor-outline__item--active::before \{[^}]*width: 2px;[^}]*background: var\(--accent\);[^}]*pointer-events: none;/s)
+    expect(globalCss).toMatch(/\.editor-outline__item--active \{[^}]*background: var\(--outline-active-fill\);[^}]*font-weight: var\(--font-weight-medium\);/s)
+    expect(globalCss).toMatch(/\.editor-outline__body::-webkit-scrollbar \{\s*width: 8px;/s)
+    expect(globalCss).toMatch(/\.editor-outline__body::-webkit-scrollbar-thumb \{[^}]*background: var\(--outline-scrollbar-thumb\);/s)
+  })
+
+  it('keeps all six outline levels compact and continuously indented', () => {
+    const expectedPadding = [
+      ['2', '20px'],
+      ['3', '30px'],
+      ['4', '38px'],
+      ['5', '46px'],
+      ['6', '54px'],
+    ]
+    expectedPadding.forEach(([level, padding]) => {
+      expect(globalCss).toMatch(new RegExp(`\\.editor-outline__item--level-${level} \\{[^}]*padding-left: ${padding};`, 's'))
+    })
+    expect(globalCss).toMatch(/\.editor-outline__item span \{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/s)
+  })
 })
 
 describe('editor table typography', () => {

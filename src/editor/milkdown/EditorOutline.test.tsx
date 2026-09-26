@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { EditorOutline } from './EditorOutline'
@@ -56,6 +56,68 @@ describe('EditorOutline', () => {
     expect(container.querySelector('.editor-outline--drawer > .editor-outline__header')).toBeInTheDocument()
     expect(container.querySelector('.editor-outline--drawer > .editor-outline__body')).toBeInTheDocument()
     expect(getByRole('button', { name: 'Close outline' })).toBeVisible()
+  })
+
+  it('preserves all six heading depths and marks the active location without changing its name', () => {
+    const headings = Array.from({ length: 6 }, (_, index) => ({
+      id: `heading-${index + 1}`,
+      key: `heading-${index + 1}`,
+      level: index + 1,
+      pos: index + 1,
+      text: `Heading ${index + 1}`,
+    }))
+    const { container } = render(
+      <EditorOutline
+        activePosition={5}
+        closeLabel="Close outline"
+        drawer={false}
+        emptyLabel="Empty"
+        headings={headings}
+        label="Outline"
+        onSelect={() => undefined}
+      />,
+    )
+
+    headings.forEach((heading) => {
+      expect(screen.getByRole('button', { name: heading.text })).toHaveClass(`editor-outline__item--level-${heading.level}`)
+    })
+    expect(screen.getByRole('button', { name: 'Heading 5' })).toHaveAttribute('aria-current', 'location')
+    expect(container.querySelectorAll('.editor-outline__item--active')).toHaveLength(1)
+  })
+
+  it('keeps long heading text in the labelled ellipsis row and retains the empty state', () => {
+    const longHeading = 'A very long English and 中文 mixed heading that must remain contained inside the outline pane'
+    const { container, rerender } = render(
+      <EditorOutline
+        activePosition={null}
+        closeLabel="Close outline"
+        drawer={false}
+        emptyLabel="Headings will appear here."
+        headings={[{ id: 'long', key: 'long', level: 6, pos: 1, text: longHeading }]}
+        label="Outline"
+        onSelect={() => undefined}
+      />,
+    )
+
+    const row = screen.getByRole('button', { name: longHeading })
+    expect(row).toHaveClass('editor-outline__item--level-6')
+    expect(row).toHaveAttribute('title', longHeading)
+    expect(row.querySelector('span')).toBeInTheDocument()
+
+    rerender(
+      <EditorOutline
+        activePosition={null}
+        closeLabel="Close outline"
+        drawer
+        emptyLabel="Headings will appear here."
+        headings={[]}
+        label="Outline"
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    )
+    expect(container.querySelector('.editor-outline--drawer')).toBeInTheDocument()
+    expect(screen.getByText('Headings will appear here.')).toBeVisible()
   })
 
   it('returns the selected heading identity instead of a visible array index', () => {

@@ -10,7 +10,7 @@
   --surface-toolbar: #f5f6f8;
   --surface-context: #fbfcfd;
   --surface-editor: #ffffff;
-  --surface-outline: #ffffff;
+  --surface-outline: #fbfcfd;
 
   --text-primary: #202124;
   --text-secondary: #666b73;
@@ -106,6 +106,9 @@ button:focus-visible,
   --line: var(--border-default);
   --line-strong: var(--border-strong);
   --context-line: var(--border-subtle);
+  --outline-active-fill: color-mix(in srgb, var(--accent) 8%, transparent);
+  --outline-scrollbar-thumb: color-mix(in srgb, var(--ink) 18%, transparent);
+  --outline-scrollbar-thumb-hover: color-mix(in srgb, var(--ink) 30%, transparent);
   --soft-fill: var(--bg-hover);
   --hover-fill: var(--bg-hover);
   --ui-font-lg: var(--font-ui-md);
@@ -165,7 +168,7 @@ button:focus-visible,
   --surface-toolbar: #1d1f22;
   --surface-context: #202225;
   --surface-editor: #202225;
-  --surface-outline: #27292d;
+  --surface-outline: #24262a;
   color-scheme: dark;
 }
 
@@ -197,7 +200,7 @@ button:focus-visible,
   --surface-toolbar: #f3f0e9;
   --surface-context: #f8f6f1;
   --surface-editor: #fbfaf7;
-  --surface-outline: #fffdf9;
+  --surface-outline: #f8f6f1;
   color-scheme: light;
 }
 
@@ -1859,8 +1862,10 @@ button:focus-visible,
   flex-direction: column;
   min-height: 0;
   color: var(--muted-ink);
+  background: var(--surface-outline);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   scrollbar-width: thin;
+  scrollbar-color: var(--outline-scrollbar-thumb) transparent;
 }
 
 .document-editor-workspace--inline .editor-outline {
@@ -1868,7 +1873,7 @@ button:focus-visible,
   width: 100%;
   max-height: calc(100dvh - var(--top-region-height) - var(--space-4) - var(--space-4));
   overflow: hidden;
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--context-line);
 }
 
 .editor-outline--drawer {
@@ -1885,8 +1890,8 @@ button:focus-visible,
   max-height: none;
   overflow: hidden;
   color: var(--text-secondary);
-  background-color: var(--bg-elevated);
-  border-left: 1px solid var(--border-default);
+  background-color: var(--surface-outline);
+  border-left: 1px solid var(--line);
   box-shadow: var(--shadow-floating);
 }
 
@@ -1902,46 +1907,61 @@ button:focus-visible,
   display: flex;
   gap: 7px;
   align-items: center;
-  min-height: 32px;
-  margin-bottom: 8px;
+  height: var(--document-context-height);
+  min-height: var(--document-context-height);
+  padding: 0 var(--space-3);
   color: var(--ink);
+  border-bottom: 1px solid var(--context-line);
   font-size: var(--ui-font-md);
-  font-weight: 650;
-  letter-spacing: 0.03em;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.015em;
 }
 
 .editor-outline__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--outline-scrollbar-thumb) transparent;
 }
 
-.document-editor-workspace--inline .editor-outline__header {
-  margin: 5px 16px 8px;
+.editor-outline__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-outline__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-outline__body::-webkit-scrollbar-thumb {
+  background: var(--outline-scrollbar-thumb);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.editor-outline__body::-webkit-scrollbar-thumb:hover {
+  background: var(--outline-scrollbar-thumb-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .document-editor-workspace--inline .editor-outline__body {
-  padding: 0 0 var(--space-4) var(--space-4);
+  padding: var(--space-2) 7px var(--space-4);
 }
 
 .editor-outline--drawer .editor-outline__header {
   color: var(--text-primary);
-  margin: 0;
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .editor-outline--drawer .editor-outline__body {
-  padding: var(--space-2) var(--space-3) var(--space-4);
+  padding: var(--space-2) 7px var(--space-4);
 }
 
 .editor-outline--drawer .editor-outline__item {
   color: var(--text-secondary);
-}
-
-.editor-outline--drawer .editor-outline__item--active {
-  color: var(--accent);
 }
 
 .editor-outline__close {
@@ -1969,7 +1989,7 @@ button:focus-visible,
 
 .editor-outline ol {
   display: grid;
-  gap: 1px;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1980,16 +2000,17 @@ button:focus-visible,
 }
 
 .editor-outline__item {
+  position: relative;
   display: block;
   width: 100%;
   min-height: 32px;
-  padding: 6px 8px;
+  padding: 6px 9px;
   overflow: hidden;
   color: inherit;
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   text-align: left;
   font-size: var(--ui-font-md);
   line-height: 1.5;
@@ -2010,26 +2031,68 @@ button:focus-visible,
 
 .editor-outline__item--active {
   color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--outline-active-fill);
+  font-weight: var(--font-weight-medium);
+}
+
+.editor-outline__item--active::before {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  content: "";
+  pointer-events: none;
 }
 
 .editor-outline__item--level-1 {
   color: var(--ink);
-  font-weight: 580;
+  font-weight: var(--font-weight-semibold);
 }
 
 .editor-outline__item--level-2 {
-  padding-left: 18px;
+  padding-left: 20px;
+  color: var(--ink);
+  font-weight: 520;
 }
 
 .editor-outline__item--level-3 {
   padding-left: 30px;
+  color: var(--muted-ink);
+}
+
+.editor-outline__item--level-4 {
+  padding-left: 38px;
+  color: var(--muted-ink);
+  font-size: var(--ui-font-sm);
+}
+
+.editor-outline__item--level-5 {
+  padding-left: 46px;
   color: var(--subtle-ink);
+  font-size: var(--ui-font-sm);
+}
+
+.editor-outline__item--level-6 {
+  padding-left: 54px;
+  color: var(--subtle-ink);
+  font-size: var(--ui-font-sm);
+}
+
+.editor-outline__item--active.editor-outline__item--level-1,
+.editor-outline__item--active.editor-outline__item--level-2,
+.editor-outline__item--active.editor-outline__item--level-3,
+.editor-outline__item--active.editor-outline__item--level-4,
+.editor-outline__item--active.editor-outline__item--level-5,
+.editor-outline__item--active.editor-outline__item--level-6 {
+  color: var(--accent);
 }
 
 .editor-outline p {
-  max-width: 160px;
-  margin: 4px 7px;
+  max-width: 180px;
+  margin: var(--space-2) 9px;
   color: var(--subtle-ink);
   font-size: var(--ui-font-md);
   line-height: 1.55;
