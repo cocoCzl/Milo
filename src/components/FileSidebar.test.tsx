@@ -172,15 +172,70 @@ describe('FileSidebar', () => {
     expect(separator).toHaveAttribute('aria-valuemin', '208')
     expect(separator).toHaveAttribute('aria-valuemax', '320')
     expect(separator).toHaveAttribute('aria-valuenow', '224')
+    expect(separator).toHaveAttribute('tabindex', '0')
+    expect(separator).toHaveAttribute('aria-orientation', 'vertical')
 
+    separator.focus()
+    expect(separator).toHaveFocus()
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
     expect(onWidthChange).toHaveBeenLastCalledWith(232)
+    fireEvent.keyDown(separator, { key: 'ArrowLeft' })
+    expect(onWidthChange).toHaveBeenLastCalledWith(216)
+    fireEvent.keyDown(separator, { key: 'ArrowRight', shiftKey: true })
+    expect(onWidthChange).toHaveBeenLastCalledWith(256)
     fireEvent.keyDown(separator, { key: 'ArrowLeft', shiftKey: true })
     expect(onWidthChange).toHaveBeenLastCalledWith(208)
+
+    render(
+      <FileSidebar
+        activeFile={null}
+        copy={copy}
+        folder={null}
+        recentFiles={[]}
+        recentFolders={[]}
+        tree={null}
+        width={208}
+        onChooseFolder={vi.fn()}
+        onClearRecent={vi.fn()}
+        onOpenFile={vi.fn()}
+        onOpenFolder={vi.fn()}
+        onOpenPreferences={vi.fn()}
+        onRemoveRecentFile={vi.fn()}
+        onRemoveRecentFolder={vi.fn()}
+        onWidthChange={onWidthChange}
+      />,
+    )
+    const minSeparator = screen.getAllByRole('separator', { name: 'Workspace width' }).at(-1)!
+    fireEvent.keyDown(minSeparator, { key: 'ArrowLeft' })
+    expect(onWidthChange).toHaveBeenLastCalledWith(208)
+
+    render(
+      <FileSidebar
+        activeFile={null}
+        copy={copy}
+        folder={null}
+        recentFiles={[]}
+        recentFolders={[]}
+        tree={null}
+        width={320}
+        onChooseFolder={vi.fn()}
+        onClearRecent={vi.fn()}
+        onOpenFile={vi.fn()}
+        onOpenFolder={vi.fn()}
+        onOpenPreferences={vi.fn()}
+        onRemoveRecentFile={vi.fn()}
+        onRemoveRecentFolder={vi.fn()}
+        onWidthChange={onWidthChange}
+      />,
+    )
+    const maxSeparator = screen.getAllByRole('separator', { name: 'Workspace width' }).at(-1)!
+    fireEvent.keyDown(maxSeparator, { key: 'ArrowRight', shiftKey: true })
+    expect(onWidthChange).toHaveBeenLastCalledWith(320)
 
     const pointerDown = createEvent.pointerDown(separator)
     Object.defineProperties(pointerDown, { button: { value: 0 }, clientX: { value: 100 } })
     fireEvent(separator, pointerDown)
+    expect(separator).toHaveFocus()
     const pointerMove = createEvent.pointerMove(window)
     Object.defineProperty(pointerMove, 'clientX', { value: 500 })
     fireEvent(window, pointerMove)

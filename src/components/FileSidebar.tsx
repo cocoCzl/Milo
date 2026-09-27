@@ -49,6 +49,7 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearR
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
+    event.currentTarget.focus()
 
     const measuredWidth = sidebarRef.current?.getBoundingClientRect().width ?? 0
     const initialWidth = measuredWidth > 0 ? measuredWidth : width
