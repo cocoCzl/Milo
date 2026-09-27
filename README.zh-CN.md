@@ -6,6 +6,8 @@ Milo 是一款免费的、Local-first 的 macOS Markdown 编辑器。它让你�
 
 Markdown 文件始终是你的数据源，可以继续被 VS Code、Vim、Obsidian、Typora、Git 和其他 Markdown 工具读取。
 
+Milo 当前仍处于积极开发和测试阶段。
+
 ## Milo 的定位
 
 - 类似 Typora 的 Markdown 写作体验，而不是长期的源码 + 预览分栏。
@@ -17,7 +19,7 @@ Markdown 文件始终是你的数据源，可以继续被 VS Code、Vim、Obsidi
 
 - 所见即所得 CommonMark 与 GFM 编辑：标题、强调、引用、列表、任务列表、表格、链接、图片、支持语言选择与复制的代码块，以及撤销/重做。
 - 原生打开、保存、另存为、最近文件、当前文件夹浏览与更换、标签页、启动会话恢复和外部修改保护。
-- 保留 YAML Front Matter、UTF-8/BOM 和 LF/CRLF；不支持安全往返的文档会以只读方式保护；保存采用原子写入。
+- 保留 YAML Front Matter、UTF-8/BOM 和 LF/CRLF；不支持安全往返的文档会以只读方式保护；macOS 保存采用保留 inode 并支持崩溃恢复的安全写入流程。
 - 将粘贴的图片保存到文档同级的 `assets/` 文件夹，并插入相对 Markdown 路径。
 - 远程图片必须由用户明确加载；外部链接仅在 Command-click 时交给系统浏览器。
 - macOS 菜单、快捷键、无障碍标签、减少动态效果支持，以及专注的写作界面。
@@ -35,7 +37,7 @@ Milo 只把文档内容保存到本地 Markdown 文件。应用偏好、最近�
 - 编辑器：Milkdown、ProseMirror、Remark 与 GFM
 - 原生服务：Tauri 对话框、文件监听、JSON 应用设置与系统菜单
 
-Mermaid、KaTeX、Shiki、源码模式、导出、搜索和主题会在后续阶段再引入，避免影响 MVP 的启动速度。
+Mermaid、KaTeX、Shiki、源码模式、导出和搜索会在后续阶段再引入，避免影响 MVP 的启动速度。
 
 ## 环境要求
 
@@ -82,11 +84,13 @@ src/
   settings/       JSON 应用设置
   styles/         以排版为中心的视觉系统
 src-tauri/        Rust 命令、macOS 菜单、打包与原生服务
-docs/             未来发布的运行手册
+docs/             UI 约束、已知问题与未来发布运行手册
 ```
 
 ## 文档
 
+- [UI 设计与编辑器不变量](docs/UI_DESIGN.md)
+- [已知问题](docs/KNOWN_ISSUES.md)
 - [Release runbook](docs/RELEASE.md)
 - [发布说明（简体中文）](docs/RELEASE.zh-CN.md)
 

@@ -6,6 +6,8 @@ Milo is a free, local-first Markdown editor for macOS. It opens a Markdown file 
 
 Your Markdown files remain the source of truth. They stay portable across VS Code, Vim, Obsidian, Typora, Git, and other Markdown tools.
 
+Milo is under active development and testing.
+
 ## What Milo is for
 
 - Focused, Typora-like Markdown writing instead of a source-and-preview split.
@@ -17,7 +19,7 @@ Your Markdown files remain the source of truth. They stay portable across VS Cod
 
 - WYSIWYG CommonMark and GFM editing: headings, emphasis, blockquotes, lists, task lists, tables, links, images, code blocks with language selection and copy, and undo/redo.
 - Native Open, Save, Save As, recent files, Current Folder browsing and switching, tabs, startup-session restoration, and external-change protection.
-- Byte-preserved YAML Front Matter, UTF-8/BOM and LF/CRLF preservation, protected read-only handling for unsupported documents, and atomic writes.
+- Byte-preserved YAML Front Matter, UTF-8/BOM and LF/CRLF preservation, protected read-only handling for unsupported documents, and inode-preserving safe save with crash recovery on macOS.
 - Image paste into a document-adjacent `assets/` folder using relative Markdown links.
 - Remote images load only after an explicit action; external links open only with command-click.
 - macOS menus, keyboard shortcuts, accessibility labels, reduced-motion support, and a restrained writing surface.
@@ -35,7 +37,7 @@ Remote image URLs are never requested until you choose to load a particular imag
 - Editor: Milkdown, ProseMirror, Remark, and GFM
 - Native services: Tauri dialogs, file watching, JSON application settings, and system menus
 
-Mermaid, KaTeX, Shiki, Source Mode, export, search, and themes are deliberately deferred so they cannot slow the MVP startup path.
+Mermaid, KaTeX, Shiki, Source Mode, export, and search are deliberately deferred so they cannot slow the MVP startup path.
 
 ## Requirements
 
@@ -82,11 +84,13 @@ src/
   settings/       JSON-backed application preferences
   styles/         Typography-first visual system
 src-tauri/        Rust commands, macOS menu, packaging, and native services
-docs/             Future release runbook
+docs/             UI contracts, known issues, and future release runbooks
 ```
 
 ## Documentation
 
+- [UI design and editor invariants](docs/UI_DESIGN.md)
+- [Known issues](docs/KNOWN_ISSUES.md)
 - [Release runbook](docs/RELEASE.md): future Apple signing, notarization, performance, and release steps.
 - [发布说明（简体中文）](docs/RELEASE.zh-CN.md)：未来 Apple 签名、公证、性能验证与发布步骤。
 

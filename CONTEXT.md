@@ -96,17 +96,17 @@ _Avoid_: syntax-highlighting theme, executable code
 A Markdown table edited visually with cell navigation and contextual row or column changes. Presentation-only column sizing is not saved as a private document representation.
 _Avoid_: spreadsheet, layout table
 
-**Atomic Save**:
-Writing a document through a fully written temporary file in the same directory followed by an atomic replacement of the original. If writing fails, the original file remains intact and Milo retains the in-memory edit with an error indication.
-_Avoid_: direct overwrite, best-effort save
+**Safe Save**:
+On macOS, writing an existing document through the inode-preserving Safe Save V2 path, with recovery metadata established before in-place content replacement and checked before the next read. External changes and unsafe symlink or hard-link states stop the write; failure never silently falls back to replacing an existing file.
+_Avoid_: atomic rename fallback, direct unchecked overwrite, best-effort save
 
 **Background Networking**:
 Network activity initiated by Milo without a user's immediate content action. It is prohibited in the MVP: there is no telemetry, analytics, crash reporting, or update check.
 _Avoid_: anonymous usage data, passive update polling
 
-**Editor Mode**:
-The one active editing representation in a Document Tab: WYSIWYG or, in the second phase, Source Mode. Switching explicitly serializes WYSIWYG to Markdown or parses Markdown into WYSIWYG; a failed parse leaves the source intact in Source Mode.
-_Avoid_: simultaneous dual-pane editor, live two-way synchronization
+**Presentation Mode**:
+The active Edit or Read state for a Document Tab. Both states use the same Markdown document and editor instance; Read disables mutation and editing affordances without introducing a second renderer or rebuilding the document.
+_Avoid_: source mode, preview renderer, simultaneous dual-pane editor
 
 **Granted File Scope**:
 The files and folders the user explicitly selects through system dialogs, plus necessary descendants of a selected Current Folder. Milo does not scan or request broad filesystem access outside that scope.
@@ -157,8 +157,8 @@ An image remaining in an `assets/` directory after its Markdown reference is rem
 _Avoid_: automatically cleaned attachment, deleted paste image
 
 **Startup Session**:
-The available document tabs and Current Folder restored after a normal exit. On first launch or when nothing can be restored, Milo opens a focused Unsaved Document; missing historical paths are removed from recents.
-_Avoid_: always-empty launch, persistent workspace database
+The available document tabs, active tab, and Current Folder restored after a normal exit. Missing session paths are skipped. When no document can be restored, Milo shows the no-document surface and creates an Unsaved Document only after an explicit New Document action.
+_Avoid_: fake Untitled document, persistent workspace database
 
 **Unsaved Document**:
 A newly created document that has not yet received a Markdown file path. It is protected by normal close confirmation but has no promised recovery after an unexpected exit.
