@@ -24,9 +24,9 @@ describe('editor typography baseline', () => {
 
   it('maps semantic reading preferences while keeping structured content typography stable', () => {
     expect(globalCss).toMatch(/\.app-shell\[data-document-font-style="serif"\] \{\s*--editor-body-font-family: var\(--editor-serif-font-family\);\s*\}/)
-    expect(globalCss).toContain('--reading-width: 820px;')
+    expect(globalCss).toContain('--reading-width: 860px;')
     expect(globalCss).toMatch(/\.app-shell\[data-reading-width="narrow"\] \{ --reading-width: 720px; \}/)
-    expect(globalCss).toMatch(/\.app-shell\[data-reading-width="wide"\] \{ --reading-width: 920px; \}/)
+    expect(globalCss).toMatch(/\.app-shell\[data-reading-width="wide"\] \{ --reading-width: 960px; \}/)
     expect(globalCss).toMatch(/\.app-shell\[data-line-height="compact"\] \{ --editor-line-height: 1\.58; \}/)
     expect(globalCss).toMatch(/\.app-shell\[data-line-height="relaxed"\] \{ --editor-line-height: 1\.82; \}/)
     expect(globalCss).toMatch(/\.milkdown \.ProseMirror h1,[\s\S]*?\.milkdown \.ProseMirror h6 \{[^}]*font-family: var\(--editor-heading-font-family\);[^}]*line-height: var\(--editor-heading-line-height\);/s)
@@ -133,7 +133,9 @@ describe('application shell foundation', () => {
   })
 
   it('polishes inline and drawer outlines without changing their layout roles', () => {
-    expect(globalCss).toContain('--outline-width: 230px;')
+    expect(globalCss).toContain('--outline-width: 256px;')
+    expect(globalCss).toMatch(/\.document-stage \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, calc\(var\(--reading-width\) \+ var\(--editor-rail-width\) \+ var\(--editor-column-gap\)\)\) minmax\(0, 1fr\);/s)
+    expect(globalCss).toMatch(/\.app-shell--inline-outline \.document-stage \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, calc\(var\(--reading-width\) \+ var\(--editor-rail-width\) \+ var\(--editor-column-gap\) \+ var\(--space-6\) \+ var\(--outline-width\)\)\) minmax\(0, 1fr\);/s)
     expect(globalCss).toMatch(/\.editor-outline--drawer \{[^}]*width: min\(280px, calc\(100vw - 24px\)\);/s)
     expect(globalCss).toMatch(/\.editor-outline \{[^}]*background: var\(--surface-outline\);/s)
     expect(globalCss).toMatch(/\.editor-outline__header \{[^}]*height: var\(--document-context-height\);[^}]*border-bottom: 1px solid var\(--context-line\);/s)

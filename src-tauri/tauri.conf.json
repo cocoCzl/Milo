@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Milo",
-        "width": 1080,
-        "height": 760,
+        "width": 1280,
+        "height": 820,
         "minWidth": 720,
         "minHeight": 520,
         "decorations": true,

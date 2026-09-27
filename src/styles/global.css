@@ -25,6 +25,8 @@
   --accent-hover: #286de8;
   --accent-soft: #eaf2ff;
   --focus-ring: #3478f6;
+  --brand-mark-surface: #343840;
+  --brand-mark-ink: #f7f8fa;
 
   --code-bg: #f6f8fa;
   --code-header-bg: #f2f4f6;
@@ -145,7 +147,7 @@ button:focus-visible,
   --editor-line-height: 1.7;
   --editor-heading-line-height: 1.22;
   --editor-heading-space-before: var(--editor-font-size);
-  --reading-width: 820px;
+  --reading-width: 860px;
   --application-bar-height: 48px;
   --document-context-height: 40px;
   --top-region-height: var(--application-bar-height);
@@ -153,7 +155,7 @@ button:focus-visible,
   /* The layout reserves a slim gutter; the fixed outline itself can use the
      otherwise empty right edge without making the reading column narrower. */
   --outline-layout-width: 174px;
-  --outline-width: 230px;
+  --outline-width: 256px;
   --editor-column-gap: 18px;
   --workspace-width: 1600px;
   display: grid;
@@ -170,7 +172,7 @@ button:focus-visible,
 }
 
 .app-shell[data-reading-width="narrow"] { --reading-width: 720px; }
-.app-shell[data-reading-width="wide"] { --reading-width: 920px; }
+.app-shell[data-reading-width="wide"] { --reading-width: 960px; }
 .app-shell[data-line-height="compact"] { --editor-line-height: 1.58; }
 .app-shell[data-line-height="relaxed"] { --editor-line-height: 1.82; }
 
@@ -193,6 +195,8 @@ button:focus-visible,
   --accent-hover: #82aff8;
   --accent-soft: rgb(76 139 235 / 17%);
   --focus-ring: #80b2f5;
+  --brand-mark-surface: #34373c;
+  --brand-mark-ink: #eceff2;
   --code-bg: #191b1e;
   --code-header-bg: #222428;
   --selection-bg: #344c69;
@@ -225,6 +229,8 @@ button:focus-visible,
   --accent-hover: #316eaf;
   --accent-soft: #e8f0fa;
   --focus-ring: #3b7bc4;
+  --brand-mark-surface: #514c44;
+  --brand-mark-ink: #f7f3ea;
   --code-bg: #f3f2ee;
   --code-header-bg: #eeece6;
   --selection-bg: #dfe8f1;
@@ -1118,17 +1124,27 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .document-stage {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap))) minmax(0, 1fr);
   grid-column: auto;
   width: 100%;
   min-height: 0;
   margin: 0;
-  padding: clamp(28px, 4vh, 46px) max(20px, calc((100% - var(--workspace-width)) / 2)) 36px;
+  padding: clamp(28px, 4vh, 46px) clamp(20px, 1.5vw, 24px) 36px;
   overflow: auto;
   background: var(--surface-editor);
 }
 
+.app-shell--inline-outline .document-stage {
+  grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap) + var(--space-6) + var(--outline-width))) minmax(0, 1fr);
+}
+
+.app-shell--focus-mode .document-stage {
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--reading-width)) minmax(0, 1fr);
+}
+
 .document-empty-state {
   display: grid;
+  grid-column: 1 / -1;
   align-self: center;
   justify-self: center;
   max-width: 360px;
@@ -1300,9 +1316,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   flex: 0 0 29px;
   width: 29px;
   height: 29px;
-  color: var(--bg-elevated);
-  background: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--line));
+  color: var(--brand-mark-ink);
+  background: var(--brand-mark-surface);
+  border: 1px solid color-mix(in srgb, var(--brand-mark-surface) 72%, var(--line));
   border-radius: 9px;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 14%, transparent);
   font-size: var(--ui-font-mark);
@@ -1513,6 +1529,11 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--accent-soft);
 }
 
+.file-sidebar__recent-open[aria-current="page"] > svg,
+.file-sidebar__file[aria-current="page"] > svg {
+  color: var(--text-secondary);
+}
+
 .file-sidebar__recent-remove {
   display: grid;
   flex: 0 0 24px;
@@ -1689,8 +1710,17 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   grid-template-columns: var(--editor-rail-width) minmax(0, 1fr);
   column-gap: var(--editor-column-gap);
   justify-content: center;
+  grid-column: 2;
   width: 100%;
   min-height: 0;
+}
+
+.app-shell--inline-outline .document-panel {
+  width: 100%;
+}
+
+.app-shell--focus-mode .document-panel {
+  width: 100%;
 }
 
 .document-panel[hidden] {
