@@ -147,6 +147,17 @@ fn markdown_path_from_file_url(url: &tauri::Url) -> Option<String> {
     is_markdown.then(|| path.to_string_lossy().into_owned())
 }
 
+fn menu_item<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+    id: &str,
+    text: &str,
+    accelerator: &str,
+) -> tauri::Result<tauri::menu::MenuItem<R>> {
+    MenuItemBuilder::with_id(id, text)
+        .accelerator(accelerator)
+        .build(app)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{launch_markdown_file_from_arguments, markdown_path_from_file_url};
@@ -183,15 +194,4 @@ mod tests {
         );
         assert_eq!(markdown_path_from_file_url(&remote_url), None);
     }
-}
-
-fn menu_item<R: tauri::Runtime, M: Manager<R>>(
-    app: &M,
-    id: &str,
-    text: &str,
-    accelerator: &str,
-) -> tauri::Result<tauri::menu::MenuItem<R>> {
-    MenuItemBuilder::with_id(id, text)
-        .accelerator(accelerator)
-        .build(app)
 }

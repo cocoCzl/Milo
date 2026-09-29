@@ -2,7 +2,6 @@ import { defaultValueCtx, Editor, editorViewCtx, nodeViewCtx, prosePluginsCtx, r
 import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
-import { prism } from '@milkdown/plugin-prism'
 import {
   commonmark,
 } from '@milkdown/preset-commonmark'
@@ -37,6 +36,7 @@ import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
 import { createSafariCompositionHardbreakPlugin, miloSafariCompositionHardbreakSchema } from './safariCompositionHardbreak'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 import { miloTableAlignmentSchema } from './tableAlignment'
+import { miloPrism } from './miloPrism'
 
 const tableDefaultCellMinWidth = 100
 const createTableNodeView: NodeViewConstructor = (node) => new TableView(node, tableDefaultCellMinWidth)
@@ -513,7 +513,7 @@ export function MilkdownEditor({
       .use(gfm.filter((plugin) => plugin !== autoInsertSpanPlugin))
       .use(miloTableAlignmentSchema)
       .use(miloEmptyTableCellSerializer)
-      .use(prism)
+      .use(miloPrism)
       .use(history)
       .use(listener)
 

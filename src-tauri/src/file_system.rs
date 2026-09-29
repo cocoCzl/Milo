@@ -5,6 +5,8 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+use tauri::{AppHandle, Manager};
+use tauri_plugin_fs::FsExt;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -78,7 +80,13 @@ pub fn browse_markdown_folder(path: String) -> Result<MarkdownTreeNode, String> 
 }
 
 #[tauri::command]
-pub fn write_image_asset(request: ImageAssetRequest) -> Result<ImageAsset, String> {
+pub fn write_image_asset(app: AppHandle, request: ImageAssetRequest) -> Result<ImageAsset, String> {
+    let document_path = markdown_path(request.document_path.clone())?;
+    allow_document_directory(&app, &document_path)?;
+    write_image_asset_impl(request)
+}
+
+fn write_image_asset_impl(request: ImageAssetRequest) -> Result<ImageAsset, String> {
     let document_path = markdown_path(request.document_path)?;
     let parent = document_path
         .parent()
@@ -113,8 +121,13 @@ pub fn write_image_asset(request: ImageAssetRequest) -> Result<ImageAsset, Strin
 }
 
 #[tauri::command]
-pub fn read_markdown_document(path: String) -> Result<MarkdownDocument, String> {
+pub fn read_markdown_document(app: AppHandle, path: String) -> Result<MarkdownDocument, String> {
     let path = markdown_path(path)?;
+    allow_document_directory(&app, &path)?;
+    read_markdown_document_impl(path)
+}
+
+fn read_markdown_document_impl(path: PathBuf) -> Result<MarkdownDocument, String> {
     let bytes =
         fs::read(&path).map_err(|error| format!("Could not read Markdown file: {error}"))?;
     let (markdown, has_bom, line_ending) = decode_markdown(&bytes)?;
@@ -128,8 +141,19 @@ pub fn read_markdown_document(path: String) -> Result<MarkdownDocument, String> 
 }
 
 #[tauri::command]
-pub fn write_markdown_document(request: MarkdownWriteRequest) -> Result<MarkdownDocument, String> {
-    let path = markdown_path(request.path)?;
+pub fn write_markdown_document(
+    app: AppHandle,
+    request: MarkdownWriteRequest,
+) -> Result<MarkdownDocument, String> {
+    let path = markdown_path(request.path.clone())?;
+    allow_document_directory(&app, &path)?;
+    write_markdown_document_impl(path, request)
+}
+
+fn write_markdown_document_impl(
+    path: PathBuf,
+    request: MarkdownWriteRequest,
+) -> Result<MarkdownDocument, String> {
     let bytes = encode_markdown(&request.markdown, request.line_ending, request.has_bom);
 
     write_atomically(&path, &bytes)?;
@@ -146,6 +170,18 @@ pub fn write_markdown_document(request: MarkdownWriteRequest) -> Result<Markdown
 /// rename: failures are surfaced so recovery semantics remain unambiguous.
 #[tauri::command]
 pub fn write_markdown_document_safe_v2(
+    app: AppHandle,
+    request: SafeMarkdownWriteRequest,
+) -> Result<MarkdownDocument, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let path = markdown_path(request.path.clone())?;
+        allow_document_directory(&app, &path)?;
+    }
+    write_markdown_document_safe_v2_impl(request)
+}
+
+fn write_markdown_document_safe_v2_impl(
     request: SafeMarkdownWriteRequest,
 ) -> Result<MarkdownDocument, String> {
     #[cfg(target_os = "macos")]
@@ -203,12 +239,12 @@ pub fn write_markdown_document_safe_v2(
             }
         }
 
-        return Ok(MarkdownDocument {
+        Ok(MarkdownDocument {
             path: path.to_string_lossy().into_owned(),
             markdown: request.markdown,
             line_ending: request.line_ending,
             has_bom: request.has_bom,
-        });
+        })
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -225,7 +261,7 @@ pub fn recover_markdown_document_safe_v2(path: String) -> Result<String, String>
         let path = markdown_path(path)?;
         let outcome = crate::macos_safe_save::recover_inode_preserving(&path)
             .map_err(classify_safe_save_recovery_error)?;
-        return Ok(format!("{outcome:?}"));
+        Ok(format!("{outcome:?}"))
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -233,6 +269,20 @@ pub fn recover_markdown_document_safe_v2(path: String) -> Result<String, String>
         let _ = path;
         Err("macOS Safe Save V2 recovery is only available on macOS.".to_owned())
     }
+}
+
+fn allow_document_directory(app: &AppHandle, document_path: &Path) -> Result<(), String> {
+    let directory = document_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .ok_or_else(|| "Could not determine the Markdown document directory.".to_owned())?;
+
+    app.asset_protocol_scope()
+        .allow_directory(directory, true)
+        .map_err(|error| format!("Could not authorize document assets: {error}"))?;
+    app.fs_scope()
+        .allow_directory(directory, true)
+        .map_err(|error| format!("Could not authorize document watching: {error}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -488,7 +538,8 @@ fn create_temporary_file(parent: &Path, file_name: &str) -> Result<(PathBuf, Fil
 mod tests {
     use super::{
         create_image_asset_file, decode_markdown, encode_markdown, image_extension,
-        read_markdown_tree, write_atomically, write_image_asset, ImageAssetRequest, LineEnding,
+        read_markdown_tree, write_atomically, write_image_asset_impl, ImageAssetRequest,
+        LineEnding,
     };
     use std::{
         fs,
@@ -540,7 +591,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn production_safe_save_creates_new_files_but_never_falls_back_over_existing_files() {
-        use super::{write_markdown_document_safe_v2, SafeMarkdownWriteRequest};
+        use super::{write_markdown_document_safe_v2_impl, SafeMarkdownWriteRequest};
         use std::os::unix::fs::MetadataExt;
 
         let directory = std::env::temp_dir().join(format!(
@@ -563,14 +614,14 @@ mod tests {
             failure_point: None,
         };
 
-        write_markdown_document_safe_v2(request("# Created\n", None)).unwrap();
+        write_markdown_document_safe_v2_impl(request("# Created\n", None)).unwrap();
         let inode = fs::metadata(&destination).unwrap().ino();
-        let error =
-            write_markdown_document_safe_v2(request("# Must not replace\n", None)).unwrap_err();
+        let error = write_markdown_document_safe_v2_impl(request("# Must not replace\n", None))
+            .unwrap_err();
         assert!(error.contains("refuses to overwrite an existing target"));
         assert_eq!(fs::read_to_string(&destination).unwrap(), "# Created\n");
 
-        write_markdown_document_safe_v2(request("# Updated\n", Some("# Created\n"))).unwrap();
+        write_markdown_document_safe_v2_impl(request("# Updated\n", Some("# Created\n"))).unwrap();
         assert_eq!(fs::read_to_string(&destination).unwrap(), "# Updated\n");
         assert_eq!(fs::metadata(&destination).unwrap().ino(), inode);
         fs::remove_dir_all(directory).unwrap();
@@ -639,7 +690,7 @@ mod tests {
         let document = directory.join("note.md");
         fs::write(&document, "# Note").unwrap();
 
-        let asset = write_image_asset(ImageAssetRequest {
+        let asset = write_image_asset_impl(ImageAssetRequest {
             document_path: document.to_string_lossy().into_owned(),
             bytes: vec![137, 80, 78, 71],
             mime_type: "image/png".to_owned(),
@@ -648,7 +699,7 @@ mod tests {
 
         assert!(asset.relative_path.starts_with("assets/image-"));
         assert_eq!(fs::read(&asset.path).unwrap(), vec![137, 80, 78, 71]);
-        assert!(write_image_asset(ImageAssetRequest {
+        assert!(write_image_asset_impl(ImageAssetRequest {
             document_path: document.to_string_lossy().into_owned(),
             bytes: vec![1],
             mime_type: "image/svg+xml".to_owned(),

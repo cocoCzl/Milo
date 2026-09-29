@@ -29,6 +29,19 @@ export default defineConfig({
     target: ['es2021', 'safari13'],
     minify: process.env.TAURI_ENV_DEBUG ? false : 'esbuild',
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('/react/') || id.includes('/react-dom/')) return 'react'
+          if (id.includes('/@milkdown/core/') || id.includes('/@milkdown/utils/')) return 'milkdown-core'
+          if (id.includes('/@milkdown/preset-commonmark/') || id.includes('/@milkdown/preset-gfm/')) return 'milkdown-presets'
+          if (id.includes('/@milkdown/plugin-')) return 'milkdown-plugins'
+          if (id.includes('/@milkdown/prose/')) return 'milkdown-prose'
+          return undefined
+        },
+      },
+    },
   },
   test: {
     environment: 'jsdom',

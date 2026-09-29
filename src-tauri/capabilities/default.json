@@ -15,7 +15,17 @@
     },
     {
       "identifier": "fs:allow-watch",
-      "allow": [{ "path": "$HOME/**" }]
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$PICTURE/**" },
+        { "path": "$VIDEO/**" },
+        { "path": "$MUSIC/**" },
+        { "path": "$PUBLIC/**" },
+        { "path": "$TEMP/**" }
+      ]
     }
   ]
 }

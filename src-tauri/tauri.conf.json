@@ -25,7 +25,17 @@
       "csp": "default-src 'self'; img-src 'self' asset: data: blob: http: https:; style-src 'self' 'unsafe-inline'; font-src 'self'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/**"]
+        "scope": [
+          "$HOME/**",
+          "$DOCUMENT/**",
+          "$DOWNLOAD/**",
+          "$DESKTOP/**",
+          "$PICTURE/**",
+          "$VIDEO/**",
+          "$MUSIC/**",
+          "$PUBLIC/**",
+          "$TEMP/**"
+        ]
       }
     }
   },

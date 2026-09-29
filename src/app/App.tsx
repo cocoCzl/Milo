@@ -66,6 +66,13 @@ export function App() {
   const sidebarVisible = settings.sidebarVisible && sidebarAvailable
   const activeOutlineOpen = activeTabId !== null && (outlineOpen[activeTabId] ?? false)
 
+  useEffect(() => {
+    const openTabIds = new Set(session.tabs.map((tab) => tab.id))
+    setPresentationModes((current) => pruneTabState(current, openTabIds))
+    setDocumentViewStates((current) => pruneTabState(current, openTabIds))
+    setOutlineOpen((current) => pruneTabState(current, openTabIds))
+  }, [session.tabs])
+
   const closeActiveOutline = useCallback(() => {
     if (activeTabId === null) return
     setOutlineOpen((current) => current[activeTabId]
@@ -995,4 +1002,10 @@ function documentStatus(tab: DocumentTab, copy: ReturnType<typeof interfaceCopy>
   if (tab.activity === 'saving') return `${copy.saving}…`
   if (tab.document.isDirty) return copy.unsavedStatus
   return tab.document.path ? copy.saved : copy.notSaved
+}
+
+function pruneTabState<T>(state: Record<number, T>, openTabIds: Set<number>): Record<number, T> {
+  const entries = Object.entries(state).filter(([id]) => openTabIds.has(Number(id)))
+  if (entries.length === Object.keys(state).length) return state
+  return Object.fromEntries(entries) as Record<number, T>
 }
