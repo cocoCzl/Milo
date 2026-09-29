@@ -45,7 +45,7 @@ export function App() {
     typeof window.matchMedia === 'function' && window.matchMedia(SIDEBAR_RESPONSIVE_QUERY).matches
   ))
   const didRestoreStartupSession = useRef(false)
-  const didOpenLaunchFile = useRef(false)
+  const initialLaunchFilePromiseRef = useRef<Promise<string | null> | null>(null)
   const lastRecordedRecentPathRef = useRef<string | null | undefined>(undefined)
   const preferencesReturnFocusRef = useRef<HTMLElement | null>(null)
   const documentStageRef = useRef<HTMLElement>(null)
@@ -200,12 +200,21 @@ export function App() {
   } as CSSProperties
 
   useEffect(() => {
+    initialLaunchFilePromiseRef.current ??= initialLaunchMarkdownFile().catch(() => null)
+  }, [])
+
+  useEffect(() => {
     if (isLoading || didRestoreStartupSession.current) return
     didRestoreStartupSession.current = true
     let disposed = false
-    void restoreStartupSession(settings.startupSession).then(() => {
-      if (!disposed) setStartupSessionRestored(true)
-    })
+    const launchFilePromise = initialLaunchFilePromiseRef.current
+      ?? initialLaunchMarkdownFile().catch(() => null)
+    initialLaunchFilePromiseRef.current = launchFilePromise
+    void launchFilePromise
+      .then((launchPath) => restoreStartupSession(settings.startupSession, launchPath))
+      .then(() => {
+        if (!disposed) setStartupSessionRestored(true)
+      })
     return () => { disposed = true }
   }, [isLoading, restoreStartupSession, settings.startupSession])
 
@@ -219,14 +228,6 @@ export function App() {
     if (activeDocumentPath === currentSession.activeDocumentPath && samePaths) return
     setStartupSession({ activeDocumentPath, openDocumentPaths })
   }, [session.activeTabId, session.document.path, session.tabs, setStartupSession, settings.startupSession, startupSessionRestored])
-
-  useEffect(() => {
-    if (!startupSessionRestored || didOpenLaunchFile.current) return
-    didOpenLaunchFile.current = true
-    void initialLaunchMarkdownFile().then((path) => {
-      if (path) void openDocumentAtPath(path)
-    })
-  }, [openDocumentAtPath, startupSessionRestored])
 
   useEffect(() => {
     if (!settings.currentFolder) {
@@ -512,7 +513,11 @@ export function App() {
           />
         ) : null}
         {folderError ? <div className="folder-error" role="status">{folderError}</div> : null}
-        <section className={`document-area${activeTab ? '' : ' document-area--empty'}`} aria-label={copy.currentDocument}>
+        <section
+          className={`document-area${activeTab || !startupSessionRestored ? '' : ' document-area--empty'}${startupSessionRestored ? '' : ' document-area--restoring'}`}
+          aria-busy={!startupSessionRestored}
+          aria-label={copy.currentDocument}
+        >
           {focusMode && activeTabId !== null && !activeDocumentIsProtected ? (
             <Tooltip content={copy.openOutline} disabled={activeOutlineOpen}>
               <button
@@ -539,7 +544,7 @@ export function App() {
             />
           ) : null}
           <section className="document-stage" ref={documentStageRef}>
-            {!activeTab ? (
+            {!activeTab && startupSessionRestored ? (
               <div className="document-empty-state">
                 <span aria-hidden="true" className="document-empty-state__icon"><FileText size={22} strokeWidth={1.5} /></span>
                 <strong>{copy.emptyDocumentTitle}</strong>

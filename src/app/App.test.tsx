@@ -51,11 +51,37 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('App', () => {
-  it('starts with a true no-document surface and creates an untitled editor only on request', () => {
+  it('does not flash the no-document call to action while startup state is unresolved', async () => {
+    let resolveSettings!: (settings: Record<string, unknown>) => void
+    preferenceMocks.load.mockReturnValue(new Promise((resolve) => { resolveSettings = resolve }))
+    const { container } = render(<App />)
+
+    expect(container.querySelector('.document-area')).toHaveAttribute('aria-busy', 'true')
+    expect(container.querySelector('.document-area')).toHaveClass('document-area--restoring')
+    expect(container.querySelector('.document-area')).not.toHaveClass('document-area--empty')
+    expect(screen.queryByRole('button', { name: 'Open document' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open folder' })).not.toBeInTheDocument()
+
+    await act(async () => resolveSettings({
+      settingsVersion: 5,
+      appearance: 'system',
+      locale: 'en',
+      documentZoom: 100,
+      interfaceZoom: 120,
+      startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
+    }))
+
+    await waitFor(() => expect(container.querySelector('.document-area')).toHaveAttribute('aria-busy', 'false'))
+    expect(container.querySelector('.document-area')).toHaveClass('document-area--empty')
+    expect(screen.getByRole('button', { name: 'Open document' })).toBeVisible()
+  })
+
+  it('starts with a true no-document surface and creates an untitled editor only on request', async () => {
     const { container } = render(<App />)
 
     expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveStyle({ '--editor-font-size': '16.5px' })
     expect(container.querySelector('.application-bar')).toBeVisible()
+    await waitFor(() => expect(container.querySelector('.document-area')).toHaveClass('document-area--empty'))
     expect(container.querySelector('.document-area')).toHaveClass('document-area--empty')
     expect(container.querySelector('.document-context')).not.toBeInTheDocument()
     expect(container.querySelector('.document-stage')).toBeVisible()

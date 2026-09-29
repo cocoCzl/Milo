@@ -200,27 +200,41 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     if (path) await openDocumentAtPath(path)
   }, [openDocumentAtPath])
 
-  const restoreStartupSession = useCallback(async (startupSession: StartupSession) => {
-    const uniquePaths = [...new Set(startupSession.openDocumentPaths)]
-    const restoredDocuments: Array<DocumentSession | null> = await Promise.all(uniquePaths.map(async (path) => {
+  const restoreStartupSession = useCallback(async (startupSession: StartupSession, launchPath: string | null = null) => {
+    const uniquePaths = [...new Set([
+      ...startupSession.openDocumentPaths,
+      ...(launchPath ? [launchPath] : []),
+    ])]
+    const restoredDocuments = await Promise.all(uniquePaths.map(async (path) => {
       try {
         const file = await recoverAndReadMarkdownFile(path)
         const inspected = inspectMarkdownDocument(file.markdown)
         documentId += 1
-        return {
+        return { requestedPath: path, tab: createTab({
           id: documentId, path: file.path, title: titleFromPath(file.path), markdown: inspected.body,
           lineEnding: file.lineEnding, hasBom: file.hasBom, frontMatter: inspected.frontMatter,
           isDirty: false, protectionReason: inspected.protectionReason, persistedMarkdown: file.markdown, editorVersion: 0, revision: 0,
+        }) }
+      } catch (reason) {
+        if (path !== launchPath) return null
+        const failedDocument = createUntitledDocument()
+        return {
+          requestedPath: path,
+          tab: {
+            ...createTab(failedDocument),
+            error: readableError(reason, 'Could not open this Markdown file.'),
+          },
         }
-      } catch {
-        return null
       }
     }))
-    const tabsToRestore = restoredDocuments.filter((document): document is DocumentSession => document !== null).map(createTab)
+    const restoredEntries = restoredDocuments.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    const tabsToRestore = restoredEntries.map((entry) => entry.tab)
 
     if (tabsToRestore.length === 0) return false
 
-    const activeTab = tabsToRestore.find((tab) => tab.document.path === startupSession.activeDocumentPath) ?? tabsToRestore[0]
+    const activeTab = restoredEntries.find((entry) => entry.requestedPath === launchPath)?.tab
+      ?? tabsToRestore.find((tab) => tab.document.path === startupSession.activeDocumentPath)
+      ?? tabsToRestore[0]
     tabsRef.current = tabsToRestore
     activeTabIdRef.current = activeTab.id
     setTabs(tabsToRestore)

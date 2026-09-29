@@ -598,6 +598,30 @@ describe('useDocumentSession', () => {
     expect(session.result.current.document.markdown).toBe('# Restored')
   })
 
+  it('restores a launch file with the saved tabs in one session and makes it active', async () => {
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: requestedPath.endsWith('launch.md') ? '# Launch' : '# Restored',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+    const session = renderHook(() => useDocumentSession())
+
+    await act(async () => {
+      await session.result.current.restoreStartupSession({
+        activeDocumentPath: '/tmp/restored.md',
+        openDocumentPaths: ['/tmp/restored.md'],
+      }, '/tmp/launch.md')
+    })
+
+    expect(session.result.current.tabs.map((tab) => tab.document.path)).toEqual([
+      '/tmp/restored.md',
+      '/tmp/launch.md',
+    ])
+    expect(session.result.current.document.path).toBe('/tmp/launch.md')
+    expect(session.result.current.document.markdown).toBe('# Launch')
+  })
+
   it('keeps an empty workspace empty for an empty startup session', async () => {
     const session = renderHook(() => useDocumentSession())
 
