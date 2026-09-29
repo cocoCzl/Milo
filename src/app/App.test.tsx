@@ -645,7 +645,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '选择文件夹' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: '未命名' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: '未命名 Markdown 文档' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '打开文件夹' }).parentElement).toHaveTextContent('打开文件夹')
+    expect((await screen.findByRole('button', { name: '打开文件夹' })).parentElement).toHaveTextContent('打开文件夹')
 
     fireEvent.click(screen.getByRole('button', { name: '新建文档' }))
     expect(screen.getByRole('tab', { name: '未命名' })).toBeVisible()
