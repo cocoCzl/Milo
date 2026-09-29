@@ -7,6 +7,22 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // Tauri's WebView cache persists between dev sessions. Vite otherwise
+    // marks optimized dependencies as immutable for a year, which can leave a
+    // cached entry importing chunks that a later optimization has replaced.
+    // Revalidate with Vite so unchanged files can still use a cheap 304.
+    headers: {
+      'Cache-Control': 'no-cache',
+    },
+  },
+  optimizeDeps: {
+    // Bump this value if a previously immutable WebView dependency cache must
+    // be invalidated. New responses use the revalidating policy above.
+    esbuildOptions: {
+      define: {
+        __MILO_VITE_DEP_CACHE_VERSION__: '"1"',
+      },
+    },
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
