@@ -19,15 +19,15 @@ function renderTooltip() {
   )
 }
 
-describe('Tooltip', () => {
-  it('shows after the shared delay for hover and removes itself on leave', () => {
+describe('Tooltip', async () => {
+  it('shows after the shared delay for hover and removes itself on leave', async () => {
     renderTooltip()
     const trigger = screen.getByRole('button', { name: 'Outline' })
 
     fireEvent.mouseEnter(trigger)
-    act(() => vi.advanceTimersByTime(349))
+    await act(() => { vi.advanceTimersByTime(349) })
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
-    act(() => vi.advanceTimersByTime(1))
+    await act(() => { vi.advanceTimersByTime(1) })
     expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline')
     expect(trigger).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id)
 
@@ -35,29 +35,29 @@ describe('Tooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('supports keyboard focus and cleans up on blur or unmount', () => {
+  it('supports keyboard focus and cleans up on blur or unmount', async () => {
     const rendered = renderTooltip()
     const trigger = screen.getByRole('button', { name: 'Outline' })
 
     fireEvent.focus(trigger)
-    act(() => vi.advanceTimersByTime(350))
+    await act(() => { vi.advanceTimersByTime(350) })
     expect(screen.getByRole('tooltip')).toBeVisible()
     fireEvent.blur(trigger)
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 
     fireEvent.focus(trigger)
     rendered.unmount()
-    act(() => vi.runAllTimers())
+    await act(() => { vi.runAllTimers() })
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('keeps the floating surface inside viewport edges', () => {
+  it('keeps the floating surface inside viewport edges', async () => {
     renderTooltip()
     const trigger = screen.getByRole('button', { name: 'Outline' })
     vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(new DOMRect(1010, 740, 24, 24))
 
     fireEvent.mouseEnter(trigger)
-    act(() => vi.advanceTimersByTime(350))
+    await act(() => { vi.advanceTimersByTime(350) })
     const tooltip = screen.getByRole('tooltip')
     vi.spyOn(tooltip, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 120, 28))
     fireEvent(window, new Event('resize'))
