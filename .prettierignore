@@ -1,0 +1,15 @@
+# Generated/dependency files and lockfiles
+node_modules/
+dist/
+coverage/
+src-tauri/target/
+src-tauri/gen/
+package-lock.json
+Cargo.lock
+# Rust belongs to rustfmt. Preserve exact Markdown, fixtures and snapshots.
+*.rs
+*.md
+**/fixtures/**
+**/__fixtures__/**
+**/__snapshots__/**
+*.snap

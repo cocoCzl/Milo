@@ -1,0 +1,11 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+# Markdown trailing spaces and byte-exact fixtures may be meaningful.
+trim_trailing_whitespace = false
+
+[*.rs]
+indent_size = 4
