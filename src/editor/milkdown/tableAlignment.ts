@@ -12,9 +12,8 @@ type TableCellDom = HTMLElement
 
 function readTableCellAttrs(dom: TableCellDom) {
   const widthAttr = dom.getAttribute('data-colwidth')
-  const widths = widthAttr && /^\d+(,\d+)*$/.test(widthAttr)
-    ? widthAttr.split(',').map(Number)
-    : null
+  const widths =
+    widthAttr && /^\d+(,\d+)*$/.test(widthAttr) ? widthAttr.split(',').map(Number) : null
   const colspan = Number(dom.getAttribute('colspan') || 1)
 
   return {
@@ -35,21 +34,25 @@ function tableCellDomAttrs(node: ProseNode) {
 }
 
 function withOptionalAlignment(tag: 'td' | 'th') {
-  return (base: (ctx: Ctx) => NodeSchema) => (ctx: Ctx): NodeSchema => {
-    const schema = base(ctx)
-    return {
-      ...schema,
-      attrs: {
-        ...schema.attrs,
-        alignment: { default: null },
-      },
-      parseDOM: [{
-        tag,
-        getAttrs: (dom: Node | string) => dom instanceof HTMLElement ? readTableCellAttrs(dom) : false,
-      }],
-      toDOM: (node: ProseNode) => [tag, tableCellDomAttrs(node), 0],
+  return (base: (ctx: Ctx) => NodeSchema) =>
+    (ctx: Ctx): NodeSchema => {
+      const schema = base(ctx)
+      return {
+        ...schema,
+        attrs: {
+          ...schema.attrs,
+          alignment: { default: null },
+        },
+        parseDOM: [
+          {
+            tag,
+            getAttrs: (dom: Node | string) =>
+              dom instanceof HTMLElement ? readTableCellAttrs(dom) : false,
+          },
+        ],
+        toDOM: (node: ProseNode) => [tag, tableCellDomAttrs(node), 0],
+      }
     }
-  }
 }
 
 const miloTableCellAlignment = tableCellSchema.extendSchema(withOptionalAlignment('td'))

@@ -28,7 +28,9 @@ export function composeMarkdownDocument(frontMatter: string, body: string): stri
   return `${frontMatter}${body}`
 }
 
-function splitFrontMatter(markdown: string): Pick<MarkdownDocumentBoundary, 'frontMatter' | 'body'> {
+function splitFrontMatter(
+  markdown: string,
+): Pick<MarkdownDocumentBoundary, 'frontMatter' | 'body'> {
   const opening = frontMatterOpening.exec(markdown)
 
   if (!opening) {

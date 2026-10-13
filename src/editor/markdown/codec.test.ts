@@ -4,14 +4,8 @@ import { describe, expect, it } from 'vitest'
 
 import { normalizeMarkdown } from './codec'
 
-const coreFixture = readFileSync(
-  resolve('src/editor/markdown/__fixtures__/core.md'),
-  'utf8',
-)
-const gfmFixture = readFileSync(
-  resolve('src/editor/markdown/__fixtures__/gfm.md'),
-  'utf8',
-)
+const coreFixture = readFileSync(resolve('src/editor/markdown/__fixtures__/core.md'), 'utf8')
+const gfmFixture = readFileSync(resolve('src/editor/markdown/__fixtures__/gfm.md'), 'utf8')
 
 describe('normalizeMarkdown', () => {
   it('round-trips the supported core Markdown semantics', () => {

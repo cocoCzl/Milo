@@ -2,7 +2,14 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Minus, Plus, X } from 'lucide-react'
 import { useRef, type CSSProperties, type RefObject } from 'react'
 
-import type { AppearancePreference, DocumentFontStyle, InterfaceLocale, LineHeightPreference, ReadingWidthPreference, ResolvedTheme } from '../settings/applicationSettings'
+import type {
+  AppearancePreference,
+  DocumentFontStyle,
+  InterfaceLocale,
+  LineHeightPreference,
+  ReadingWidthPreference,
+  ResolvedTheme,
+} from '../settings/applicationSettings'
 import { Select } from './Select'
 
 type PreferencesDialogCopy = {
@@ -60,7 +67,29 @@ type PreferencesDialogProps = {
   theme: ResolvedTheme
 }
 
-export function PreferencesDialog({ appearance, copy, documentFontStyle, documentZoom, error, interfaceZoom, lineHeight, locale, onAppearanceChange, onDocumentFontStyleChange, onDocumentZoomChange, onInterfaceZoomChange, onLineHeightChange, onLocaleChange, onOpenChange, onReadingWidthChange, open, portalContainer, readingWidth, returnFocusRef, theme }: PreferencesDialogProps) {
+export function PreferencesDialog({
+  appearance,
+  copy,
+  documentFontStyle,
+  documentZoom,
+  error,
+  interfaceZoom,
+  lineHeight,
+  locale,
+  onAppearanceChange,
+  onDocumentFontStyleChange,
+  onDocumentZoomChange,
+  onInterfaceZoomChange,
+  onLineHeightChange,
+  onLocaleChange,
+  onOpenChange,
+  onReadingWidthChange,
+  open,
+  portalContainer,
+  readingWidth,
+  returnFocusRef,
+  theme,
+}: PreferencesDialogProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const portalStyle = {
     '--ui-font-lg': `${Number((13 * (interfaceZoom / 100)).toFixed(2))}px`,
@@ -72,8 +101,15 @@ export function PreferencesDialog({ appearance, copy, documentFontStyle, documen
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal container={portalContainer ?? undefined}>
-        <div className="preferences-dialog__portal dialog-overlay-layer" data-theme={theme} style={portalStyle}>
-          <Dialog.Overlay className="preferences-dialog__backdrop" onClick={() => onOpenChange(false)} />
+        <div
+          className="preferences-dialog__portal dialog-overlay-layer"
+          data-theme={theme}
+          style={portalStyle}
+        >
+          <Dialog.Overlay
+            className="preferences-dialog__backdrop"
+            onClick={() => onOpenChange(false)}
+          />
           <Dialog.Content
             className="preferences-dialog"
             aria-describedby={undefined}
@@ -88,117 +124,138 @@ export function PreferencesDialog({ appearance, copy, documentFontStyle, documen
               closeRef.current?.focus()
             }}
           >
-          <header className="preferences-dialog__header">
-            <Dialog.Title>{copy.title}</Dialog.Title>
-            <Dialog.Close ref={closeRef} className="preferences-dialog__close" aria-label={copy.close}>
-              <X aria-hidden="true" size={16} strokeWidth={1.8} />
-            </Dialog.Close>
-          </header>
-          <div className="preferences-dialog__body">
-            <section className="preferences-dialog__section" aria-labelledby="preferences-appearance-heading">
-              <h3 id="preferences-appearance-heading">{copy.appearanceSection}</h3>
-              <div className="preferences-dialog__rows">
-                <label className="preferences-dialog__row">
-                  <span>{copy.appearance}</span>
-                  <Select
-                    aria-label={copy.appearance}
-                    options={[
-                      { label: copy.system, value: 'system' },
-                      { label: copy.light, value: 'light' },
-                      { label: copy.dark, value: 'dark' },
-                      { label: copy.warm, value: 'warm' },
-                    ]}
-                    portalContainer={portalContainer}
-                    value={appearance}
-                    onValueChange={(value) => onAppearanceChange(value as AppearancePreference)}
+            <header className="preferences-dialog__header">
+              <Dialog.Title>{copy.title}</Dialog.Title>
+              <Dialog.Close
+                ref={closeRef}
+                className="preferences-dialog__close"
+                aria-label={copy.close}
+              >
+                <X aria-hidden="true" size={16} strokeWidth={1.8} />
+              </Dialog.Close>
+            </header>
+            <div className="preferences-dialog__body">
+              <section
+                className="preferences-dialog__section"
+                aria-labelledby="preferences-appearance-heading"
+              >
+                <h3 id="preferences-appearance-heading">{copy.appearanceSection}</h3>
+                <div className="preferences-dialog__rows">
+                  <label className="preferences-dialog__row">
+                    <span>{copy.appearance}</span>
+                    <Select
+                      aria-label={copy.appearance}
+                      options={[
+                        { label: copy.system, value: 'system' },
+                        { label: copy.light, value: 'light' },
+                        { label: copy.dark, value: 'dark' },
+                        { label: copy.warm, value: 'warm' },
+                      ]}
+                      portalContainer={portalContainer}
+                      value={appearance}
+                      onValueChange={(value) => onAppearanceChange(value as AppearancePreference)}
+                    />
+                  </label>
+                  <label className="preferences-dialog__row">
+                    <span>{copy.language}</span>
+                    <Select
+                      aria-label={copy.language}
+                      options={[
+                        { label: copy.system, value: 'system' },
+                        { label: 'English', value: 'en' },
+                        { label: '简体中文', value: 'zh-CN' },
+                      ]}
+                      portalContainer={portalContainer}
+                      value={locale}
+                      onValueChange={(value) => onLocaleChange(value as InterfaceLocale)}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section
+                className="preferences-dialog__section"
+                aria-labelledby="preferences-reading-heading"
+              >
+                <h3 id="preferences-reading-heading">{copy.editingSection}</h3>
+                <div className="preferences-dialog__rows">
+                  <label className="preferences-dialog__row">
+                    <span>{copy.documentFont}</span>
+                    <Select
+                      aria-label={copy.documentFont}
+                      options={[
+                        { label: copy.systemSans, value: 'sans' },
+                        { label: copy.readingSerif, value: 'serif' },
+                      ]}
+                      portalContainer={portalContainer}
+                      value={documentFontStyle}
+                      onValueChange={(value) =>
+                        onDocumentFontStyleChange(value as DocumentFontStyle)
+                      }
+                    />
+                  </label>
+                  <label className="preferences-dialog__row">
+                    <span>{copy.readingWidth}</span>
+                    <Select
+                      aria-label={copy.readingWidth}
+                      options={[
+                        { label: copy.readingWidthNarrow, value: 'narrow' },
+                        { label: copy.readingWidthStandard, value: 'standard' },
+                        { label: copy.readingWidthWide, value: 'wide' },
+                      ]}
+                      portalContainer={portalContainer}
+                      value={readingWidth}
+                      onValueChange={(value) =>
+                        onReadingWidthChange(value as ReadingWidthPreference)
+                      }
+                    />
+                  </label>
+                  <label className="preferences-dialog__row">
+                    <span>{copy.lineHeight}</span>
+                    <Select
+                      aria-label={copy.lineHeight}
+                      options={[
+                        { label: copy.lineHeightCompact, value: 'compact' },
+                        { label: copy.lineHeightStandard, value: 'standard' },
+                        { label: copy.lineHeightRelaxed, value: 'relaxed' },
+                      ]}
+                      portalContainer={portalContainer}
+                      value={lineHeight}
+                      onValueChange={(value) => onLineHeightChange(value as LineHeightPreference)}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section
+                className="preferences-dialog__section"
+                aria-labelledby="preferences-display-heading"
+              >
+                <h3 id="preferences-display-heading">{copy.displaySection}</h3>
+                <div className="preferences-dialog__rows">
+                  <ZoomPreference
+                    decreaseLabel={copy.decreaseInterfaceSize}
+                    increaseLabel={copy.increaseInterfaceSize}
+                    label={copy.interfaceSize}
+                    onChange={onInterfaceZoomChange}
+                    value={interfaceZoom}
                   />
-                </label>
-                <label className="preferences-dialog__row">
-                  <span>{copy.language}</span>
-                  <Select
-                    aria-label={copy.language}
-                    options={[
-                      { label: copy.system, value: 'system' },
-                      { label: 'English', value: 'en' },
-                      { label: '简体中文', value: 'zh-CN' },
-                    ]}
-                    portalContainer={portalContainer}
-                    value={locale}
-                    onValueChange={(value) => onLocaleChange(value as InterfaceLocale)}
+                  <ZoomPreference
+                    decreaseLabel={copy.decreaseDocumentSize}
+                    increaseLabel={copy.increaseDocumentSize}
+                    label={copy.documentSize}
+                    onChange={onDocumentZoomChange}
+                    value={documentZoom}
                   />
-                </label>
-              </div>
-            </section>
-            <section className="preferences-dialog__section" aria-labelledby="preferences-reading-heading">
-              <h3 id="preferences-reading-heading">{copy.editingSection}</h3>
-              <div className="preferences-dialog__rows">
-                <label className="preferences-dialog__row">
-                  <span>{copy.documentFont}</span>
-                  <Select
-                    aria-label={copy.documentFont}
-                    options={[
-                      { label: copy.systemSans, value: 'sans' },
-                      { label: copy.readingSerif, value: 'serif' },
-                    ]}
-                    portalContainer={portalContainer}
-                    value={documentFontStyle}
-                    onValueChange={(value) => onDocumentFontStyleChange(value as DocumentFontStyle)}
-                  />
-                </label>
-                <label className="preferences-dialog__row">
-                  <span>{copy.readingWidth}</span>
-                  <Select
-                    aria-label={copy.readingWidth}
-                    options={[
-                      { label: copy.readingWidthNarrow, value: 'narrow' },
-                      { label: copy.readingWidthStandard, value: 'standard' },
-                      { label: copy.readingWidthWide, value: 'wide' },
-                    ]}
-                    portalContainer={portalContainer}
-                    value={readingWidth}
-                    onValueChange={(value) => onReadingWidthChange(value as ReadingWidthPreference)}
-                  />
-                </label>
-                <label className="preferences-dialog__row">
-                  <span>{copy.lineHeight}</span>
-                  <Select
-                    aria-label={copy.lineHeight}
-                    options={[
-                      { label: copy.lineHeightCompact, value: 'compact' },
-                      { label: copy.lineHeightStandard, value: 'standard' },
-                      { label: copy.lineHeightRelaxed, value: 'relaxed' },
-                    ]}
-                    portalContainer={portalContainer}
-                    value={lineHeight}
-                    onValueChange={(value) => onLineHeightChange(value as LineHeightPreference)}
-                  />
-                </label>
-              </div>
-            </section>
-            <section className="preferences-dialog__section" aria-labelledby="preferences-display-heading">
-              <h3 id="preferences-display-heading">{copy.displaySection}</h3>
-              <div className="preferences-dialog__rows">
-                <ZoomPreference
-                  decreaseLabel={copy.decreaseInterfaceSize}
-                  increaseLabel={copy.increaseInterfaceSize}
-                  label={copy.interfaceSize}
-                  onChange={onInterfaceZoomChange}
-                  value={interfaceZoom}
-                />
-                <ZoomPreference
-                  decreaseLabel={copy.decreaseDocumentSize}
-                  increaseLabel={copy.increaseDocumentSize}
-                  label={copy.documentSize}
-                  onChange={onDocumentZoomChange}
-                  value={documentZoom}
-                />
-              </div>
-            </section>
-            <footer className="preferences-dialog__footer">
-              <span className="preferences-dialog__shortcut">⌘+ · ⌘− · ⌘0</span>
-              {error ? <span className="preferences-dialog__error" role="status">{error}</span> : null}
-            </footer>
-          </div>
+                </div>
+              </section>
+              <footer className="preferences-dialog__footer">
+                <span className="preferences-dialog__shortcut">⌘+ · ⌘− · ⌘0</span>
+                {error ? (
+                  <span className="preferences-dialog__error" role="status">
+                    {error}
+                  </span>
+                ) : null}
+              </footer>
+            </div>
           </Dialog.Content>
         </div>
       </Dialog.Portal>
@@ -206,7 +263,19 @@ export function PreferencesDialog({ appearance, copy, documentFontStyle, documen
   )
 }
 
-function ZoomPreference({ decreaseLabel, increaseLabel, label, onChange, value }: { decreaseLabel: string; increaseLabel: string; label: string; onChange: (value: number) => void; value: number }) {
+function ZoomPreference({
+  decreaseLabel,
+  increaseLabel,
+  label,
+  onChange,
+  value,
+}: {
+  decreaseLabel: string
+  increaseLabel: string
+  label: string
+  onChange: (value: number) => void
+  value: number
+}) {
   return (
     <div className="preferences-dialog__row preferences-dialog__zoom">
       <span>{label}</span>

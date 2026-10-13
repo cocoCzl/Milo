@@ -14,17 +14,21 @@ function sameBlock(left: BlockTarget | null, right: BlockTarget | null) {
 // themselves are accounted for by the caller because they are portaled out of
 // the editor DOM tree.
 export function isWithinBlockHoverCorridor(target: BlockTarget, pointer: PointerCoordinates) {
-  return pointer.left >= target.rect.left - blockHandleGutterWidth
-    && pointer.left <= target.rect.right
-    && pointer.top >= target.rect.top
-    && pointer.top <= target.rect.bottom
+  return (
+    pointer.left >= target.rect.left - blockHandleGutterWidth &&
+    pointer.left <= target.rect.right &&
+    pointer.top >= target.rect.top &&
+    pointer.top <= target.rect.bottom
+  )
 }
 
 function isWithinActivationGutter(target: BlockTarget, pointer: PointerCoordinates) {
-  return pointer.left >= target.rect.left - blockHandleGutterWidth
-    && pointer.left <= target.rect.left + activationInset
-    && pointer.top >= target.rect.top
-    && pointer.top <= target.rect.bottom
+  return (
+    pointer.left >= target.rect.left - blockHandleGutterWidth &&
+    pointer.left <= target.rect.left + activationInset &&
+    pointer.top >= target.rect.top &&
+    pointer.top <= target.rect.bottom
+  )
 }
 
 export function resolveBlockHandleHover({

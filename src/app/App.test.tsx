@@ -14,19 +14,62 @@ const editorMocks = vi.hoisted(() => ({
 import { App } from './App'
 
 vi.mock('../editor/milkdown/MilkdownEditor', () => ({
-  MilkdownEditor: ({ active = true, ariaLabel = 'Untitled Markdown document', editorId = 'standalone', initialMarkdown, onCloseOutline, onMarkdownChange, outlineLayout, outlineOpen, presentationMode = 'edit' }: { active?: boolean; ariaLabel?: string; editorId?: string; initialMarkdown: string; onCloseOutline?: () => void; onMarkdownChange?: (markdown: string) => void; outlineLayout?: 'inline' | 'drawer'; outlineOpen?: boolean; presentationMode?: string }) => {
+  MilkdownEditor: ({
+    active = true,
+    ariaLabel = 'Untitled Markdown document',
+    editorId = 'standalone',
+    initialMarkdown,
+    onCloseOutline,
+    onMarkdownChange,
+    outlineLayout,
+    outlineOpen,
+    presentationMode = 'edit',
+  }: {
+    active?: boolean
+    ariaLabel?: string
+    editorId?: string
+    initialMarkdown: string
+    onCloseOutline?: () => void
+    onMarkdownChange?: (markdown: string) => void
+    outlineLayout?: 'inline' | 'drawer'
+    outlineOpen?: boolean
+    presentationMode?: string
+  }) => {
     if (onMarkdownChange) editorMocks.markdownChanges.set(editorId, onMarkdownChange)
-    return <div aria-label={ariaLabel} data-markdown={initialMarkdown} data-presentation-mode={presentationMode} role="textbox">
-      {(outlineLayout === 'inline' || outlineOpen) && active ? (
-        <>
-          {outlineOpen && outlineLayout === 'drawer' ? <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} /> : null}
-          <nav aria-label="Outline" className={outlineLayout === 'drawer' ? 'editor-outline--drawer' : undefined} id={outlineLayout === 'inline' ? undefined : 'outline-drawer'}>
-            {outlineLayout === 'drawer' ? <button type="button" aria-label="Close outline" onClick={onCloseOutline}>Close</button> : null}
-            {editorMocks.hasHeadings ? <button type="button" onClick={onCloseOutline}>Example heading</button> : <p>Headings will appear here.</p>}
-          </nav>
-        </>
-      ) : null}
-    </div>
+    return (
+      <div
+        aria-label={ariaLabel}
+        data-markdown={initialMarkdown}
+        data-presentation-mode={presentationMode}
+        role="textbox"
+      >
+        {(outlineLayout === 'inline' || outlineOpen) && active ? (
+          <>
+            {outlineOpen && outlineLayout === 'drawer' ? (
+              <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} />
+            ) : null}
+            <nav
+              aria-label="Outline"
+              className={outlineLayout === 'drawer' ? 'editor-outline--drawer' : undefined}
+              id={outlineLayout === 'inline' ? undefined : 'outline-drawer'}
+            >
+              {outlineLayout === 'drawer' ? (
+                <button type="button" aria-label="Close outline" onClick={onCloseOutline}>
+                  Close
+                </button>
+              ) : null}
+              {editorMocks.hasHeadings ? (
+                <button type="button" onClick={onCloseOutline}>
+                  Example heading
+                </button>
+              ) : (
+                <p>Headings will appear here.</p>
+              )}
+            </nav>
+          </>
+        ) : null}
+      </div>
+    )
   },
 }))
 
@@ -44,7 +87,13 @@ beforeEach(() => {
   preferenceMocks.save.mockClear()
   editorMocks.hasHeadings = true
   editorMocks.markdownChanges.clear()
-  preferenceMocks.load.mockResolvedValue({ settingsVersion: 3, appearance: 'system', locale: 'system', documentZoom: 100, interfaceZoom: 120 })
+  preferenceMocks.load.mockResolvedValue({
+    settingsVersion: 3,
+    appearance: 'system',
+    locale: 'system',
+    documentZoom: 100,
+    interfaceZoom: 120,
+  })
   preferenceMocks.save.mockImplementation(async (settings) => settings)
 })
 
@@ -53,7 +102,11 @@ afterEach(cleanup)
 describe('App', () => {
   it('does not flash the no-document call to action while startup state is unresolved', async () => {
     let resolveSettings!: (settings: Record<string, unknown>) => void
-    preferenceMocks.load.mockReturnValue(new Promise((resolve) => { resolveSettings = resolve }))
+    preferenceMocks.load.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSettings = resolve
+      }),
+    )
     const { container } = render(<App />)
 
     expect(container.querySelector('.document-area')).toHaveAttribute('aria-busy', 'true')
@@ -62,16 +115,20 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Open document' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open folder' })).not.toBeInTheDocument()
 
-    await act(async () => resolveSettings({
-      settingsVersion: 5,
-      appearance: 'system',
-      locale: 'en',
-      documentZoom: 100,
-      interfaceZoom: 120,
-      startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
-    }))
+    await act(async () =>
+      resolveSettings({
+        settingsVersion: 5,
+        appearance: 'system',
+        locale: 'en',
+        documentZoom: 100,
+        interfaceZoom: 120,
+        startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
+      }),
+    )
 
-    await waitFor(() => expect(container.querySelector('.document-area')).toHaveAttribute('aria-busy', 'false'))
+    await waitFor(() =>
+      expect(container.querySelector('.document-area')).toHaveAttribute('aria-busy', 'false'),
+    )
     expect(container.querySelector('.document-area')).toHaveClass('document-area--empty')
     expect(screen.getByRole('button', { name: 'Open document' })).toBeVisible()
   })
@@ -79,14 +136,20 @@ describe('App', () => {
   it('starts with a true no-document surface and creates an untitled editor only on request', async () => {
     const { container } = render(<App />)
 
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveStyle({ '--editor-font-size': '16.5px' })
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveStyle({
+      '--editor-font-size': '16.5px',
+    })
     expect(container.querySelector('.application-bar')).toBeVisible()
-    await waitFor(() => expect(container.querySelector('.document-area')).toHaveClass('document-area--empty'))
+    await waitFor(() =>
+      expect(container.querySelector('.document-area')).toHaveClass('document-area--empty'),
+    )
     expect(container.querySelector('.document-area')).toHaveClass('document-area--empty')
     expect(container.querySelector('.document-context')).not.toBeInTheDocument()
     expect(container.querySelector('.document-stage')).toBeVisible()
     expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Untitled Markdown document' }),
+    ).not.toBeInTheDocument()
     expect(editorMocks.markdownChanges.size).toBe(0)
     expect(screen.queryByRole('button', { name: 'Save document' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
@@ -97,19 +160,27 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Open folder' })).toBeVisible()
     const newDocument = screen.getByRole('button', { name: 'New document' })
     expect(newDocument).toBeVisible()
-    expect(newDocument.closest('.application-bar__tabs')?.querySelector('.tab-strip')).toBeInTheDocument()
+    expect(
+      newDocument.closest('.application-bar__tabs')?.querySelector('.tab-strip'),
+    ).toBeInTheDocument()
 
     fireEvent.click(newDocument)
     expect(screen.getByRole('tab', { name: 'Untitled' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: 'Untitled' }).querySelector('.document-tab__icon')).toHaveAttribute('aria-hidden', 'true')
+    expect(
+      screen.getByRole('tab', { name: 'Untitled' }).querySelector('.document-tab__icon'),
+    ).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toBeVisible()
     expect(container.querySelector('.document-context')).toHaveTextContent('UntitledNot saved')
-    expect(container.querySelector('.document-context')).toContainElement(screen.getByRole('button', { name: 'Save document' }))
+    expect(container.querySelector('.document-context')).toContainElement(
+      screen.getByRole('button', { name: 'Save document' }),
+    )
     expect(container.querySelector('.document-area > .document-stage')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Untitled' }))
     expect(screen.queryByRole('tab', { name: 'Untitled' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Untitled Markdown document' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: 'Untitled Markdown document' }),
+    ).not.toBeInTheDocument()
   })
 
   it('moves active document identity and save state into a context row outside the scroll stage', async () => {
@@ -183,7 +254,7 @@ describe('App', () => {
     expect(editors[1]).toHaveAttribute('data-markdown', '')
   })
 
-  it('keeps each tab\'s document scroll position separate and clamps a restored position', () => {
+  it("keeps each tab's document scroll position separate and clamps a restored position", () => {
     const { container } = render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     const stage = container.querySelector<HTMLElement>('.document-stage')!
@@ -192,7 +263,13 @@ describe('App', () => {
     Object.defineProperties(stage, {
       clientHeight: { configurable: true, get: () => 500 },
       scrollHeight: { configurable: true, get: () => scrollHeight },
-      scrollTop: { configurable: true, get: () => scrollTop, set: (next: number) => { scrollTop = next } },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (next: number) => {
+          scrollTop = next
+        },
+      },
     })
 
     // Tab A is left near its chapter 13 region.
@@ -242,15 +319,19 @@ describe('App', () => {
     expect(container.querySelector('.document-context')).toHaveTextContent('Not saved')
 
     await waitFor(() => {
-      expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
-        appearance: 'system',
-        locale: 'system',
-        documentZoom: 110,
-        interfaceZoom: 130,
-      }))
+      expect(preferenceMocks.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          appearance: 'system',
+          locale: 'system',
+          documentZoom: 110,
+          interfaceZoom: 130,
+        }),
+      )
     })
     fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '偏好设置' })).not.toBeInTheDocument(),
+    )
     expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
   })
 
@@ -273,15 +354,24 @@ describe('App', () => {
     expect(app).toHaveAttribute('data-reading-width', 'narrow')
     expect(app).toHaveAttribute('data-line-height', 'relaxed')
     expect(app).toHaveStyle({ '--editor-font-size': '16.5px' })
-    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-markdown', '')
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute(
+      'data-markdown',
+      '',
+    )
     expect(container.querySelector('.document-context')).toHaveTextContent('Not saved')
 
     fireEvent.click(screen.getByRole('button', { name: 'Read' }))
-    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-presentation-mode', 'read')
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute(
+      'data-presentation-mode',
+      'read',
+    )
     expect(app).toHaveAttribute('data-document-font-style', 'serif')
     expect(app).toHaveAttribute('data-reading-width', 'narrow')
     expect(app).toHaveAttribute('data-line-height', 'relaxed')
-    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-markdown', '')
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute(
+      'data-markdown',
+      '',
+    )
   })
 
   it('persists individual removal and clearing of recent records', async () => {
@@ -297,18 +387,30 @@ describe('App', () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Remove one.md from recent' }))
-    await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
-      recentFiles: [],
-      recentFolders: ['/notes/archive'],
-    })))
-    expect(screen.queryByRole('button', { name: 'Remove one.md from recent' })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(preferenceMocks.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recentFiles: [],
+          recentFolders: ['/notes/archive'],
+        }),
+      ),
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Remove one.md from recent' }),
+    ).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
-    await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({
-      recentFiles: [],
-      recentFolders: [],
-    })))
-    expect(screen.getByRole('region', { name: 'Recent files and folders' })).toHaveTextContent('No recent items yet.')
+    await waitFor(() =>
+      expect(preferenceMocks.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          recentFiles: [],
+          recentFolders: [],
+        }),
+      ),
+    )
+    expect(screen.getByRole('region', { name: 'Recent files and folders' })).toHaveTextContent(
+      'No recent items yet.',
+    )
   })
 
   it('handles document zoom shortcuts without changing editor content', async () => {
@@ -316,20 +418,34 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
 
     fireEvent.keyDown(window, { key: '+', metaKey: true })
-    await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ documentZoom: 110 })))
+    await waitFor(() =>
+      expect(preferenceMocks.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ documentZoom: 110 }),
+      ),
+    )
     fireEvent.keyDown(window, { key: '0', metaKey: true })
-    await waitFor(() => expect(preferenceMocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ documentZoom: 100 })))
-    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toBeEmptyDOMElement()
+    await waitFor(() =>
+      expect(preferenceMocks.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ documentZoom: 100 }),
+      ),
+    )
+    expect(
+      screen.getByRole('textbox', { name: 'Untitled Markdown document' }),
+    ).toBeEmptyDOMElement()
   })
 
   it('enters a distraction-free focus mode and exits with Escape', () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+      'app-shell--focus-mode',
+    )
 
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass(
+      'app-shell--focus-mode',
+    )
   })
 
   it('defaults each document tab to edit and keeps presentation mode per tab', () => {
@@ -357,8 +473,13 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read' }))
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
 
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
-    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute('data-presentation-mode', 'read')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+      'app-shell--focus-mode',
+    )
+    expect(screen.getByRole('textbox', { name: 'Untitled Markdown document' })).toHaveAttribute(
+      'data-presentation-mode',
+      'read',
+    )
     expect(screen.getByRole('button', { name: 'Open outline' })).toBeVisible()
   })
 
@@ -368,7 +489,10 @@ describe('App', () => {
 
     const outlineToggle = screen.getByRole('button', { name: 'Open outline' })
     fireEvent.click(outlineToggle)
-    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute('id', 'outline-drawer')
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute(
+      'id',
+      'outline-drawer',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Example heading' }))
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
@@ -385,12 +509,17 @@ describe('App', () => {
     expect(focusOutlineTrigger).toHaveAttribute('aria-expanded', 'false')
 
     fireEvent.click(focusOutlineTrigger)
-    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute('id', 'outline-drawer')
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute(
+      'id',
+      'outline-drawer',
+    )
     expect(focusOutlineTrigger).toHaveAttribute('aria-expanded', 'true')
 
     fireEvent.click(screen.getByRole('button', { name: 'Example heading' }))
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+      'app-shell--focus-mode',
+    )
     await waitFor(() => expect(focusOutlineTrigger).toHaveFocus())
   })
 
@@ -403,23 +532,34 @@ describe('App', () => {
     fireEvent.click(focusOutlineTrigger)
     fireEvent.mouseDown(document.querySelector('.outline-backdrop')!)
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+      'app-shell--focus-mode',
+    )
     await waitFor(() => expect(focusOutlineTrigger).toHaveFocus())
 
     fireEvent.click(focusOutlineTrigger)
     fireEvent.click(screen.getByRole('button', { name: 'Close outline' }))
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+      'app-shell--focus-mode',
+    )
 
     fireEvent.click(focusOutlineTrigger)
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--focus-mode')
-    expect(screen.getByRole('button', { name: 'Open outline' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+      'app-shell--focus-mode',
+    )
+    expect(screen.getByRole('button', { name: 'Open outline' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
     await waitFor(() => expect(focusOutlineTrigger).toHaveFocus())
 
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass('app-shell--focus-mode')
+    expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass(
+      'app-shell--focus-mode',
+    )
     expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open outline' })).toBeVisible()
   })
@@ -428,12 +568,17 @@ describe('App', () => {
     let notify: (() => void) | undefined
     const OriginalResizeObserver = window.ResizeObserver
     class ResizeObserverMock {
-      constructor(callback: () => void) { notify = callback }
+      constructor(callback: () => void) {
+        notify = callback
+      }
       disconnect() {}
       observe() {}
       unobserve() {}
     }
-    Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: ResizeObserverMock })
+    Object.defineProperty(window, 'ResizeObserver', {
+      configurable: true,
+      value: ResizeObserverMock,
+    })
 
     try {
       const { container } = render(<App />)
@@ -441,14 +586,22 @@ describe('App', () => {
       const stage = container.querySelector<HTMLElement>('.document-stage')!
       Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1200 })
       notify?.()
-      await waitFor(() => expect(screen.getByRole('navigation', { name: 'Outline' })).not.toHaveAttribute('id'))
+      await waitFor(() =>
+        expect(screen.getByRole('navigation', { name: 'Outline' })).not.toHaveAttribute('id'),
+      )
 
       fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
       expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
-      expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute('id', 'outline-drawer')
+      expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveAttribute(
+        'id',
+        'outline-drawer',
+      )
     } finally {
-      Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: OriginalResizeObserver })
+      Object.defineProperty(window, 'ResizeObserver', {
+        configurable: true,
+        value: OriginalResizeObserver,
+      })
     }
   })
 
@@ -459,19 +612,26 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
     fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
 
-    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveTextContent('Headings will appear here.')
+    expect(screen.getByRole('navigation', { name: 'Outline' })).toHaveTextContent(
+      'Headings will appear here.',
+    )
   })
 
   it('switches between inline and drawer navigation from the actual document workspace width', async () => {
     let notify: (() => void) | undefined
     const OriginalResizeObserver = window.ResizeObserver
     class ResizeObserverMock {
-      constructor(callback: () => void) { notify = callback }
+      constructor(callback: () => void) {
+        notify = callback
+      }
       disconnect() {}
       observe() {}
       unobserve() {}
     }
-    Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: ResizeObserverMock })
+    Object.defineProperty(window, 'ResizeObserver', {
+      configurable: true,
+      value: ResizeObserverMock,
+    })
 
     try {
       const { container } = render(<App />)
@@ -480,7 +640,9 @@ describe('App', () => {
       Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1200 })
       notify?.()
       await waitFor(() => {
-        expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass('app-shell--inline-outline')
+        expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
+          'app-shell--inline-outline',
+        )
         expect(container.querySelector('.outline-toggle')).not.toBeInTheDocument()
       })
 
@@ -488,10 +650,15 @@ describe('App', () => {
       notify?.()
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Open outline' })).toBeVisible()
-        expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass('app-shell--inline-outline')
+        expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).not.toHaveClass(
+          'app-shell--inline-outline',
+        )
       })
     } finally {
-      Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: OriginalResizeObserver })
+      Object.defineProperty(window, 'ResizeObserver', {
+        configurable: true,
+        value: OriginalResizeObserver,
+      })
     }
   })
 
@@ -508,11 +675,15 @@ describe('App', () => {
     const backdrop = document.querySelector('.preferences-dialog__backdrop')!
     fireEvent.pointerDown(backdrop, { button: 0, pointerType: 'mouse' })
     fireEvent.click(backdrop)
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
+    )
 
     openPreferences()
     fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
+    )
   })
 
   it('opens the same modal preferences from the pinned sidebar footer and restores that trigger', async () => {
@@ -521,7 +692,10 @@ describe('App', () => {
     const settingsTrigger = screen.getByRole('button', { name: 'Settings' })
     fireEvent.click(settingsTrigger)
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
-    expect(screen.getByRole('dialog', { name: 'Preferences' })).toHaveAttribute('aria-modal', 'true')
+    expect(screen.getByRole('dialog', { name: 'Preferences' })).toHaveAttribute(
+      'aria-modal',
+      'true',
+    )
     expect(screen.queryByRole('button', { name: 'Preferences' })).not.toBeInTheDocument()
     expect(document.querySelector('.application-more-menu__trigger')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
@@ -539,7 +713,9 @@ describe('App', () => {
     expect(container.querySelector('.editor-outline--drawer')).toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
+    )
     expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
   })
 
@@ -555,11 +731,15 @@ describe('App', () => {
 
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
     expect(container.querySelector('.outline-drawer-layer')).toBeInTheDocument()
-    expect(container.querySelector('.preferences-dialog-layer .dialog-overlay-layer')).toContainElement(screen.getByRole('dialog', { name: 'Preferences' }))
+    expect(
+      container.querySelector('.preferences-dialog-layer .dialog-overlay-layer'),
+    ).toContainElement(screen.getByRole('dialog', { name: 'Preferences' }))
     expect(container.querySelector('.editor-outline--drawer')).toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
+    )
     expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
     await waitFor(() => expect(moreTrigger).toHaveFocus())
 
@@ -573,14 +753,18 @@ describe('App', () => {
     const outlineToggle = screen.getByRole('button', { name: 'Open outline' })
 
     fireEvent.focus(outlineToggle)
-    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline'), { timeout: 700 })
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline'), {
+      timeout: 700,
+    })
     fireEvent.blur(outlineToggle)
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
 
     const focusOutlineTrigger = screen.getByRole('button', { name: 'Open outline' })
     expect(focusOutlineTrigger).not.toHaveAttribute('title')
     fireEvent.focus(focusOutlineTrigger)
-    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline'), { timeout: 700 })
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Open outline'), {
+      timeout: 700,
+    })
   })
 
   it('keeps low-frequency file actions in More and enables Save As only for a document', () => {
@@ -606,10 +790,14 @@ describe('App', () => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: vi.fn((query: string) => ({
-        addEventListener: (_type: string, listener: () => void) => { if (query === '(max-width: 900px)') sidebarListener = listener },
+        addEventListener: (_type: string, listener: () => void) => {
+          if (query === '(max-width: 900px)') sidebarListener = listener
+        },
         addListener: vi.fn(),
         dispatchEvent: vi.fn(),
-        get matches() { return query === '(max-width: 900px)' ? narrow : false },
+        get matches() {
+          return query === '(max-width: 900px)' ? narrow : false
+        },
         media: query,
         onchange: null,
         removeEventListener: vi.fn(),
@@ -619,16 +807,25 @@ describe('App', () => {
 
     try {
       const rendered = render(<App />)
-      const toggle = screen.getByRole('button', { name: 'Sidebar unavailable at this window width' })
+      const toggle = screen.getByRole('button', {
+        name: 'Sidebar unavailable at this window width',
+      })
       expect(toggle).toBeDisabled()
       expect(toggle).toHaveAttribute('aria-pressed', 'false')
-      expect(screen.queryByRole('complementary', { name: 'Current folder' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('complementary', { name: 'Current folder' }),
+      ).not.toBeInTheDocument()
       expect(preferenceMocks.save).not.toHaveBeenCalled()
 
       narrow = false
       act(() => sidebarListener?.())
-      await waitFor(() => expect(screen.getByRole('complementary', { name: 'Current folder' })).toBeVisible())
-      expect(screen.getByRole('button', { name: 'Hide sidebar' })).toHaveAttribute('aria-pressed', 'true')
+      await waitFor(() =>
+        expect(screen.getByRole('complementary', { name: 'Current folder' })).toBeVisible(),
+      )
+      expect(screen.getByRole('button', { name: 'Hide sidebar' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
       expect(preferenceMocks.save).not.toHaveBeenCalled()
       rendered.unmount()
     } finally {
@@ -637,15 +834,26 @@ describe('App', () => {
   })
 
   it('uses Chinese copy for both the no-document surface and a real untitled document', async () => {
-    preferenceMocks.load.mockResolvedValue({ appearance: 'system', locale: 'zh-CN', documentZoom: 100 })
+    preferenceMocks.load.mockResolvedValue({
+      appearance: 'system',
+      locale: 'zh-CN',
+      documentZoom: 100,
+    })
     render(<App />)
 
-    expect(await screen.findByRole('main', { name: 'Milo Markdown 编辑器' })).toHaveAttribute('lang', 'zh-CN')
-    expect(screen.getByRole('complementary', { name: '当前文件夹' })).toHaveTextContent('打开一个文件夹，在这里浏览 Markdown 文件。')
+    expect(await screen.findByRole('main', { name: 'Milo Markdown 编辑器' })).toHaveAttribute(
+      'lang',
+      'zh-CN',
+    )
+    expect(screen.getByRole('complementary', { name: '当前文件夹' })).toHaveTextContent(
+      '打开一个文件夹，在这里浏览 Markdown 文件。',
+    )
     expect(screen.getByRole('button', { name: '选择文件夹' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: '未命名' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: '未命名 Markdown 文档' })).not.toBeInTheDocument()
-    expect((await screen.findByRole('button', { name: '打开文件夹' })).parentElement).toHaveTextContent('打开文件夹')
+    expect(
+      (await screen.findByRole('button', { name: '打开文件夹' })).parentElement,
+    ).toHaveTextContent('打开文件夹')
 
     fireEvent.click(screen.getByRole('button', { name: '新建文档' }))
     expect(screen.getByRole('tab', { name: '未命名' })).toBeVisible()

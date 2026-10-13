@@ -1,4 +1,15 @@
-import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactElement, type RefAttributes } from 'react'
+import {
+  cloneElement,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactElement,
+  type RefAttributes,
+} from 'react'
 import { createPortal } from 'react-dom'
 
 type TooltipProps = {
@@ -8,7 +19,8 @@ type TooltipProps = {
   disabled?: boolean
 }
 
-type TooltipTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & RefAttributes<HTMLButtonElement>
+type TooltipTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> &
+  RefAttributes<HTMLButtonElement>
 
 type TooltipPosition = {
   left: number
@@ -62,9 +74,10 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
     )
     const below = triggerRect.bottom + TRIGGER_GAP
     const above = triggerRect.top - tooltipRect.height - TRIGGER_GAP
-    const top = below + tooltipRect.height <= window.innerHeight - VIEWPORT_MARGIN
-      ? below
-      : Math.max(VIEWPORT_MARGIN, above)
+    const top =
+      below + tooltipRect.height <= window.innerHeight - VIEWPORT_MARGIN
+        ? below
+        : Math.max(VIEWPORT_MARGIN, above)
     setPosition({ left, top })
   }, [])
 
@@ -125,18 +138,20 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
   return (
     <>
       {trigger}
-      {visible ? createPortal(
-        <span
-          ref={tooltipRef}
-          className="milo-tooltip"
-          id={tooltipId}
-          role="tooltip"
-          style={position ?? undefined}
-        >
-          {content}
-        </span>,
-        document.body,
-      ) : null}
+      {visible
+        ? createPortal(
+            <span
+              ref={tooltipRef}
+              className="milo-tooltip"
+              id={tooltipId}
+              role="tooltip"
+              style={position ?? undefined}
+            >
+              {content}
+            </span>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

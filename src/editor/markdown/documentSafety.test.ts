@@ -12,10 +12,7 @@ const protectedFixture = readFileSync(
   resolve('src/editor/markdown/__fixtures__/protected-html.md'),
   'utf8',
 )
-const supportedFixture = readFileSync(
-  resolve('src/editor/markdown/__fixtures__/gfm.md'),
-  'utf8',
-)
+const supportedFixture = readFileSync(resolve('src/editor/markdown/__fixtures__/gfm.md'), 'utf8')
 
 describe('inspectMarkdownDocument', () => {
   it('separates Front Matter without changing any of its bytes', () => {

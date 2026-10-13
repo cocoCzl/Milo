@@ -6,10 +6,7 @@ type NativeWatchEvent = {
 
 type StopWatching = () => Promise<void>
 
-export async function watchMarkdownFile(
-  path: string,
-  onChange: () => void,
-): Promise<StopWatching> {
+export async function watchMarkdownFile(path: string, onChange: () => void): Promise<StopWatching> {
   if (!isTauri()) {
     return async () => undefined
   }

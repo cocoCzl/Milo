@@ -9,19 +9,30 @@ let dark = false
 beforeEach(() => {
   dark = false
   changeListener = undefined
-  vi.stubGlobal('matchMedia', vi.fn(() => ({
-    get matches() { return dark },
-    media: '(prefers-color-scheme: dark)',
-    addEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => { changeListener = listener },
-    removeEventListener: () => { changeListener = undefined },
-  })))
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      get matches() {
+        return dark
+      },
+      media: '(prefers-color-scheme: dark)',
+      addEventListener: (_event: string, listener: (event: MediaQueryListEvent) => void) => {
+        changeListener = listener
+      },
+      removeEventListener: () => {
+        changeListener = undefined
+      },
+    })),
+  )
 })
 
 afterEach(() => vi.unstubAllGlobals())
 
 describe('useEffectiveColorScheme', () => {
   it('follows operating-system appearance only for system preference', () => {
-    const hook = renderHook(({ preference }) => useEffectiveColorScheme(preference), { initialProps: { preference: 'system' as const } })
+    const hook = renderHook(({ preference }) => useEffectiveColorScheme(preference), {
+      initialProps: { preference: 'system' as const },
+    })
     expect(hook.result.current).toBe('light')
 
     act(() => {
@@ -31,9 +42,12 @@ describe('useEffectiveColorScheme', () => {
     expect(hook.result.current).toBe('dark')
   })
 
-  it.each(['light', 'dark', 'warm'] as const)('keeps %s independent from operating-system appearance', (preference) => {
-    const hook = renderHook(() => useEffectiveColorScheme(preference))
-    expect(hook.result.current).toBe(preference)
-    expect(changeListener).toBeUndefined()
-  })
+  it.each(['light', 'dark', 'warm'] as const)(
+    'keeps %s independent from operating-system appearance',
+    (preference) => {
+      const hook = renderHook(() => useEffectiveColorScheme(preference))
+      expect(hook.result.current).toBe(preference)
+      expect(changeListener).toBeUndefined()
+    },
+  )
 })

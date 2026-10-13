@@ -34,17 +34,19 @@ export function useApplicationSettings() {
   useEffect(() => {
     let disposed = false
 
-    void loadApplicationSettings().then((loadedSettings) => {
-      if (!disposed && !hasLocalUpdateRef.current) {
-        setSettings(normalizeSettings(loadedSettings))
-      }
-      if (!disposed) setIsLoading(false)
-    }).catch((reason) => {
-      if (!disposed) {
-        setSettingsError(readableError(reason))
-        setIsLoading(false)
-      }
-    })
+    void loadApplicationSettings()
+      .then((loadedSettings) => {
+        if (!disposed && !hasLocalUpdateRef.current) {
+          setSettings(normalizeSettings(loadedSettings))
+        }
+        if (!disposed) setIsLoading(false)
+      })
+      .catch((reason) => {
+        if (!disposed) {
+          setSettingsError(readableError(reason))
+          setIsLoading(false)
+        }
+      })
 
     return () => {
       disposed = true
@@ -71,41 +73,75 @@ export function useApplicationSettings() {
       })
   }, [])
 
-  const setAppearance = useCallback((appearance: AppearancePreference) => {
-    updateSettings({ appearance })
-  }, [updateSettings])
+  const setAppearance = useCallback(
+    (appearance: AppearancePreference) => {
+      updateSettings({ appearance })
+    },
+    [updateSettings],
+  )
 
-  const setLocale = useCallback((locale: InterfaceLocale) => {
-    updateSettings({ locale })
-  }, [updateSettings])
+  const setLocale = useCallback(
+    (locale: InterfaceLocale) => {
+      updateSettings({ locale })
+    },
+    [updateSettings],
+  )
 
-  const setDocumentZoom = useCallback((documentZoom: number) => {
-    updateSettings({ documentZoom: clampDocumentZoom(documentZoom) })
-  }, [updateSettings])
+  const setDocumentZoom = useCallback(
+    (documentZoom: number) => {
+      updateSettings({ documentZoom: clampDocumentZoom(documentZoom) })
+    },
+    [updateSettings],
+  )
 
-  const setInterfaceZoom = useCallback((interfaceZoom: number) => {
-    updateSettings({ interfaceZoom: clampInterfaceZoom(interfaceZoom) })
-  }, [updateSettings])
+  const setInterfaceZoom = useCallback(
+    (interfaceZoom: number) => {
+      updateSettings({ interfaceZoom: clampInterfaceZoom(interfaceZoom) })
+    },
+    [updateSettings],
+  )
 
-  const setDocumentFontStyle = useCallback((documentFontStyle: DocumentFontStyle) => {
-    updateSettings({ documentFontStyle })
-  }, [updateSettings])
+  const setDocumentFontStyle = useCallback(
+    (documentFontStyle: DocumentFontStyle) => {
+      updateSettings({ documentFontStyle })
+    },
+    [updateSettings],
+  )
 
-  const setReadingWidth = useCallback((readingWidth: ReadingWidthPreference) => {
-    updateSettings({ readingWidth })
-  }, [updateSettings])
+  const setReadingWidth = useCallback(
+    (readingWidth: ReadingWidthPreference) => {
+      updateSettings({ readingWidth })
+    },
+    [updateSettings],
+  )
 
-  const setLineHeight = useCallback((lineHeight: LineHeightPreference) => {
-    updateSettings({ lineHeight })
-  }, [updateSettings])
+  const setLineHeight = useCallback(
+    (lineHeight: LineHeightPreference) => {
+      updateSettings({ lineHeight })
+    },
+    [updateSettings],
+  )
 
-  const updateWorkspaceSettings = useCallback((update: Partial<Pick<ApplicationSettings, 'currentFolder' | 'recentFiles' | 'recentFolders' | 'sidebarVisible' | 'sidebarWidth'>>) => {
-    updateSettings(update)
-  }, [updateSettings])
+  const updateWorkspaceSettings = useCallback(
+    (
+      update: Partial<
+        Pick<
+          ApplicationSettings,
+          'currentFolder' | 'recentFiles' | 'recentFolders' | 'sidebarVisible' | 'sidebarWidth'
+        >
+      >,
+    ) => {
+      updateSettings(update)
+    },
+    [updateSettings],
+  )
 
-  const setStartupSession = useCallback((startupSession: StartupSession) => {
-    updateSettings({ startupSession })
-  }, [updateSettings])
+  const setStartupSession = useCallback(
+    (startupSession: StartupSession) => {
+      updateSettings({ startupSession })
+    },
+    [updateSettings],
+  )
 
   return {
     setAppearance,

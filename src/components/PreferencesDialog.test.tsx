@@ -2,12 +2,24 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./Select', () => ({
-  Select: ({ 'aria-label': ariaLabel, onValueChange, options, value }: { 'aria-label': string; onValueChange: (value: string) => void; options: Array<{ label: string; value: string }>; value: string }) => (
+  Select: ({
+    'aria-label': ariaLabel,
+    onValueChange,
+    options,
+    value,
+  }: {
+    'aria-label': string
+    onValueChange: (value: string) => void
+    options: Array<{ label: string; value: string }>
+    value: string
+  }) => (
     <button
       aria-label={ariaLabel}
       role="combobox"
       type="button"
-      onClick={() => onValueChange(options.find((option) => option.value !== value)?.value ?? value)}
+      onClick={() =>
+        onValueChange(options.find((option) => option.value !== value)?.value ?? value)
+      }
     >
       {options.find((option) => option.value === value)?.label}
     </button>
@@ -103,7 +115,9 @@ describe('PreferencesDialog', () => {
     expect(document.querySelector('select')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Interface size')).toHaveTextContent('120%')
     expect(screen.getByLabelText('Document size')).toHaveTextContent('100%')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Close preferences' })).toHaveFocus())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Close preferences' })).toHaveFocus(),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Increase document size' }))
     expect(actions.onDocumentZoomChange).toHaveBeenCalledWith(110)
@@ -167,6 +181,10 @@ describe('PreferencesDialog', () => {
     await waitFor(() => expect(close).toHaveFocus())
 
     returnFocus.focus()
-    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Preferences' })).toContainElement(document.activeElement as HTMLElement))
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Preferences' })).toContainElement(
+        document.activeElement as HTMLElement,
+      ),
+    )
   })
 })

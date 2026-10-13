@@ -79,7 +79,9 @@
   --font-weight-semibold: 650;
   color: #202124;
   background: var(--bg-app);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -139,8 +141,12 @@ button:focus-visible,
   --ui-font-md: var(--font-ui-sm);
   --ui-font-sm: var(--font-ui-xs);
   --ui-font-xs: 10px;
-  --editor-sans-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  --editor-serif-font-family: ui-serif, "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", SimSun, Georgia, serif;
+  --editor-sans-font-family:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --editor-serif-font-family:
+    ui-serif, "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", SimSun, Georgia,
+    serif;
   --editor-body-font-family: var(--editor-sans-font-family);
   --editor-heading-font-family: var(--editor-sans-font-family);
   --editor-font-size: 16.5px;
@@ -171,10 +177,18 @@ button:focus-visible,
   --editor-body-font-family: var(--editor-serif-font-family);
 }
 
-.app-shell[data-reading-width="narrow"] { --reading-width: 720px; }
-.app-shell[data-reading-width="wide"] { --reading-width: 960px; }
-.app-shell[data-line-height="compact"] { --editor-line-height: 1.58; }
-.app-shell[data-line-height="relaxed"] { --editor-line-height: 1.82; }
+.app-shell[data-reading-width="narrow"] {
+  --reading-width: 720px;
+}
+.app-shell[data-reading-width="wide"] {
+  --reading-width: 960px;
+}
+.app-shell[data-line-height="compact"] {
+  --editor-line-height: 1.58;
+}
+.app-shell[data-line-height="relaxed"] {
+  --editor-line-height: 1.82;
+}
 
 .app-shell[data-theme="dark"] {
   --bg-app: #191a1d;
@@ -321,7 +335,10 @@ button:focus-visible,
   border: 0;
   border-radius: 5px;
   font-size: var(--ui-font-sm);
-  transition: background-color 130ms ease, color 130ms ease, box-shadow 130ms ease;
+  transition:
+    background-color 130ms ease,
+    color 130ms ease,
+    box-shadow 130ms ease;
 }
 
 .mode-switch button:hover:not(:disabled),
@@ -397,7 +414,10 @@ button:focus-visible,
   color: var(--muted-ink);
   border: 1px solid transparent;
   border-radius: 8px;
-  transition: background-color 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease,
+    box-shadow 130ms ease;
   -webkit-app-region: no-drag;
 }
 
@@ -677,7 +697,7 @@ button:focus-visible,
   font-size: var(--ui-font-md);
   pointer-events: auto;
   transform: translate(-50%, -50%);
-  animation: preferences-dialog-in 140ms cubic-bezier(.2, .8, .2, 1);
+  animation: preferences-dialog-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
   -webkit-app-region: no-drag;
 }
 
@@ -775,7 +795,9 @@ button:focus-visible,
   text-align: left;
 }
 
-.milo-select__trigger:hover { background: var(--floating-hover); }
+.milo-select__trigger:hover {
+  background: var(--floating-hover);
+}
 
 .milo-select__trigger:focus-visible {
   border-color: var(--focus-ring);
@@ -805,7 +827,10 @@ button:focus-visible,
   box-shadow: var(--floating-shadow);
 }
 
-.milo-select__viewport { max-height: inherit; overflow-y: auto; }
+.milo-select__viewport {
+  max-height: inherit;
+  overflow-y: auto;
+}
 
 .milo-select__item {
   position: relative;
@@ -835,7 +860,9 @@ button:focus-visible,
   background: var(--floating-active);
 }
 
-.milo-select__item[data-state="checked"][data-highlighted] { background: var(--floating-active); }
+.milo-select__item[data-state="checked"][data-highlighted] {
+  background: var(--floating-active);
+}
 
 .milo-select__indicator {
   display: grid;
@@ -886,11 +913,16 @@ button:focus-visible,
 }
 
 @keyframes preferences-backdrop-in {
-  from { opacity: 0; }
+  from {
+    opacity: 0;
+  }
 }
 
 @keyframes preferences-dialog-in {
-  from { opacity: 0; transform: translate(-50%, calc(-50% - 5px)) scale(.99); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 5px)) scale(0.99);
+  }
 }
 
 .icon-button-shell {
@@ -909,7 +941,9 @@ button:focus-visible,
   background: transparent;
   border: 0;
   border-radius: 7px;
-  transition: background-color 130ms ease, color 130ms ease;
+  transition:
+    background-color 130ms ease,
+    color 130ms ease;
 }
 
 .icon-button > svg {
@@ -945,7 +979,10 @@ button:focus-visible,
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, -3px);
-  transition: opacity 100ms ease 350ms, transform 100ms ease 350ms, visibility 0s linear 450ms;
+  transition:
+    opacity 100ms ease 350ms,
+    transform 100ms ease 350ms,
+    visibility 0s linear 450ms;
   visibility: hidden;
   white-space: normal;
 }
@@ -972,7 +1009,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 @keyframes milo-tooltip-in {
-  from { opacity: 0; transform: translateY(-3px); }
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
 
 .icon-button-shell:hover .icon-button__tooltip,
@@ -1019,7 +1059,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--surface-editor);
 }
 
-.document-area--empty { grid-template-rows: minmax(0, 1fr); }
+.document-area--empty {
+  grid-template-rows: minmax(0, 1fr);
+}
 
 .document-context {
   display: flex;
@@ -1044,7 +1086,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   gap: 8px;
 }
 
-.document-context__identity { overflow: hidden; }
+.document-context__identity {
+  overflow: hidden;
+}
 
 .document-context__icon {
   display: grid;
@@ -1065,7 +1109,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 .document-context__workspace,
-.document-context__separator { color: var(--subtle-ink); }
+.document-context__separator {
+  color: var(--subtle-ink);
+}
 
 .document-context__path strong {
   overflow: hidden;
@@ -1117,14 +1163,25 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--text-tertiary);
 }
 
-.document-context__status-dot--saved { background: var(--status-saved); }
-.document-context__status-dot--dirty { background: var(--status-dirty); }
-.document-context__status-dot--error { background: var(--status-error); }
+.document-context__status-dot--saved {
+  background: var(--status-saved);
+}
+.document-context__status-dot--dirty {
+  background: var(--status-dirty);
+}
+.document-context__status-dot--error {
+  background: var(--status-error);
+}
 
 .document-stage {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap))) minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, 1fr) minmax(
+      0,
+      calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap))
+    )
+    minmax(0, 1fr);
   grid-column: auto;
   width: 100%;
   min-height: 0;
@@ -1135,7 +1192,15 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 .app-shell--inline-outline .document-stage {
-  grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap) + var(--space-6) + var(--outline-width))) minmax(0, 1fr);
+  grid-template-columns:
+    minmax(0, 1fr) minmax(
+      0,
+      calc(
+        var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap) +
+          var(--space-6) + var(--outline-width)
+      )
+    )
+    minmax(0, 1fr);
 }
 
 .app-shell--focus-mode .document-stage {
@@ -1214,8 +1279,12 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   display: none;
 }
 
-.app-shell--focus-mode .document-area { grid-template-rows: minmax(0, 1fr); }
-.app-shell--focus-mode .document-context { display: none; }
+.app-shell--focus-mode .document-area {
+  grid-template-rows: minmax(0, 1fr);
+}
+.app-shell--focus-mode .document-context {
+  display: none;
+}
 
 .focus-mode-outline-trigger {
   position: fixed;
@@ -1259,7 +1328,6 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   .milkdown-editor {
     grid-template-columns: var(--editor-rail-width) minmax(0, 1fr);
   }
-
 }
 
 @media (max-width: 900px) {
@@ -1426,11 +1494,13 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   right: 5px;
   width: 2px;
   height: 28px;
-  content: '';
+  content: "";
   background: transparent;
   border-radius: 2px;
   transform: translateY(-50%);
-  transition: background-color 120ms ease, height 120ms ease;
+  transition:
+    background-color 120ms ease,
+    height 120ms ease;
 }
 
 .file-sidebar__resize-handle:hover::after {
@@ -2032,14 +2102,29 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   place-items: center;
 }
 
-.selection-toolbar button svg { width: 15px; height: 15px; stroke-width: 1.9; }
+.selection-toolbar button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.9;
+}
 
 .selection-toolbar button:hover,
-.selection-toolbar button:focus-visible { color: var(--text-primary); background: var(--bg-hover); }
+.selection-toolbar button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
 
-.selection-toolbar button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.selection-toolbar button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 
-.selection-toolbar__divider { width: 1px; height: 18px; margin: 0 2px; background: var(--border-subtle); }
+.selection-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border-subtle);
+}
 
 /* One deliberately quiet entry point for the block underneath the pointer or
    collapsed cursor. It is a viewport overlay, never a per-node decoration. */
@@ -2058,10 +2143,18 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   border-radius: 7px;
   opacity: 0.5;
   place-items: center;
-  transition: color 100ms ease, background 100ms ease, border-color 100ms ease, opacity 100ms ease;
+  transition:
+    color 100ms ease,
+    background 100ms ease,
+    border-color 100ms ease,
+    opacity 100ms ease;
 }
 
-.block-handle svg { width: 16px; height: 16px; stroke-width: 1.8; }
+.block-handle svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
 
 .block-handle:hover,
 .block-handle:focus-visible,
@@ -2085,7 +2178,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   box-shadow: var(--shadow-floating);
 }
 
-.block-menu__items { display: grid; overflow-y: auto; }
+.block-menu__items {
+  display: grid;
+  overflow-y: auto;
+}
 
 /* The padding is a hit-testable bridge, owned by the same menu DOM subtree. */
 .block-menu__submenu-corridor {
@@ -2095,7 +2191,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   overflow-y: auto;
   pointer-events: auto;
 }
-.block-menu__submenu-corridor[data-side="left"] { padding-right: 8px; padding-left: 0; }
+.block-menu__submenu-corridor[data-side="left"] {
+  padding-right: 8px;
+  padding-left: 0;
+}
 .block-menu__submenu {
   display: grid;
   padding: 6px;
@@ -2122,20 +2221,43 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 .block-menu button:hover,
-.block-menu button:focus-visible { background: var(--bg-hover); }
+.block-menu button:focus-visible {
+  background: var(--bg-hover);
+}
 
 .block-menu button[aria-checked="true"],
-.block-menu button.block-menu__more--active { color: var(--accent); background: var(--accent-soft); }
+.block-menu button.block-menu__more--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 
 .block-menu__icon,
-.block-menu__check { display: grid; color: var(--text-tertiary); place-items: center; }
+.block-menu__check {
+  display: grid;
+  color: var(--text-tertiary);
+  place-items: center;
+}
 .block-menu button[aria-checked="true"] .block-menu__icon,
 .block-menu .block-menu__more--active .block-menu__icon,
-.block-menu button[aria-checked="true"] .block-menu__check { color: currentcolor; }
-.block-menu svg { width: 15px; height: 15px; stroke-width: 1.8; }
-.block-menu button[aria-checked="false"] .block-menu__check { opacity: 0; }
-.block-menu__separator { height: 1px; margin: 6px 4px; background: var(--border-subtle); }
-.block-menu__delete { color: var(--danger, #c53c3c) !important; }
+.block-menu button[aria-checked="true"] .block-menu__check {
+  color: currentcolor;
+}
+.block-menu svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+.block-menu button[aria-checked="false"] .block-menu__check {
+  opacity: 0;
+}
+.block-menu__separator {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border-subtle);
+}
+.block-menu__delete {
+  color: var(--danger, #c53c3c) !important;
+}
 
 .editor-link-popover--contextual {
   position: fixed;
@@ -2159,13 +2281,22 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   font-size: var(--ui-font-sm);
 }
 
-.editor-link-popover--contextual label input { width: 100%; }
+.editor-link-popover--contextual label input {
+  width: 100%;
+}
 
-.editor-link-popover--contextual:has(label) button { align-self: flex-end; }
+.editor-link-popover--contextual:has(label) button {
+  align-self: flex-end;
+}
 
-.editor-link-popover--contextual > svg { flex: 0 0 auto; color: var(--text-tertiary); }
+.editor-link-popover--contextual > svg {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
 
-.editor-link-popover--contextual button svg { display: block; }
+.editor-link-popover--contextual button svg {
+  display: block;
+}
 
 .editor-outline {
   display: flex;
@@ -2173,7 +2304,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   min-height: 0;
   color: var(--muted-ink);
   background: var(--surface-outline);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
   scrollbar-width: thin;
   scrollbar-color: var(--outline-scrollbar-thumb) transparent;
 }
@@ -2289,7 +2422,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 .editor-outline__close:hover,
-.editor-outline__close:focus-visible { color: var(--text-primary); background: var(--bg-hover); }
+.editor-outline__close:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
 
 .editor-outline__header svg {
   width: 16px;
@@ -2424,7 +2560,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 
 .outline-toggle:hover,
 .outline-toggle:focus-visible,
-.outline-toggle[aria-expanded="true"] { color: var(--text-primary); background: var(--bg-hover); }
+.outline-toggle[aria-expanded="true"] {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
 
 .application-bar__group--layout .outline-toggle {
   width: 30px;
@@ -2441,7 +2580,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .milkdown .ProseMirror h3,
 .milkdown .ProseMirror h4,
 .milkdown .ProseMirror h5,
-.milkdown .ProseMirror h6 { scroll-margin-top: 72px; }
+.milkdown .ProseMirror h6 {
+  scroll-margin-top: 72px;
+}
 
 .milkdown-editor__empty-state {
   position: relative;
@@ -2457,7 +2598,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   visibility: hidden;
 }
 
-.milkdown-editor:has(.ProseMirror > p:only-child > br.ProseMirror-trailingBreak:only-child) .milkdown-editor__empty-state {
+.milkdown-editor:has(.ProseMirror > p:only-child > br.ProseMirror-trailingBreak:only-child)
+  .milkdown-editor__empty-state {
   opacity: 1;
   visibility: visible;
 }
@@ -2612,14 +2754,14 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   box-sizing: border-box;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
-  content: '';
+  content: "";
 }
 
 .milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
   color: #fff;
   background: #637690;
   border-color: #637690;
-  content: '✓';
+  content: "✓";
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 0.62em;
   font-weight: 800;
@@ -2671,7 +2813,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--code-header-bg);
   border-bottom: 1px solid var(--border-default);
   border-radius: 8px 8px 0 0;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
 }
 
 .code-block-card__label {
@@ -2689,7 +2833,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   padding: 0 24px 0 8px;
   color: var(--text-secondary);
   cursor: pointer;
-  background: linear-gradient(45deg, transparent 50%, currentColor 50%) right 9px center / 5px 5px no-repeat,
+  background:
+    linear-gradient(45deg, transparent 50%, currentColor 50%) right 9px center / 5px 5px no-repeat,
     linear-gradient(135deg, currentColor 50%, transparent 50%) right 5px center / 5px 5px no-repeat;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -2720,7 +2865,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: 8px;
-  box-shadow: 0 12px 28px rgb(31 43 55 / 16%), 0 2px 6px rgb(31 43 55 / 8%);
+  box-shadow:
+    0 12px 28px rgb(31 43 55 / 16%),
+    0 2px 6px rgb(31 43 55 / 8%);
   font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
   font-size: var(--ui-font-xs);
 }
@@ -2752,7 +2899,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .code-block-card__language-menu button[aria-selected="true"]::before {
   margin-right: 5px;
   color: var(--accent);
-  content: '✓';
+  content: "✓";
 }
 
 .code-block-card__copy {
@@ -2774,7 +2921,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   height: 10px;
   border: 1.3px solid currentColor;
   border-radius: 2px;
-  content: '';
+  content: "";
 }
 
 .code-block-card__copy::before {
@@ -2876,8 +3023,12 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: transparent;
 }
 
-.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .local-image-view.ProseMirror-selectednode,
-.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .remote-image-view.ProseMirror-selectednode {
+.milkdown-editor:not(.milkdown-editor--read)
+  .ProseMirror
+  .local-image-view.ProseMirror-selectednode,
+.milkdown-editor:not(.milkdown-editor--read)
+  .ProseMirror
+  .remote-image-view.ProseMirror-selectednode {
   outline: none;
 }
 
@@ -2886,9 +3037,18 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   outline: none;
 }
 
-.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .local-image-view.ProseMirror-selectednode > img,
-.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .remote-image-view.ProseMirror-selectednode > img,
-.milkdown-editor:not(.milkdown-editor--read) .ProseMirror .local-image-view.ProseMirror-selectednode > .local-image-placeholder {
+.milkdown-editor:not(.milkdown-editor--read)
+  .ProseMirror
+  .local-image-view.ProseMirror-selectednode
+  > img,
+.milkdown-editor:not(.milkdown-editor--read)
+  .ProseMirror
+  .remote-image-view.ProseMirror-selectednode
+  > img,
+.milkdown-editor:not(.milkdown-editor--read)
+  .ProseMirror
+  .local-image-view.ProseMirror-selectednode
+  > .local-image-placeholder {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -2904,7 +3064,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--soft-fill);
   border: 1px solid var(--line);
   border-radius: 6px;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
   font-size: var(--ui-font-sm);
   line-height: 1.4;
   user-select: none;
@@ -2939,7 +3101,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--soft-fill);
   border: 1px solid var(--line);
   border-radius: 6px;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
   font-size: var(--ui-font-sm);
 }
 
@@ -3055,8 +3219,12 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--surface-raised);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  box-shadow: 0 16px 40px rgb(31 35 40 / 20%), 0 2px 8px rgb(31 35 40 / 10%);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  box-shadow:
+    0 16px 40px rgb(31 35 40 / 20%),
+    0 2px 8px rgb(31 35 40 / 10%);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
 }
 
 .editor-context-menu button {
@@ -3170,7 +3338,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 
 .app-shell[data-color-scheme="dark"] .document-tab--active {
   background: var(--canvas);
-  box-shadow: 0 -1px 0 var(--line), 1px 0 0 var(--line), -1px 0 0 var(--line);
+  box-shadow:
+    0 -1px 0 var(--line),
+    1px 0 0 var(--line),
+    -1px 0 0 var(--line);
 }
 
 .app-shell[data-color-scheme="dark"] .close-confirmation,
@@ -3179,7 +3350,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .app-shell[data-color-scheme="dark"] .block-menu,
 .app-shell[data-color-scheme="dark"] .block-menu__submenu,
 .app-shell[data-color-scheme="dark"] .editor-link-popover {
-  box-shadow: 0 18px 48px rgb(0 0 0 / 38%), 0 2px 8px rgb(0 0 0 / 24%);
+  box-shadow:
+    0 18px 48px rgb(0 0 0 / 38%),
+    0 2px 8px rgb(0 0 0 / 24%);
 }
 
 .app-shell[data-color-scheme="dark"] .editor-context-menu .editor-context-menu__danger {
@@ -3229,7 +3402,9 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   color: #d2d9e2;
   background: #343941;
   border-color: rgb(255 255 255 / 14%);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 30%), 0 2px 6px rgb(0 0 0 / 22%);
+  box-shadow:
+    0 12px 28px rgb(0 0 0 / 30%),
+    0 2px 6px rgb(0 0 0 / 22%);
 }
 
 .app-shell[data-color-scheme="dark"] .code-block-card__language-menu button:hover,

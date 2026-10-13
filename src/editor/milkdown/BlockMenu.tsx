@@ -1,4 +1,21 @@
-import { Check, ChevronRight, Code2, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, Minus, Pilcrow, Quote, Table2, Trash2 } from 'lucide-react'
+import {
+  Check,
+  ChevronRight,
+  Code2,
+  Heading1,
+  Heading2,
+  Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
+  List,
+  ListOrdered,
+  Minus,
+  Pilcrow,
+  Quote,
+  Table2,
+  Trash2,
+} from 'lucide-react'
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { BlockMenuCommand, BlockTarget } from './blockControls'
 
@@ -28,7 +45,11 @@ type BlockMenuProps = {
   onCommand: (command: BlockMenuCommand, target: BlockTarget) => void
 }
 
-const options: Array<{ command: BlockMenuCommand; icon: React.ReactNode; label: keyof Omit<BlockMenuCopy, 'addBlock'> }> = [
+const options: Array<{
+  command: BlockMenuCommand
+  icon: React.ReactNode
+  label: keyof Omit<BlockMenuCopy, 'addBlock'>
+}> = [
   { command: 'paragraph', icon: <Pilcrow />, label: 'paragraph' },
   { command: 'heading-1', icon: <Heading1 />, label: 'heading1' },
   { command: 'heading-2', icon: <Heading2 />, label: 'heading2' },
@@ -48,11 +69,20 @@ const moreOptions = [
 ] as const
 
 // Geometry only: never resolve a new editor target while laying out the menu.
-function placeBlockSubmenu(main: DOMRect, trigger: DOMRect, width: number, height: number, bounds: { left: number; right: number; top: number; bottom: number }) {
+function placeBlockSubmenu(
+  main: DOMRect,
+  trigger: DOMRect,
+  width: number,
+  height: number,
+  bounds: { left: number; right: number; top: number; bottom: number },
+) {
   const side = main.right + width <= bounds.right ? 'right' : 'left'
   return {
     side,
-    left: Math.max(bounds.left, Math.min(side === 'right' ? main.right : main.left - width, bounds.right - width)),
+    left: Math.max(
+      bounds.left,
+      Math.min(side === 'right' ? main.right : main.left - width, bounds.right - width),
+    ),
     top: Math.max(bounds.top, Math.min(trigger.top, bounds.bottom - height)),
   }
 }
@@ -72,7 +102,9 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
     const panel = panelRef.current
     if (!root || !panel) return
     // The overlay is portaled beside the stage, not inside its scroll container.
-    const stageElement = root.closest('.app-shell')?.querySelector('.document-stage') ?? root.closest('.document-stage')
+    const stageElement =
+      root.closest('.app-shell')?.querySelector('.document-stage') ??
+      root.closest('.document-stage')
     const layout = () => {
       const stage = stageElement?.getBoundingClientRect()
       const bounds = {
@@ -93,7 +125,13 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
         submenu.style.width = `${Math.min(212, width)}px`
         submenu.style.maxHeight = `${height}px`
         const rect = submenu.getBoundingClientRect()
-        const position = placeBlockSubmenu(root.getBoundingClientRect(), trigger.getBoundingClientRect(), rect.width, rect.height, bounds)
+        const position = placeBlockSubmenu(
+          root.getBoundingClientRect(),
+          trigger.getBoundingClientRect(),
+          rect.width,
+          rect.height,
+          bounds,
+        )
         submenu.dataset.side = position.side
         submenu.style.left = `${position.left}px`
         submenu.style.top = `${position.top}px`
@@ -121,9 +159,17 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
       if (event.target instanceof Node && !rootRef.current?.contains(event.target)) onClose()
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'Tab'].includes(event.key)) return
+      if (
+        !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'Tab'].includes(
+          event.key,
+        )
+      )
+        return
       const inSubmenu = Boolean(submenuRef.current?.contains(document.activeElement))
-      if (event.key === 'Tab') { onClose(); return }
+      if (event.key === 'Tab') {
+        onClose()
+        return
+      }
       event.preventDefault()
       event.stopPropagation()
       if (event.key === 'Escape' || (event.key === 'ArrowLeft' && inSubmenu)) {
@@ -133,16 +179,37 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
         } else if (event.key === 'Escape') onClose()
         return
       }
-      if ((event.key === 'Enter' || event.key === 'ArrowRight') && document.activeElement === triggerRef.current) {
-        if (submenuOpen) submenuRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
-        else { focusSubmenuRef.current = true; setSubmenuOpen(true) }
+      if (
+        (event.key === 'Enter' || event.key === 'ArrowRight') &&
+        document.activeElement === triggerRef.current
+      ) {
+        if (submenuOpen)
+          submenuRef.current
+            ?.querySelector<HTMLButtonElement>('button')
+            ?.focus({ preventScroll: true })
+        else {
+          focusSubmenuRef.current = true
+          setSubmenuOpen(true)
+        }
         return
       }
-      const buttons = Array.from((inSubmenu ? submenuRef.current : panelRef.current)?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+      const buttons = Array.from(
+        (inSubmenu ? submenuRef.current : panelRef.current)?.querySelectorAll<HTMLButtonElement>(
+          'button',
+        ) ?? [],
+      )
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
-      if (event.key === 'Enter') { buttons[index]?.click(); return }
+      if (event.key === 'Enter') {
+        buttons[index]?.click()
+        return
+      }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        const next = index < 0 ? (event.key === 'ArrowDown' ? 0 : buttons.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+        const next =
+          index < 0
+            ? event.key === 'ArrowDown'
+              ? 0
+              : buttons.length - 1
+            : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
         if (!inSubmenu && buttons[next] !== triggerRef.current) setSubmenuOpen(false)
         buttons[next]?.focus({ preventScroll: true })
         buttons[next]?.scrollIntoView?.({ block: 'nearest' })
@@ -157,7 +224,13 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
   }, [onClose, submenuOpen])
 
   return (
-    <div ref={rootRef} aria-label={copy.addBlock} className="block-menu" data-milo-block-ui="menu" role="menu">
+    <div
+      ref={rootRef}
+      aria-label={copy.addBlock}
+      className="block-menu"
+      data-milo-block-ui="menu"
+      role="menu"
+    >
       <div ref={panelRef} className="block-menu__items">
         {options.map((option) => {
           const active = option.command === target.blockType
@@ -173,9 +246,15 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onCommand(option.command, target)}
               >
-                <span className="block-menu__icon" aria-hidden="true">{option.icon}</span>
+                <span className="block-menu__icon" aria-hidden="true">
+                  {option.icon}
+                </span>
                 <span>{copy[option.label]}</span>
-                {!insertOnly ? <Check className="block-menu__check" aria-hidden="true" /> : <span />}
+                {!insertOnly ? (
+                  <Check className="block-menu__check" aria-hidden="true" />
+                ) : (
+                  <span />
+                )}
               </button>
               {option.command === 'heading-3' ? (
                 <button
@@ -191,8 +270,11 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
                   onPointerEnter={() => setSubmenuOpen(true)}
                   onClick={() => setSubmenuOpen(true)}
                 >
-                  <span className="block-menu__icon" aria-hidden="true"><Heading4 /></span>
-                  <span>{copy.moreHeadings}</span><ChevronRight aria-hidden="true" />
+                  <span className="block-menu__icon" aria-hidden="true">
+                    <Heading4 />
+                  </span>
+                  <span>{copy.moreHeadings}</span>
+                  <ChevronRight aria-hidden="true" />
                 </button>
               ) : null}
             </Fragment>
@@ -208,19 +290,36 @@ export function BlockMenu({ copy, onClose, onCommand, target }: BlockMenuProps) 
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onCommand('delete-block', target)}
         >
-          <span className="block-menu__icon" aria-hidden="true"><Trash2 /></span>
+          <span className="block-menu__icon" aria-hidden="true">
+            <Trash2 />
+          </span>
           <span>{copy.deleteBlock}</span>
           <span />
         </button>
       </div>
       {submenuOpen ? (
         <div ref={submenuRef} className="block-menu__submenu-corridor" data-milo-block-ui="submenu">
-          <div id={submenuId} className="block-menu__submenu" role="menu" aria-label={copy.moreHeadings}>
+          <div
+            id={submenuId}
+            className="block-menu__submenu"
+            role="menu"
+            aria-label={copy.moreHeadings}
+          >
             {moreOptions.map((option) => (
-              <button key={option.command} role="menuitemradio" aria-checked={target.blockType === option.command} type="button" tabIndex={-1}
-                onMouseDown={(event) => event.preventDefault()} onClick={() => onCommand(option.command, target)}>
-                <span className="block-menu__icon" aria-hidden="true">{option.icon}</span>
-                <span>{copy[option.label]}</span><Check className="block-menu__check" aria-hidden="true" />
+              <button
+                key={option.command}
+                role="menuitemradio"
+                aria-checked={target.blockType === option.command}
+                type="button"
+                tabIndex={-1}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onCommand(option.command, target)}
+              >
+                <span className="block-menu__icon" aria-hidden="true">
+                  {option.icon}
+                </span>
+                <span>{copy[option.label]}</span>
+                <Check className="block-menu__check" aria-hidden="true" />
               </button>
             ))}
           </div>

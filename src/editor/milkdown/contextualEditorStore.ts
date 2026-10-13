@@ -24,7 +24,13 @@ export class ContextualEditorStore {
 
   update(view: EditorView) {
     const { from, to } = view.state.selection
-    if (this.snapshot.view === view && this.snapshot.state === view.state && this.snapshot.from === from && this.snapshot.to === to) return
+    if (
+      this.snapshot.view === view &&
+      this.snapshot.state === view.state &&
+      this.snapshot.from === from &&
+      this.snapshot.to === to
+    )
+      return
     this.snapshot = { view, state: view.state, from, to }
     this.listeners.forEach((listener) => listener())
   }

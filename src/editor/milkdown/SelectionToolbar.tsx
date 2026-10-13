@@ -48,17 +48,26 @@ function linkHref(state: ReturnType<ContextualEditorStore['getSnapshot']>['state
   return href
 }
 
-export function SelectionToolbar({ active, containsInteractionTarget, copy, dismissedSelectionRef, interactionOpen = false, onCommand, onLink, store }: SelectionToolbarProps) {
+export function SelectionToolbar({
+  active,
+  containsInteractionTarget,
+  copy,
+  dismissedSelectionRef,
+  interactionOpen = false,
+  onCommand,
+  onLink,
+  store,
+}: SelectionToolbarProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const rootRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef(0)
   const [position, setPosition] = useState<Position>(null)
   const selected = Boolean(
-    snapshot.state
-    && snapshot.state.selection instanceof TextSelection
-    && !snapshot.state.selection.empty
-    && snapshot.state.selection.$from.parent.inlineContent
-    && snapshot.state.selection.$to.parent.inlineContent,
+    snapshot.state &&
+    snapshot.state.selection instanceof TextSelection &&
+    !snapshot.state.selection.empty &&
+    snapshot.state.selection.$from.parent.inlineContent &&
+    snapshot.state.selection.$to.parent.inlineContent,
   )
   const key = selected ? selectionKey(snapshot.from, snapshot.to) : null
   const visible = Boolean(active && selected && key !== dismissedSelectionRef.current && position)
@@ -92,16 +101,29 @@ export function SelectionToolbar({ active, containsInteractionTarget, copy, dism
 
         // A fully off-screen selection is no longer a useful contextual
         // anchor.  Keep the selection intact, but leave no detached toolbar.
-        if (selectionBottom < 0 || selectionTop > viewportHeight || selectionRight < 0 || selectionLeft > viewportWidth) {
+        if (
+          selectionBottom < 0 ||
+          selectionTop > viewportHeight ||
+          selectionRight < 0 ||
+          selectionLeft > viewportWidth
+        ) {
           setPosition(null)
           return
         }
 
         const centeredLeft = (selectionLeft + selectionRight) / 2 - toolbarRect.width / 2
-        const left = Math.min(Math.max(edge, centeredLeft), Math.max(edge, viewportWidth - toolbarRect.width - edge))
+        const left = Math.min(
+          Math.max(edge, centeredLeft),
+          Math.max(edge, viewportWidth - toolbarRect.width - edge),
+        )
         const above = selectionTop - toolbarRect.height - gap
-        const top = above >= edge ? above : Math.min(viewportHeight - toolbarRect.height - edge, selectionBottom + gap)
-        setPosition((current) => current?.left === left && current.top === top ? current : { left, top })
+        const top =
+          above >= edge
+            ? above
+            : Math.min(viewportHeight - toolbarRect.height - edge, selectionBottom + gap)
+        setPosition((current) =>
+          current?.left === left && current.top === top ? current : { left, top },
+        )
       } catch {
         setPosition(null)
       }
@@ -147,24 +169,83 @@ export function SelectionToolbar({ active, containsInteractionTarget, copy, dism
     return () => document.removeEventListener('focusin', onFocusIn)
   }, [active, containsInteractionTarget, dismissedSelectionRef, key])
 
-  if (!selected || !snapshot.state || !visible) return <div ref={rootRef} className="selection-toolbar selection-toolbar--measuring" aria-hidden="true" />
+  if (!selected || !snapshot.state || !visible)
+    return (
+      <div
+        ref={rootRef}
+        className="selection-toolbar selection-toolbar--measuring"
+        aria-hidden="true"
+      />
+    )
 
   const press = (command: 'bold' | 'italic' | 'strike' | 'inline-code') => onCommand(command)
   return (
-    <div ref={rootRef} className="selection-toolbar" role="toolbar" aria-label={copy.formattingToolbar} style={position ?? undefined}>
-      <ToolbarButton label={copy.bold} pressed={hasMark('strong', snapshot.state)} onClick={() => press('bold')}><Bold /></ToolbarButton>
-      <ToolbarButton label={copy.italic} pressed={hasMark('emphasis', snapshot.state)} onClick={() => press('italic')}><Italic /></ToolbarButton>
-      <ToolbarButton label={copy.strike} pressed={hasMark('strike_through', snapshot.state)} onClick={() => press('strike')}><Strikethrough /></ToolbarButton>
-      <ToolbarButton label={copy.inlineCode} pressed={hasMark('inlineCode', snapshot.state)} onClick={() => press('inline-code')}><Code2 /></ToolbarButton>
+    <div
+      ref={rootRef}
+      className="selection-toolbar"
+      role="toolbar"
+      aria-label={copy.formattingToolbar}
+      style={position ?? undefined}
+    >
+      <ToolbarButton
+        label={copy.bold}
+        pressed={hasMark('strong', snapshot.state)}
+        onClick={() => press('bold')}
+      >
+        <Bold />
+      </ToolbarButton>
+      <ToolbarButton
+        label={copy.italic}
+        pressed={hasMark('emphasis', snapshot.state)}
+        onClick={() => press('italic')}
+      >
+        <Italic />
+      </ToolbarButton>
+      <ToolbarButton
+        label={copy.strike}
+        pressed={hasMark('strike_through', snapshot.state)}
+        onClick={() => press('strike')}
+      >
+        <Strikethrough />
+      </ToolbarButton>
+      <ToolbarButton
+        label={copy.inlineCode}
+        pressed={hasMark('inlineCode', snapshot.state)}
+        onClick={() => press('inline-code')}
+      >
+        <Code2 />
+      </ToolbarButton>
       <span className="selection-toolbar__divider" aria-hidden="true" />
-      <ToolbarButton label={copy.link} pressed={Boolean(linkHref(snapshot.state))} onClick={() => onLink(position!)}><Link2 /></ToolbarButton>
+      <ToolbarButton
+        label={copy.link}
+        pressed={Boolean(linkHref(snapshot.state))}
+        onClick={() => onLink(position!)}
+      >
+        <Link2 />
+      </ToolbarButton>
     </div>
   )
 }
 
-function ToolbarButton({ children, label, onClick, pressed }: { children: React.ReactNode; label: string; onClick: () => void; pressed?: boolean }) {
+function ToolbarButton({
+  children,
+  label,
+  onClick,
+  pressed,
+}: {
+  children: React.ReactNode
+  label: string
+  onClick: () => void
+  pressed?: boolean
+}) {
   return (
-    <button aria-label={label} aria-pressed={pressed} type="button" onMouseDown={(event) => event.preventDefault()} onClick={onClick}>
+    <button
+      aria-label={label}
+      aria-pressed={pressed}
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
       {children}
     </button>
   )

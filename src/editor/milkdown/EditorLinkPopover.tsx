@@ -30,7 +30,21 @@ type EditorLinkPopoverProps = {
   selection: EditorSelectionSnapshot
 }
 
-export function EditorLinkPopover({ canRemove, copy, href, hrefValid, mode, text, onApply, onCancel, onHrefChange, onRemove, onTextChange, position, selection }: EditorLinkPopoverProps) {
+export function EditorLinkPopover({
+  canRemove,
+  copy,
+  href,
+  hrefValid,
+  mode,
+  text,
+  onApply,
+  onCancel,
+  onHrefChange,
+  onRemove,
+  onTextChange,
+  position,
+  selection,
+}: EditorLinkPopoverProps) {
   const rootRef = useRef<HTMLFormElement>(null)
   const [placement, setPlacement] = useState<{ left: number; top: number } | null>(position)
 
@@ -39,8 +53,14 @@ export function EditorLinkPopover({ canRemove, copy, href, hrefValid, mode, text
     if (!root || !position) return
     const rect = root.getBoundingClientRect()
     const edge = 8
-    const left = Math.min(Math.max(edge, position.left - rect.width / 2), Math.max(edge, window.innerWidth - rect.width - edge))
-    const top = Math.min(Math.max(edge, position.top + 44), Math.max(edge, window.innerHeight - rect.height - edge))
+    const left = Math.min(
+      Math.max(edge, position.left - rect.width / 2),
+      Math.max(edge, window.innerWidth - rect.width - edge),
+    )
+    const top = Math.min(
+      Math.max(edge, position.top + 44),
+      Math.max(edge, window.innerHeight - rect.height - edge),
+    )
     setPlacement({ left, top })
   }, [position])
 
@@ -80,13 +100,50 @@ export function EditorLinkPopover({ canRemove, copy, href, hrefValid, mode, text
     >
       {mode === 'insert' ? (
         <>
-          <label>{copy.linkText}<input autoFocus aria-label={copy.linkText} value={text} onChange={(event) => onTextChange(event.target.value)} /></label>
-          <label>{copy.linkAddress}<input aria-label={copy.linkAddress} placeholder="https://" type="url" value={href} onChange={(event) => onHrefChange(event.target.value)} /></label>
+          <label>
+            {copy.linkText}
+            <input
+              autoFocus
+              aria-label={copy.linkText}
+              value={text}
+              onChange={(event) => onTextChange(event.target.value)}
+            />
+          </label>
+          <label>
+            {copy.linkAddress}
+            <input
+              aria-label={copy.linkAddress}
+              placeholder="https://"
+              type="url"
+              value={href}
+              onChange={(event) => onHrefChange(event.target.value)}
+            />
+          </label>
         </>
-      ) : <><Link2 aria-hidden="true" size={15} /><input autoFocus aria-label={copy.linkAddress} placeholder="https://" type="url" value={href} onChange={(event) => onHrefChange(event.target.value)} /></>}
-      <button type="submit" disabled={!hrefValid}>{mode === 'insert' ? copy.insert : copy.apply}</button>
-      {canRemove ? <button aria-label={copy.removeLink} type="button" onClick={onRemove}><Trash2 aria-hidden="true" size={15} /></button> : null}
-      <button type="button" onClick={onCancel}>{copy.cancel}</button>
+      ) : (
+        <>
+          <Link2 aria-hidden="true" size={15} />
+          <input
+            autoFocus
+            aria-label={copy.linkAddress}
+            placeholder="https://"
+            type="url"
+            value={href}
+            onChange={(event) => onHrefChange(event.target.value)}
+          />
+        </>
+      )}
+      <button type="submit" disabled={!hrefValid}>
+        {mode === 'insert' ? copy.insert : copy.apply}
+      </button>
+      {canRemove ? (
+        <button aria-label={copy.removeLink} type="button" onClick={onRemove}>
+          <Trash2 aria-hidden="true" size={15} />
+        </button>
+      ) : null}
+      <button type="button" onClick={onCancel}>
+        {copy.cancel}
+      </button>
     </form>
   )
 }

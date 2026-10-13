@@ -34,8 +34,10 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
           if (id.includes('/react/') || id.includes('/react-dom/')) return 'react'
-          if (id.includes('/@milkdown/core/') || id.includes('/@milkdown/utils/')) return 'milkdown-core'
-          if (id.includes('/@milkdown/preset-commonmark/') || id.includes('/@milkdown/preset-gfm/')) return 'milkdown-presets'
+          if (id.includes('/@milkdown/core/') || id.includes('/@milkdown/utils/'))
+            return 'milkdown-core'
+          if (id.includes('/@milkdown/preset-commonmark/') || id.includes('/@milkdown/preset-gfm/'))
+            return 'milkdown-presets'
           if (id.includes('/@milkdown/plugin-')) return 'milkdown-plugins'
           if (id.includes('/@milkdown/prose/')) return 'milkdown-prose'
           return undefined

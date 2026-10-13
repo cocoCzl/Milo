@@ -1,5 +1,9 @@
 import { ChevronRight, FileText, Folder, FolderOpen, Settings2, X } from 'lucide-react'
-import { useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 
 import type { MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from '../settings/applicationSettings'
@@ -36,13 +40,34 @@ type FileSidebarProps = {
   width: number
 }
 
-export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearRecent, onOpenFile, onOpenFolder, onOpenPreferences, onRemoveRecentFile, onRemoveRecentFolder, onWidthChange, recentFiles, recentFolders, tree, width }: FileSidebarProps) {
+export function FileSidebar({
+  activeFile,
+  copy,
+  folder,
+  onChooseFolder,
+  onClearRecent,
+  onOpenFile,
+  onOpenFolder,
+  onOpenPreferences,
+  onRemoveRecentFile,
+  onRemoveRecentFolder,
+  onWidthChange,
+  recentFiles,
+  recentFolders,
+  tree,
+  width,
+}: FileSidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null)
 
   const commitVisualWidth = (nextWidth: number) => {
-    const clampedWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(nextWidth)))
+    const clampedWidth = Math.min(
+      SIDEBAR_MAX_WIDTH,
+      Math.max(SIDEBAR_MIN_WIDTH, Math.round(nextWidth)),
+    )
     sidebarRef.current?.style.setProperty('width', `${clampedWidth}px`)
-    document.querySelector<HTMLElement>('.app-shell')?.style.setProperty('--sidebar-width', `${clampedWidth}px`)
+    document
+      .querySelector<HTMLElement>('.app-shell')
+      ?.style.setProperty('--sidebar-width', `${clampedWidth}px`)
     return clampedWidth
   }
 
@@ -86,52 +111,114 @@ export function FileSidebar({ activeFile, copy, folder, onChooseFolder, onClearR
       style={{ width }}
     >
       <header className="file-sidebar__brand">
-        <span className="file-sidebar__brand-mark" aria-hidden="true">M</span>
+        <span className="file-sidebar__brand-mark" aria-hidden="true">
+          M
+        </span>
         <span className="file-sidebar__brand-copy">
           <strong>Milo</strong>
           <span>Write a clearer tomorrow</span>
         </span>
       </header>
       <div className="file-sidebar__body">
-        <section className="file-sidebar__section file-sidebar__recent" aria-label={copy.recentLabel}>
+        <section
+          className="file-sidebar__section file-sidebar__recent"
+          aria-label={copy.recentLabel}
+        >
           <header className="file-sidebar__section-header">
             <span>{copy.recent}</span>
-            {recentFiles.length > 0 || recentFolders.length > 0 ? <button type="button" onClick={onClearRecent}>{copy.clearRecent}</button> : null}
+            {recentFiles.length > 0 || recentFolders.length > 0 ? (
+              <button type="button" onClick={onClearRecent}>
+                {copy.clearRecent}
+              </button>
+            ) : null}
           </header>
-          {recentFiles.length === 0 && recentFolders.length === 0 ? <p className="file-sidebar__empty-note">{copy.emptyRecent}</p> : null}
+          {recentFiles.length === 0 && recentFolders.length === 0 ? (
+            <p className="file-sidebar__empty-note">{copy.emptyRecent}</p>
+          ) : null}
           {recentFiles.map((path) => (
             <div className="file-sidebar__recent-item" key={path}>
-              <button aria-current={path === activeFile ? 'page' : undefined} className="file-sidebar__recent-open" title={path} type="button" onClick={() => onOpenFile(path)}>
-                <FileText aria-hidden="true" size={14} strokeWidth={1.6} /><span>{fileName(path)}</span>
+              <button
+                aria-current={path === activeFile ? 'page' : undefined}
+                className="file-sidebar__recent-open"
+                title={path}
+                type="button"
+                onClick={() => onOpenFile(path)}
+              >
+                <FileText aria-hidden="true" size={14} strokeWidth={1.6} />
+                <span>{fileName(path)}</span>
               </button>
-              <button aria-label={copy.removeRecent(fileName(path))} className="file-sidebar__recent-remove" title={copy.removeRecent(fileName(path))} type="button" onClick={() => onRemoveRecentFile(path)}>
+              <button
+                aria-label={copy.removeRecent(fileName(path))}
+                className="file-sidebar__recent-remove"
+                title={copy.removeRecent(fileName(path))}
+                type="button"
+                onClick={() => onRemoveRecentFile(path)}
+              >
                 <X aria-hidden="true" size={12} strokeWidth={1.8} />
               </button>
             </div>
           ))}
           {recentFolders.map((path) => (
             <div className="file-sidebar__recent-item" key={path}>
-              <button className="file-sidebar__recent-open" title={path} type="button" onClick={() => onOpenFolder(path)}>
-                <Folder aria-hidden="true" size={14} strokeWidth={1.6} /><span>{fileName(path)}</span>
+              <button
+                className="file-sidebar__recent-open"
+                title={path}
+                type="button"
+                onClick={() => onOpenFolder(path)}
+              >
+                <Folder aria-hidden="true" size={14} strokeWidth={1.6} />
+                <span>{fileName(path)}</span>
               </button>
-              <button aria-label={copy.removeRecent(fileName(path))} className="file-sidebar__recent-remove" title={copy.removeRecent(fileName(path))} type="button" onClick={() => onRemoveRecentFolder(path)}>
+              <button
+                aria-label={copy.removeRecent(fileName(path))}
+                className="file-sidebar__recent-remove"
+                title={copy.removeRecent(fileName(path))}
+                type="button"
+                onClick={() => onRemoveRecentFolder(path)}
+              >
                 <X aria-hidden="true" size={12} strokeWidth={1.8} />
               </button>
             </div>
           ))}
         </section>
-        <section className="file-sidebar__section file-sidebar__workspace" aria-label={copy.workspace}>
-          <header className="file-sidebar__section-header"><span>{copy.workspace}</span></header>
+        <section
+          className="file-sidebar__section file-sidebar__workspace"
+          aria-label={copy.workspace}
+        >
+          <header className="file-sidebar__section-header">
+            <span>{copy.workspace}</span>
+          </header>
           <div className="file-sidebar__workspace-row">
-            <span className="file-sidebar__workspace-icon" aria-hidden="true"><FolderOpen size={15} strokeWidth={1.8} /></span>
-            <strong title={folder ?? undefined}>{folder ? fileName(folder) : copy.emptyFolder}</strong>
-            <button aria-label={copy.changeFolder} title={copy.changeFolder} type="button" onClick={onChooseFolder}>{copy.changeFolder}</button>
+            <span className="file-sidebar__workspace-icon" aria-hidden="true">
+              <FolderOpen size={15} strokeWidth={1.8} />
+            </span>
+            <strong title={folder ?? undefined}>
+              {folder ? fileName(folder) : copy.emptyFolder}
+            </strong>
+            <button
+              aria-label={copy.changeFolder}
+              title={copy.changeFolder}
+              type="button"
+              onClick={onChooseFolder}
+            >
+              {copy.changeFolder}
+            </button>
           </div>
           {tree ? (
             <div className="file-sidebar__tree">
-              {tree.children.length > 0
-                ? tree.children.map((child) => <TreeBranch activeFile={activeFile} key={child.path} node={child} depth={0} onOpenFile={onOpenFile} />)
-                : <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>}
+              {tree.children.length > 0 ? (
+                tree.children.map((child) => (
+                  <TreeBranch
+                    activeFile={activeFile}
+                    key={child.path}
+                    node={child}
+                    depth={0}
+                    onOpenFile={onOpenFile}
+                  />
+                ))
+              ) : (
+                <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>
+              )}
             </div>
           ) : (
             <div className="file-sidebar__empty">
@@ -170,10 +257,27 @@ function fileName(path: string) {
   return path.split(/[\\/]/).at(-1) ?? path
 }
 
-function TreeBranch({ activeFile, node, depth, onOpenFile }: { activeFile: string | null; depth: number; node: MarkdownTreeNode; onOpenFile: (path: string) => void }) {
+function TreeBranch({
+  activeFile,
+  node,
+  depth,
+  onOpenFile,
+}: {
+  activeFile: string | null
+  depth: number
+  node: MarkdownTreeNode
+  onOpenFile: (path: string) => void
+}) {
   if (!node.isDirectory) {
     return (
-      <button aria-current={node.path === activeFile ? 'page' : undefined} className="file-sidebar__file" title={node.path} type="button" style={{ paddingLeft: 14 + depth * 14 }} onClick={() => onOpenFile(node.path)}>
+      <button
+        aria-current={node.path === activeFile ? 'page' : undefined}
+        className="file-sidebar__file"
+        title={node.path}
+        type="button"
+        style={{ paddingLeft: 14 + depth * 14 }}
+        onClick={() => onOpenFile(node.path)}
+      >
         <FileText aria-hidden="true" size={13} strokeWidth={1.6} />
         <span>{node.name}</span>
       </button>
@@ -187,7 +291,15 @@ function TreeBranch({ activeFile, node, depth, onOpenFile }: { activeFile: strin
         <Folder aria-hidden="true" size={13} strokeWidth={1.6} />
         <span>{node.name}</span>
       </summary>
-      {node.children.map((child) => <TreeBranch activeFile={activeFile} key={child.path} node={child} depth={depth + 1} onOpenFile={onOpenFile} />)}
+      {node.children.map((child) => (
+        <TreeBranch
+          activeFile={activeFile}
+          key={child.path}
+          node={child}
+          depth={depth + 1}
+          onOpenFile={onOpenFile}
+        />
+      ))}
     </details>
   )
 }

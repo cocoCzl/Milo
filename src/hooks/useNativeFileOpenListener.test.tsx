@@ -26,7 +26,9 @@ describe('native file-open listener', () => {
 
     renderHook(() => useNativeFileOpenListener(onOpenPath))
 
-    await waitFor(() => expect(mocks.listen).toHaveBeenCalledWith('milo://open-file', expect.any(Function)))
+    await waitFor(() =>
+      expect(mocks.listen).toHaveBeenCalledWith('milo://open-file', expect.any(Function)),
+    )
     listener?.({ payload: '/Users/milo/Notes/welcome.md' })
 
     expect(onOpenPath).toHaveBeenCalledWith('/Users/milo/Notes/welcome.md')

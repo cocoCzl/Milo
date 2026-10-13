@@ -13,7 +13,9 @@ const options = [
 
 describe('Select', () => {
   it('renders a controlled Radix trigger without native select elements', () => {
-    render(<Select aria-label="Appearance" options={options} value="system" onValueChange={vi.fn()} />)
+    render(
+      <Select aria-label="Appearance" options={options} value="system" onValueChange={vi.fn()} />,
+    )
 
     const trigger = screen.getByRole('combobox', { name: 'Appearance' })
     expect(trigger).toHaveTextContent('System')
@@ -25,11 +27,24 @@ describe('Select', () => {
 
   it('reflects controlled value changes through the shared trigger', () => {
     const onValueChange = vi.fn()
-    const { rerender } = render(<Select aria-label="Appearance" options={options} value="system" onValueChange={onValueChange} />)
+    const { rerender } = render(
+      <Select
+        aria-label="Appearance"
+        options={options}
+        value="system"
+        onValueChange={onValueChange}
+      />,
+    )
     expect(screen.getByRole('combobox', { name: 'Appearance' })).toHaveTextContent('System')
 
-    rerender(<Select aria-label="Appearance" options={options} value="dark" onValueChange={onValueChange} />)
+    rerender(
+      <Select
+        aria-label="Appearance"
+        options={options}
+        value="dark"
+        onValueChange={onValueChange}
+      />,
+    )
     expect(screen.getByRole('combobox', { name: 'Appearance' })).toHaveTextContent('Dark')
   })
-
 })

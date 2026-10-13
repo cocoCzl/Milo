@@ -15,7 +15,8 @@ import { miloTableCellAlignment, miloTableHeaderAlignment } from './tableAlignme
 function serializeTableCell(state: SerializerState, node: Node) {
   state.openNode('tableCell')
   const onlyChild = node.childCount === 1 ? node.firstChild : null
-  const isStructuralEmptyParagraph = onlyChild?.type.name === 'paragraph' && onlyChild.content.size === 0
+  const isStructuralEmptyParagraph =
+    onlyChild?.type.name === 'paragraph' && onlyChild.content.size === 0
   if (!isStructuralEmptyParagraph) state.next(node.content)
   state.closeNode()
 }

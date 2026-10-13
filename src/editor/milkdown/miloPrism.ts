@@ -15,10 +15,18 @@ type HighlightNode = {
 
 type HighlightedLeaf = { text: string; className: string[] }
 
-function flattenHighlightedNodes(nodes: HighlightNode[], className: string[] = []): HighlightedLeaf[] {
-  return nodes.flatMap((node) => node.type === 'element'
-    ? flattenHighlightedNodes(node.children ?? [], [...className, ...(node.properties?.className ?? [])])
-    : [{ text: node.value ?? '', className }])
+function flattenHighlightedNodes(
+  nodes: HighlightNode[],
+  className: string[] = [],
+): HighlightedLeaf[] {
+  return nodes.flatMap((node) =>
+    node.type === 'element'
+      ? flattenHighlightedNodes(node.children ?? [], [
+          ...className,
+          ...(node.properties?.className ?? []),
+        ])
+      : [{ text: node.value ?? '', className }],
+  )
 }
 
 function blockDecorations(node: Node, position: number, instance: Refractor) {
@@ -26,12 +34,15 @@ function blockDecorations(node: Node, position: number, instance: Refractor) {
   if (!language || !instance.listLanguages().includes(language)) return []
 
   let from = position + 1
-  return flattenHighlightedNodes(instance.highlight(node.textContent, language).children as HighlightNode[])
-    .flatMap(({ text, className }) => {
-      const to = from + text.length
-      from = to
-      return className.length ? [Decoration.inline(to - text.length, to, { class: className.join(' ') })] : []
-    })
+  return flattenHighlightedNodes(
+    instance.highlight(node.textContent, language).children as HighlightNode[],
+  ).flatMap(({ text, className }) => {
+    const to = from + text.length
+    from = to
+    return className.length
+      ? [Decoration.inline(to - text.length, to, { class: className.join(' ') })]
+      : []
+  })
 }
 
 function changedCodeBlock(previous: EditorState, next: EditorState) {
@@ -69,10 +80,9 @@ const miloPrismPlugin = $prose((ctx) => {
           if (edited.node.type.name !== name) return mapped
           const from = edited.pos
           const to = from + edited.node.nodeSize
-          return mapped.remove(mapped.find(from + 1, to - 1)).add(
-            transaction.doc,
-            blockDecorations(edited.node, from, instance),
-          )
+          return mapped
+            .remove(mapped.find(from + 1, to - 1))
+            .add(transaction.doc, blockDecorations(edited.node, from, instance))
         }
 
         const codeBlock = state.selection.$head.parent.type.name === name
@@ -80,14 +90,24 @@ const miloPrismPlugin = $prose((ctx) => {
         const codeBlocksChanged = (() => {
           const oldNodes = findChildren((node) => node.type.name === name)(oldState.doc)
           const newNodes = findChildren((node) => node.type.name === name)(state.doc)
-          return oldNodes.length !== newNodes.length
-            || oldNodes.some((entry, index) => entry.node.attrs.language !== newNodes[index]?.node.attrs.language)
-            || transaction.steps.some((step) => {
+          return (
+            oldNodes.length !== newNodes.length ||
+            oldNodes.some(
+              (entry, index) => entry.node.attrs.language !== newNodes[index]?.node.attrs.language,
+            ) ||
+            transaction.steps.some((step) => {
               const rangedStep = step as unknown as { from?: number; to?: number }
-              return rangedStep.from !== undefined && rangedStep.to !== undefined && oldNodes.some((entry) => (
-                entry.pos >= rangedStep.from! && entry.pos + entry.node.nodeSize <= rangedStep.to!
-              ))
+              return (
+                rangedStep.from !== undefined &&
+                rangedStep.to !== undefined &&
+                oldNodes.some(
+                  (entry) =>
+                    entry.pos >= rangedStep.from! &&
+                    entry.pos + entry.node.nodeSize <= rangedStep.to!,
+                )
+              )
             })
+          )
         })()
 
         return codeBlock || previousCodeBlock || codeBlocksChanged

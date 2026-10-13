@@ -12,17 +12,26 @@ describe('EditorOutline', () => {
         closeLabel="Close outline"
         drawer={false}
         emptyLabel="Empty"
-        headings={[{ id: 'first', key: 'first', level: 1, pos: 1, text: 'First' }, { id: 'second', key: 'second', level: 2, pos: 8, text: 'Second' }]}
+        headings={[
+          { id: 'first', key: 'first', level: 1, pos: 1, text: 'First' },
+          { id: 'second', key: 'second', level: 2, pos: 8, text: 'Second' },
+        ]}
         label="Outline"
         onSelect={() => undefined}
       />,
     )
     const outline = container.querySelector<HTMLElement>('.editor-outline__body')!
     const second = container.querySelectorAll<HTMLElement>('.editor-outline__item')[1]
-    Object.defineProperty(outline, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect(0, 0, 240, 120) })
+    Object.defineProperty(outline, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 240, 120),
+    })
     Object.defineProperty(outline, 'scrollTop', { configurable: true, value: 0 })
     Object.defineProperty(outline, 'scrollTo', { configurable: true, value: scrollTo })
-    Object.defineProperty(second, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect(0, 150, 200, 32) })
+    Object.defineProperty(second, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(0, 150, 200, 32),
+    })
 
     rerender(
       <EditorOutline
@@ -30,7 +39,10 @@ describe('EditorOutline', () => {
         closeLabel="Close outline"
         drawer={false}
         emptyLabel="Empty"
-        headings={[{ id: 'first', key: 'first', level: 1, pos: 1, text: 'First' }, { id: 'second', key: 'second', level: 2, pos: 8, text: 'Second' }]}
+        headings={[
+          { id: 'first', key: 'first', level: 1, pos: 1, text: 'First' },
+          { id: 'second', key: 'second', level: 2, pos: 8, text: 'Second' },
+        ]}
         label="Outline"
         onSelect={() => undefined}
       />,
@@ -53,8 +65,12 @@ describe('EditorOutline', () => {
       />,
     )
 
-    expect(container.querySelector('.editor-outline--drawer > .editor-outline__header')).toBeInTheDocument()
-    expect(container.querySelector('.editor-outline--drawer > .editor-outline__body')).toBeInTheDocument()
+    expect(
+      container.querySelector('.editor-outline--drawer > .editor-outline__header'),
+    ).toBeInTheDocument()
+    expect(
+      container.querySelector('.editor-outline--drawer > .editor-outline__body'),
+    ).toBeInTheDocument()
     expect(getByRole('button', { name: 'Close outline' })).toBeVisible()
   })
 
@@ -79,14 +95,20 @@ describe('EditorOutline', () => {
     )
 
     headings.forEach((heading) => {
-      expect(screen.getByRole('button', { name: heading.text })).toHaveClass(`editor-outline__item--level-${heading.level}`)
+      expect(screen.getByRole('button', { name: heading.text })).toHaveClass(
+        `editor-outline__item--level-${heading.level}`,
+      )
     })
-    expect(screen.getByRole('button', { name: 'Heading 5' })).toHaveAttribute('aria-current', 'location')
+    expect(screen.getByRole('button', { name: 'Heading 5' })).toHaveAttribute(
+      'aria-current',
+      'location',
+    )
     expect(container.querySelectorAll('.editor-outline__item--active')).toHaveLength(1)
   })
 
   it('keeps long heading text in the labelled ellipsis row and retains the empty state', () => {
-    const longHeading = 'A very long English and 中文 mixed heading that must remain contained inside the outline pane'
+    const longHeading =
+      'A very long English and 中文 mixed heading that must remain contained inside the outline pane'
     const { container, rerender } = render(
       <EditorOutline
         activePosition={null}
@@ -122,14 +144,23 @@ describe('EditorOutline', () => {
 
   it('returns the selected heading identity instead of a visible array index', () => {
     const onSelect = vi.fn()
-    const heading = { id: 'heading-418', key: 'heading-418', level: 2, pos: 418, text: '20. Final chapter' }
+    const heading = {
+      id: 'heading-418',
+      key: 'heading-418',
+      level: 2,
+      pos: 418,
+      text: '20. Final chapter',
+    }
     const { getByRole } = render(
       <EditorOutline
         activePosition={null}
         closeLabel="Close outline"
         drawer={false}
         emptyLabel="Empty"
-        headings={[{ id: 'heading-0', key: 'heading-0', level: 2, pos: 0, text: '1. First chapter' }, heading]}
+        headings={[
+          { id: 'heading-0', key: 'heading-0', level: 2, pos: 0, text: '1. First chapter' },
+          heading,
+        ]}
         label="Outline"
         onSelect={onSelect}
       />,

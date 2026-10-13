@@ -1,4 +1,12 @@
-import { defaultValueCtx, Editor, editorViewCtx, parserCtx, rootCtx, schemaCtx, serializerCtx } from '@milkdown/core'
+import {
+  defaultValueCtx,
+  Editor,
+  editorViewCtx,
+  parserCtx,
+  rootCtx,
+  schemaCtx,
+  serializerCtx,
+} from '@milkdown/core'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import type { Node as ProseNode, Schema } from '@milkdown/prose/model'
@@ -13,10 +21,12 @@ import { miloTableAlignmentSchema } from './tableAlignment'
 const createdEditors: Array<{ editor: Editor; mount: HTMLElement }> = []
 
 afterEach(async () => {
-  await Promise.all(createdEditors.splice(0).map(async ({ editor, mount }) => {
-    await editor.destroy()
-    mount.remove()
-  }))
+  await Promise.all(
+    createdEditors.splice(0).map(async ({ editor, mount }) => {
+      await editor.destroy()
+      mount.remove()
+    }),
+  )
 })
 
 async function createTablePipeline() {
@@ -42,14 +52,21 @@ function tableDocument(schema: Schema, rows: Array<Array<ProseNode[]>>) {
   const headerRow = schema.nodes.table_header_row
   const tableRow = schema.nodes.table_row
   const table = schema.nodes.table
-  if (!paragraph || !header || !cell || !headerRow || !tableRow || !table) throw new Error('GFM table schema unavailable')
+  if (!paragraph || !header || !cell || !headerRow || !tableRow || !table)
+    throw new Error('GFM table schema unavailable')
 
-  const makeCell = (type: typeof header, content: ProseNode[]) => type.create(null, paragraph.create(null, content))
-  const makeRow = (contents: ProseNode[][], index: number) => (
+  const makeCell = (type: typeof header, content: ProseNode[]) =>
+    type.create(null, paragraph.create(null, content))
+  const makeRow = (contents: ProseNode[][], index: number) =>
     index === 0
-      ? headerRow.create(null, contents.map((content) => makeCell(header, content)))
-      : tableRow.create(null, contents.map((content) => makeCell(cell, content)))
-  )
+      ? headerRow.create(
+          null,
+          contents.map((content) => makeCell(header, content)),
+        )
+      : tableRow.create(
+          null,
+          contents.map((content) => makeCell(cell, content)),
+        )
   return schema.topNodeType.create(null, [table.create(null, rows.map(makeRow))])
 }
 
@@ -59,11 +76,12 @@ function tableShape(doc: ProseNode) {
   return {
     rows: table.childCount,
     columns: Array.from({ length: table.childCount }, (_, index) => table.child(index).childCount),
-    emptyCells: Array.from({ length: table.childCount }, (_, rowIndex) => (
-      Array.from({ length: table.child(rowIndex).childCount }, (_, cellIndex) => (
-        table.child(rowIndex).child(cellIndex).firstChild?.content.size === 0
-      ))
-    )),
+    emptyCells: Array.from({ length: table.childCount }, (_, rowIndex) =>
+      Array.from(
+        { length: table.child(rowIndex).childCount },
+        (_, cellIndex) => table.child(rowIndex).child(cellIndex).firstChild?.content.size === 0,
+      ),
+    ),
   }
 }
 
@@ -110,13 +128,18 @@ describe('Milo empty table-cell serialization', () => {
     const editor = await createTablePipeline()
     editor.action((ctx) => {
       const schema = ctx.get(schemaCtx)
-      const original = tableDocument(schema, Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [])))
+      const original = tableDocument(
+        schema,
+        Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [])),
+      )
       original.descendants((node) => {
         if (node.type.name === 'table_cell' || node.type.name === 'table_header') {
           expect(node.attrs.alignment).toBeNull()
         }
       })
-      expect(ctx.get(serializerCtx)(original)).toMatch(/^\|\s*\|\s*\|\s*\|\n\|\s*-\s*\|\s*-\s*\|\s*-\s*\|/)
+      expect(ctx.get(serializerCtx)(original)).toMatch(
+        /^\|\s*\|\s*\|\s*\|\n\|\s*-\s*\|\s*-\s*\|\s*-\s*\|/,
+      )
     })
   })
 
@@ -128,7 +151,10 @@ describe('Milo empty table-cell serialization', () => {
 
     editor.action((ctx) => {
       const schema = ctx.get(schemaCtx)
-      original = tableDocument(schema, Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [])))
+      original = tableDocument(
+        schema,
+        Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => [])),
+      )
       const serialize = ctx.get(serializerCtx)
       markdown = serialize(original)
       reparsed = ctx.get(parserCtx)(markdown)
@@ -165,7 +191,10 @@ describe('Milo empty table-cell serialization', () => {
 
     editor.action((ctx) => {
       const schema = ctx.get(schemaCtx)
-      const text = (value: string, marks: ReturnType<NonNullable<typeof schema.marks.strong>['create']>[] = []) => schema.text(value, marks)
+      const text = (
+        value: string,
+        marks: ReturnType<NonNullable<typeof schema.marks.strong>['create']>[] = [],
+      ) => schema.text(value, marks)
       const strong = schema.marks.strong!.create()
       const emphasis = schema.marks.emphasis!.create()
       const inlineCode = schema.marks.inlineCode!.create()

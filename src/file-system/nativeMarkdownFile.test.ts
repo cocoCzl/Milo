@@ -27,20 +27,32 @@ describe('ensureMarkdownExtension', () => {
   })
 
   it('wraps native write requests in the Rust command argument name', async () => {
-    const document = { path: '/notes/ideas.md', markdown: '# Ideas', lineEnding: 'lf' as const, hasBom: false }
+    const document = {
+      path: '/notes/ideas.md',
+      markdown: '# Ideas',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }
     const image = { bytes: [137, 80], mimeType: 'image/png' }
 
     await writeMarkdownFile(document)
     await writeImageAsset(document.path, image)
 
-    expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'write_markdown_document', { request: document })
+    expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'write_markdown_document', {
+      request: document,
+    })
     expect(mocks.invoke).toHaveBeenNthCalledWith(2, 'write_image_asset', {
       request: { documentPath: document.path, ...image },
     })
   })
 
   it('recovers an ordinary macOS document before reading and sends its expected disk version to safe save', async () => {
-    const expected = { path: '/notes/ordinary.md', markdown: '# Before', lineEnding: 'lf' as const, hasBom: false }
+    const expected = {
+      path: '/notes/ordinary.md',
+      markdown: '# Before',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }
     const next = { ...expected, markdown: '# After' }
     mocks.invoke
       .mockResolvedValueOnce('Clean')
@@ -50,8 +62,12 @@ describe('ensureMarkdownExtension', () => {
     await recoverAndReadMarkdownFile(expected.path, true)
     await writeMarkdownFileSafely(next, expected)
 
-    expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'recover_markdown_document_safe_v2', { path: expected.path })
-    expect(mocks.invoke).toHaveBeenNthCalledWith(2, 'read_markdown_document', { path: expected.path })
+    expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'recover_markdown_document_safe_v2', {
+      path: expected.path,
+    })
+    expect(mocks.invoke).toHaveBeenNthCalledWith(2, 'read_markdown_document', {
+      path: expected.path,
+    })
     expect(mocks.invoke).toHaveBeenNthCalledWith(3, 'write_markdown_document_safe_v2', {
       request: {
         ...next,
@@ -63,7 +79,12 @@ describe('ensureMarkdownExtension', () => {
   })
 
   it('requests create-new semantics for a new macOS document instead of falling back to atomic replace', async () => {
-    const document = { path: '/notes/new.md', markdown: '# New', lineEnding: 'lf' as const, hasBom: false }
+    const document = {
+      path: '/notes/new.md',
+      markdown: '# New',
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }
     mocks.invoke.mockResolvedValueOnce(document)
 
     await writeMarkdownFileSafely(document, null)

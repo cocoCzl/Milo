@@ -8,7 +8,13 @@ type ModeSwitchProps = {
   readLabel: string
 }
 
-export function ModeSwitch({ disabled = false, editLabel, mode, onChange, readLabel }: ModeSwitchProps) {
+export function ModeSwitch({
+  disabled = false,
+  editLabel,
+  mode,
+  onChange,
+  readLabel,
+}: ModeSwitchProps) {
   return (
     <div className="mode-switch" aria-label={`${editLabel} / ${readLabel}`} role="group">
       <button

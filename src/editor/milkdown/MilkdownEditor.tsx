@@ -1,10 +1,16 @@
-import { defaultValueCtx, Editor, editorViewCtx, nodeViewCtx, prosePluginsCtx, rootCtx, type CmdKey } from '@milkdown/core'
+import {
+  defaultValueCtx,
+  Editor,
+  editorViewCtx,
+  nodeViewCtx,
+  prosePluginsCtx,
+  rootCtx,
+  type CmdKey,
+} from '@milkdown/core'
 import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
-import {
-  commonmark,
-} from '@milkdown/preset-commonmark'
+import { commonmark } from '@milkdown/preset-commonmark'
 import {
   addColAfterCommand,
   addColBeforeCommand,
@@ -14,7 +20,13 @@ import {
   gfm,
 } from '@milkdown/preset-gfm'
 import { splitBlockAs } from '@milkdown/prose/commands'
-import { NodeSelection, Plugin, TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
+import {
+  NodeSelection,
+  Plugin,
+  TextSelection,
+  type Command,
+  type EditorState,
+} from '@milkdown/prose/state'
 import { CellSelection, deleteColumn, deleteRow, TableView } from '@milkdown/prose/tables'
 import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
 import { callCommand } from '@milkdown/utils'
@@ -27,19 +39,33 @@ import { BlockHandle } from './BlockHandle'
 import { BlockMenu, type BlockMenuCopy } from './BlockMenu'
 import { isValidBlockTarget, type BlockMenuCommand, type BlockTarget } from './blockControls'
 import { EditorContextMenu, type EditorContextMenuCopy } from './EditorContextMenu'
-import { EditorLinkPopover, type EditorLinkPopoverCopy, type LinkPopoverMode } from './EditorLinkPopover'
+import {
+  EditorLinkPopover,
+  type EditorLinkPopoverCopy,
+  type LinkPopoverMode,
+} from './EditorLinkPopover'
 import { EditorOutline, type EditorHeading } from './EditorOutline'
 import { ContextualEditorStore, createContextualEditorPlugin } from './contextualEditorStore'
-import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart, type EditorCommands, type EditorSelectionSnapshot } from './editorCommands'
+import {
+  createEditorCommands,
+  isValidEditorSelectionSnapshot,
+  splitTopLevelParagraphAtStart,
+  type EditorCommands,
+  type EditorSelectionSnapshot,
+} from './editorCommands'
 import { focusEditorViewPreservingSelection } from './editorFocus'
 import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
-import { createSafariCompositionHardbreakPlugin, miloSafariCompositionHardbreakSchema } from './safariCompositionHardbreak'
+import {
+  createSafariCompositionHardbreakPlugin,
+  miloSafariCompositionHardbreakSchema,
+} from './safariCompositionHardbreak'
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 import { miloTableAlignmentSchema } from './tableAlignment'
 import { miloPrism } from './miloPrism'
 
 const tableDefaultCellMinWidth = 100
-const createTableNodeView: NodeViewConstructor = (node) => new TableView(node, tableDefaultCellMinWidth)
+const createTableNodeView: NodeViewConstructor = (node) =>
+  new TableView(node, tableDefaultCellMinWidth)
 
 type EditorMenu = {
   hasSelection: boolean
@@ -70,41 +96,84 @@ type MilkdownEditorProps = {
   onCloseOutline?: () => void
 }
 
-type EditorCopy = BlockMenuCopy & EditorContextMenuCopy & EditorLinkPopoverCopy & SelectionToolbarCopy & {
-  addColumnLeft: string
-  addColumnRight: string
-  addRowAbove: string
-  addRowBelow: string
-  codeBlockLanguage: string
-  closeOutline: string
-  deleteColumn: string
-  deleteBlock: string
-  deleteRow: string
-  loadImage: string
-  loadImageError: string
-  loadRemoteImage: (alt: string) => string
-  loadingImage: string
-  noOutline: string
-  outline: string
-  plainText: string
-  removeLink: string
-  insert: string
-  linkText: string
-  startWritingHint: string
-  startWriting: string
-}
+type EditorCopy = BlockMenuCopy &
+  EditorContextMenuCopy &
+  EditorLinkPopoverCopy &
+  SelectionToolbarCopy & {
+    addColumnLeft: string
+    addColumnRight: string
+    addRowAbove: string
+    addRowBelow: string
+    codeBlockLanguage: string
+    closeOutline: string
+    deleteColumn: string
+    deleteBlock: string
+    deleteRow: string
+    loadImage: string
+    loadImageError: string
+    loadRemoteImage: (alt: string) => string
+    loadingImage: string
+    noOutline: string
+    outline: string
+    plainText: string
+    removeLink: string
+    insert: string
+    linkText: string
+    startWritingHint: string
+    startWriting: string
+  }
 
 const defaultEditorCopy: EditorCopy = {
-  apply: 'Apply', blockquote: 'Quote', bold: 'Bold', bulletList: 'Bulleted list', cancel: 'Cancel', codeBlock: 'Code block',
-  copy: 'Copy', cut: 'Cut', divider: 'Divider', formattingToolbar: 'Formatting', heading1: 'Heading 1', heading2: 'Heading 2', heading3: 'Heading 3',
-  heading4: 'Heading 4', heading5: 'Heading 5', heading6: 'Heading 6', moreHeadings: 'More Headings',
-  inlineCode: 'Inline code', italic: 'Italic', link: 'Link', linkAddress: 'Link address', orderedList: 'Numbered list', paragraph: 'Body text',
-  selectAll: 'Select all', strike: 'Strikethrough', table: 'Table', addBlock: 'Add block',
-  addColumnLeft: 'Add column left', addColumnRight: 'Add column right', addRowAbove: 'Add row above', addRowBelow: 'Add row below',
-  codeBlockLanguage: 'Code block language', closeOutline: 'Close outline', deleteColumn: 'Delete column', deleteRow: 'Delete row', loadImage: 'Load image',
-  loadImageError: 'Could not load image — try again', loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
-  loadingImage: 'Loading image…', noOutline: 'Headings will appear here.', outline: 'Outline', plainText: 'Plain text', startWriting: 'Start with a thought…',
-  removeLink: 'Remove link', deleteBlock: 'Delete block', insert: 'Insert', linkText: 'Link text', addLink: 'Add link', editLink: 'Edit link', insertLink: 'Insert link…',
+  apply: 'Apply',
+  blockquote: 'Quote',
+  bold: 'Bold',
+  bulletList: 'Bulleted list',
+  cancel: 'Cancel',
+  codeBlock: 'Code block',
+  copy: 'Copy',
+  cut: 'Cut',
+  divider: 'Divider',
+  formattingToolbar: 'Formatting',
+  heading1: 'Heading 1',
+  heading2: 'Heading 2',
+  heading3: 'Heading 3',
+  heading4: 'Heading 4',
+  heading5: 'Heading 5',
+  heading6: 'Heading 6',
+  moreHeadings: 'More Headings',
+  inlineCode: 'Inline code',
+  italic: 'Italic',
+  link: 'Link',
+  linkAddress: 'Link address',
+  orderedList: 'Numbered list',
+  paragraph: 'Body text',
+  selectAll: 'Select all',
+  strike: 'Strikethrough',
+  table: 'Table',
+  addBlock: 'Add block',
+  addColumnLeft: 'Add column left',
+  addColumnRight: 'Add column right',
+  addRowAbove: 'Add row above',
+  addRowBelow: 'Add row below',
+  codeBlockLanguage: 'Code block language',
+  closeOutline: 'Close outline',
+  deleteColumn: 'Delete column',
+  deleteRow: 'Delete row',
+  loadImage: 'Load image',
+  loadImageError: 'Could not load image — try again',
+  loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
+  loadingImage: 'Loading image…',
+  noOutline: 'Headings will appear here.',
+  outline: 'Outline',
+  plainText: 'Plain text',
+  startWriting: 'Start with a thought…',
+  removeLink: 'Remove link',
+  deleteBlock: 'Delete block',
+  insert: 'Insert',
+  linkText: 'Link text',
+  addLink: 'Add link',
+  editLink: 'Edit link',
+  insertLink: 'Insert link…',
   startWritingHint: 'Just type — Milo keeps the Markdown for you.',
 }
 
@@ -127,23 +196,29 @@ const languageOptions = [
 // eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the production mouseup path.
 export function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
   if (
-    editorView.state.selection instanceof CellSelection
-    || editorView.state.selection instanceof NodeSelection
-  ) return true
+    editorView.state.selection instanceof CellSelection ||
+    editorView.state.selection instanceof NodeSelection
+  )
+    return true
 
   const domSelection = editorView.dom.ownerDocument.getSelection()
 
   if (
-    !domSelection?.anchorNode
-    || !domSelection.focusNode
-    || !editorView.dom.contains(domSelection.anchorNode)
-    || !editorView.dom.contains(domSelection.focusNode)
-  ) return false
+    !domSelection?.anchorNode ||
+    !domSelection.focusNode ||
+    !editorView.dom.contains(domSelection.anchorNode) ||
+    !editorView.dom.contains(domSelection.focusNode)
+  )
+    return false
 
   try {
     const selection = TextSelection.between(
-      editorView.state.doc.resolve(editorView.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset)),
-      editorView.state.doc.resolve(editorView.posAtDOM(domSelection.focusNode, domSelection.focusOffset)),
+      editorView.state.doc.resolve(
+        editorView.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset),
+      ),
+      editorView.state.doc.resolve(
+        editorView.posAtDOM(domSelection.focusNode, domSelection.focusOffset),
+      ),
     )
 
     if (!selection.eq(editorView.state.selection)) {
@@ -213,7 +288,11 @@ const exitHeadingAsParagraph: Command = (state, dispatch) => {
   // untouched.
   if (selection.from === selection.$from.start(selection.$from.depth)) {
     const transaction = state.tr.insert(headingStart, paragraph.create())
-    dispatch?.(transaction.setSelection(TextSelection.create(transaction.doc, headingStart + 1)).scrollIntoView())
+    dispatch?.(
+      transaction
+        .setSelection(TextSelection.create(transaction.doc, headingStart + 1))
+        .scrollIntoView(),
+    )
     return true
   }
 
@@ -292,14 +371,17 @@ const headingDomCaches = new WeakMap<EditorView, HeadingDomCache>()
 function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLElement> {
   const cached = headingDomCaches.get(editorView)
   if (
-    cached?.doc === editorView.state.doc
-    && Array.from(cached.elementsById.values()).every((element) => editorView.dom.contains(element))
-  ) return cached.elementsById
+    cached?.doc === editorView.state.doc &&
+    Array.from(cached.elementsById.values()).every((element) => editorView.dom.contains(element))
+  )
+    return cached.elementsById
 
   const elementsById = new Map<string, HTMLElement>()
-  editorView.dom.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]').forEach((element) => {
-    if (element.id && !elementsById.has(element.id)) elementsById.set(element.id, element)
-  })
+  editorView.dom
+    .querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
+    .forEach((element) => {
+      if (element.id && !elementsById.has(element.id)) elementsById.set(element.id, element)
+    })
 
   headingDomCaches.set(editorView, { doc: editorView.state.doc, elementsById })
   return elementsById
@@ -308,23 +390,29 @@ function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLEl
 function headingElement(editorView: EditorView, heading: EditorHeading): HTMLElement | null {
   const node = editorView.state.doc.nodeAt(heading.pos)
   if (
-    node?.type.name !== 'heading'
-    || node.textContent.trim() !== heading.text
-    || Number(node.attrs.level) !== heading.level
-    || node.attrs.id !== heading.id
+    node?.type.name !== 'heading' ||
+    node.textContent.trim() !== heading.text ||
+    Number(node.attrs.level) !== heading.level ||
+    node.attrs.id !== heading.id
   ) {
     return null
   }
 
   const element = headingElementsById(editorView).get(heading.id)
   if (!element) return null
-  if (element.tagName.toLowerCase() !== `h${heading.level}` || element.textContent?.trim() !== heading.text) {
+  if (
+    element.tagName.toLowerCase() !== `h${heading.level}` ||
+    element.textContent?.trim() !== heading.text
+  ) {
     return null
   }
   return element
 }
 
-function headingAtSelection(state: EditorState, headingsByPosition: ReadonlyMap<number, EditorHeading>): number | null {
+function headingAtSelection(
+  state: EditorState,
+  headingsByPosition: ReadonlyMap<number, EditorHeading>,
+): number | null {
   for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
     if (state.selection.$from.node(depth).type.name !== 'heading') continue
     const position = state.selection.$from.before(depth)
@@ -360,7 +448,7 @@ function activeHeadingFromScroll(
     if (!isAtBottom && rect.top <= activationLine) current = heading.pos
   }
 
-  return isAtBottom ? lastVisible ?? headings[headings.length - 1].pos : current
+  return isAtBottom ? (lastVisible ?? headings[headings.length - 1].pos) : current
 }
 
 export function MilkdownEditor({
@@ -441,11 +529,11 @@ export function MilkdownEditor({
             props: {
               handleKeyDown: (editorView, event) => {
                 if (
-                  event.key === 'Enter'
-                  && (event.metaKey || event.ctrlKey)
-                  && !event.shiftKey
-                  && !event.altKey
-                  && !editorView.composing
+                  event.key === 'Enter' &&
+                  (event.metaKey || event.ctrlKey) &&
+                  !event.shiftKey &&
+                  !event.altKey &&
+                  !editorView.composing
                 ) {
                   syncProseMirrorSelectionFromDOM(editorView)
                   const handled = exitCodeOrTableAsParagraph(editorView.state, editorView.dispatch)
@@ -454,17 +542,20 @@ export function MilkdownEditor({
                 }
 
                 if (
-                  event.key !== 'Enter'
-                  || event.shiftKey
-                  || event.altKey
-                  || event.ctrlKey
-                  || event.metaKey
-                  || editorView.composing
-                ) return false
+                  event.key !== 'Enter' ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  editorView.composing
+                )
+                  return false
 
                 syncProseMirrorSelectionFromDOM(editorView)
-                return splitTopLevelParagraphAtStart(editorView.state, editorView.dispatch)
-                  || exitHeadingAsParagraph(editorView.state, editorView.dispatch)
+                return (
+                  splitTopLevelParagraphAtStart(editorView.state, editorView.dispatch) ||
+                  exitHeadingAsParagraph(editorView.state, editorView.dispatch)
+                )
               },
             },
           }),
@@ -473,7 +564,10 @@ export function MilkdownEditor({
         ctx.update(nodeViewCtx, (views) => [
           ...views,
           ['table', createTableNodeView] as [string, NodeViewConstructor],
-          ['code_block', createCodeBlockNodeView(copyRef, presentationModeRef)] as [string, NodeViewConstructor],
+          ['code_block', createCodeBlockNodeView(copyRef, presentationModeRef)] as [
+            string,
+            NodeViewConstructor,
+          ],
           ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
         ])
         ctx.get(listenerCtx).markdownUpdated((updateCtx, markdown) => {
@@ -497,7 +591,10 @@ export function MilkdownEditor({
               // Selection is only a secondary signal.  It closes the small
               // click-to-scroll race in edit mode; scrolling itself remains
               // the source of truth whenever the user moves the document.
-              const selectedHeading = headingAtSelection(currentView.state, headingsByPositionRef.current)
+              const selectedHeading = headingAtSelection(
+                currentView.state,
+                headingsByPositionRef.current,
+              )
               if (selectedHeading !== null) setActiveHeadingPosition(selectedHeading)
             }
           })
@@ -527,10 +624,7 @@ export function MilkdownEditor({
 
       const proseMirror = editorRoot.querySelector<HTMLElement>('.ProseMirror')
 
-      proseMirror?.setAttribute(
-        'aria-label',
-        ariaLabelRef.current,
-      )
+      proseMirror?.setAttribute('aria-label', ariaLabelRef.current)
       proseMirror?.focus()
       editor.action((ctx) => {
         const editorState = ctx.get(editorViewCtx).state
@@ -548,7 +642,9 @@ export function MilkdownEditor({
   }, [])
 
   useEffect(() => {
-    editorRootRef.current?.querySelector<HTMLElement>('.ProseMirror')?.setAttribute('aria-label', ariaLabel)
+    editorRootRef.current
+      ?.querySelector<HTMLElement>('.ProseMirror')
+      ?.setAttribute('aria-label', ariaLabel)
   }, [ariaLabel])
 
   useEffect(() => {
@@ -556,14 +652,23 @@ export function MilkdownEditor({
 
     editorRef.current?.action((ctx) => {
       const editorView = ctx.get(editorViewCtx)
-      editorView.setProps({ ...editorView.props, editable: () => presentationModeRef.current === 'edit' })
+      editorView.setProps({
+        ...editorView.props,
+        editable: () => presentationModeRef.current === 'edit',
+      })
       editorView.dom.setAttribute('aria-readonly', String(presentationMode === 'read'))
     })
-    editorRootRef.current?.querySelectorAll<HTMLButtonElement>('.code-block-card__language-trigger').forEach((trigger) => {
-      trigger.disabled = presentationMode === 'read'
-    })
+    editorRootRef.current
+      ?.querySelectorAll<HTMLButtonElement>('.code-block-card__language-trigger')
+      .forEach((trigger) => {
+        trigger.disabled = presentationMode === 'read'
+      })
     if (presentationMode === 'read') {
-      editorRootRef.current?.querySelectorAll<HTMLElement>('.code-block-card__language-menu').forEach((menu) => { menu.hidden = true })
+      editorRootRef.current
+        ?.querySelectorAll<HTMLElement>('.code-block-card__language-menu')
+        .forEach((menu) => {
+          menu.hidden = true
+        })
       setContextMenu(null)
       setLinkEditorOpen(false)
       setLinkCanRemove(false)
@@ -576,7 +681,8 @@ export function MilkdownEditor({
     if (!contextMenu) return
 
     const closeOnOutsidePress = (event: PointerEvent) => {
-      if (event.target instanceof Node && !contextMenuRef.current?.contains(event.target)) setContextMenu(null)
+      if (event.target instanceof Node && !contextMenuRef.current?.contains(event.target))
+        setContextMenu(null)
     }
 
     document.addEventListener('pointerdown', closeOnOutsidePress)
@@ -590,56 +696,86 @@ export function MilkdownEditor({
       const editorView = ctx.get(editorViewCtx)
       const image = editorView.state.schema.nodes.image
       if (!image) return
-      editorView.dispatch(editorView.state.tr.replaceSelectionWith(image.create({ src, alt: '' })).scrollIntoView())
+      editorView.dispatch(
+        editorView.state.tr.replaceSelectionWith(image.create({ src, alt: '' })).scrollIntoView(),
+      )
     })
   }, [])
 
-  const pasteImage = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
-    if (presentationModeRef.current !== 'edit') return
-    const image = Array.from(event.clipboardData.files ?? []).find((file) => file.type.startsWith('image/'))
-    if (!image || !onPasteImageRef.current) return
-    event.preventDefault()
-    void image.arrayBuffer().then((buffer) => onPasteImageRef.current?.({
-      bytes: Array.from(new Uint8Array(buffer)),
-      mimeType: image.type,
-    })).then((relativePath) => {
-      if (relativePath) insertImage(relativePath)
-    })
-  }, [insertImage])
+  const pasteImage = useCallback(
+    (event: React.ClipboardEvent<HTMLDivElement>) => {
+      if (presentationModeRef.current !== 'edit') return
+      const image = Array.from(event.clipboardData.files ?? []).find((file) =>
+        file.type.startsWith('image/'),
+      )
+      if (!image || !onPasteImageRef.current) return
+      event.preventDefault()
+      void image
+        .arrayBuffer()
+        .then((buffer) =>
+          onPasteImageRef.current?.({
+            bytes: Array.from(new Uint8Array(buffer)),
+            mimeType: image.type,
+          }),
+        )
+        .then((relativePath) => {
+          if (relativePath) insertImage(relativePath)
+        })
+    },
+    [insertImage],
+  )
 
-  const linkNavigationTarget = useCallback((event: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>) => {
-    const target = event.target
-    if (!(target instanceof Element)) return
-    const link = target.closest<HTMLAnchorElement>('a[href]')
-    const url = link?.getAttribute('href')
-    if (!url || !isExternalHttpUrl(url)) return null
-    return url
-  }, [])
+  const linkNavigationTarget = useCallback(
+    (event: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const link = target.closest<HTMLAnchorElement>('a[href]')
+      const url = link?.getAttribute('href')
+      if (!url || !isExternalHttpUrl(url)) return null
+      return url
+    },
+    [],
+  )
 
-  const suppressModifierLinkPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (presentationModeRef.current !== 'edit' || event.button !== 0 || (!event.metaKey && !event.ctrlKey)) return
-    const url = linkNavigationTarget(event)
-    if (!url) return
-    // This runs before ProseMirror's pointer handler.  Preventing the native
-    // default stops WebKit from selecting the anchor text; stopping propagation
-    // keeps ProseMirror from publishing a transient non-empty selection that
-    // would otherwise flash the SelectionToolbar.
-    linkNavigationPointerRef.current = true
-    event.preventDefault()
-    event.stopPropagation()
-    dismissedSelectionRef.current = null
-  }, [linkNavigationTarget])
+  const suppressModifierLinkPointer = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (
+        presentationModeRef.current !== 'edit' ||
+        event.button !== 0 ||
+        (!event.metaKey && !event.ctrlKey)
+      )
+        return
+      const url = linkNavigationTarget(event)
+      if (!url) return
+      // This runs before ProseMirror's pointer handler.  Preventing the native
+      // default stops WebKit from selecting the anchor text; stopping propagation
+      // keeps ProseMirror from publishing a transient non-empty selection that
+      // would otherwise flash the SelectionToolbar.
+      linkNavigationPointerRef.current = true
+      event.preventDefault()
+      event.stopPropagation()
+      dismissedSelectionRef.current = null
+    },
+    [linkNavigationTarget],
+  )
 
-  const openLinkOnCommandClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const url = linkNavigationTarget(event)
-    if (!url) return
-    const shouldOpen = presentationModeRef.current === 'read' || event.metaKey || event.ctrlKey || linkNavigationPointerRef.current
-    if (!shouldOpen) return
-    event.preventDefault()
-    event.stopPropagation()
-    linkNavigationPointerRef.current = false
-    void openExternalLink(url).catch(() => undefined)
-  }, [linkNavigationTarget])
+  const openLinkOnCommandClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const url = linkNavigationTarget(event)
+      if (!url) return
+      const shouldOpen =
+        presentationModeRef.current === 'read' ||
+        event.metaKey ||
+        event.ctrlKey ||
+        linkNavigationPointerRef.current
+      if (!shouldOpen) return
+      event.preventDefault()
+      event.stopPropagation()
+      linkNavigationPointerRef.current = false
+      void openExternalLink(url).catch(() => undefined)
+    },
+    [linkNavigationTarget],
+  )
 
   const focusEditor = useCallback(() => {
     editorRootRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus()
@@ -657,91 +793,103 @@ export function MilkdownEditor({
     focusEditorView()
   }, [focusEditorView])
 
-  const syncEditorSelectionFromDOM = useCallback(() => editorRef.current?.action((ctx) => {
-    const editorView = ctx.get(editorViewCtx)
-    syncProseMirrorSelectionFromDOM(editorView)
-  }), [])
+  const syncEditorSelectionFromDOM = useCallback(
+    () =>
+      editorRef.current?.action((ctx) => {
+        const editorView = ctx.get(editorViewCtx)
+        syncProseMirrorSelectionFromDOM(editorView)
+      }),
+    [],
+  )
 
   // WebKit can defer ProseMirror's DOM-selection synchronization until after
   // a React portal interaction. Capture the native selection synchronously at
   // the Link boundary instead of trusting a previously rendered overlay state.
-  const captureEditorSelection = useCallback((allowCollapsed = false): EditorSelectionSnapshot | null => (
-    editorRef.current?.action((ctx) => {
-      const editorView = ctx.get(editorViewCtx)
-      if (!syncProseMirrorSelectionFromDOM(editorView)) return null
-      const { from, to } = editorView.state.selection
-      if (from === to && !allowCollapsed) return null
-      return {
-        doc: editorView.state.doc,
-        from,
-        to,
-        text: editorView.state.doc.textBetween(from, to, '\n', '\n'),
+  const captureEditorSelection = useCallback(
+    (allowCollapsed = false): EditorSelectionSnapshot | null =>
+      editorRef.current?.action((ctx) => {
+        const editorView = ctx.get(editorViewCtx)
+        if (!syncProseMirrorSelectionFromDOM(editorView)) return null
+        const { from, to } = editorView.state.selection
+        if (from === to && !allowCollapsed) return null
+        return {
+          doc: editorView.state.doc,
+          from,
+          to,
+          text: editorView.state.doc.textBetween(from, to, '\n', '\n'),
+        }
+      }) ?? null,
+    [],
+  )
+
+  const headingElementForPosition = useCallback(
+    (pos: number): HTMLElement | null =>
+      editorRef.current?.action((ctx) => {
+        const heading = headingsByPositionRef.current.get(pos)
+        return heading ? headingElement(ctx.get(editorViewCtx), heading) : null
+      }) ?? null,
+    [],
+  )
+
+  const navigateToHeading = useCallback(
+    (requestedHeading: EditorHeading): boolean => {
+      if (!active) return false
+      // A portal can outlive a document refresh for one React commit.  Resolve
+      // the click through the current editor's position map, never an array
+      // index, and refuse a stale heading identity rather than navigating a
+      // different chapter.
+      const heading = headingsByPositionRef.current.get(requestedHeading.pos)
+      if (!heading || heading.key !== requestedHeading.key) return false
+
+      const navigated =
+        editorRef.current?.action((ctx) => {
+          const editorView = ctx.get(editorViewCtx)
+          const headingNode = headingElement(editorView, heading)
+          const stage = editorRootRef.current?.closest<HTMLElement>('.document-stage')
+          if (!headingNode) return false
+
+          // Measure against the real document scroll root. Outline navigation is
+          // intentionally scroll-only in both presentation modes. Moving the
+          // editable selection here makes WKWebView reveal its caret afterwards,
+          // which can overwrite the target position (most visibly near a long
+          // document's final headings). A click in the outline is navigation, not
+          // an edit operation.
+          let targetTop: number | null = null
+          if (stage) {
+            targetTop = headingScrollTop(stage, headingNode)
+            // Register the target before mutating the scroll container. Near the
+            // document bottom several final headings can be visible at the same
+            // time, while `maxScrollTop` prevents the requested heading from
+            // reaching the activation line. The explicit outline choice remains
+            // authoritative until the user deliberately scrolls again.
+            pendingNavigationRef.current = { pos: heading.pos }
+          } else if (typeof headingNode.scrollIntoView === 'function') {
+            pendingNavigationRef.current = null
+          }
+
+          if (stage && targetTop !== null) {
+            // Element#scrollTo with an options dictionary intermittently no-ops
+            // in the current macOS WKWebView after an outline button has taken
+            // focus.  The scrollTop property targets the same real scroll root
+            // and is synchronous, which makes the destination deterministic.
+            stage.scrollTop = targetTop
+          } else if (typeof headingNode.scrollIntoView === 'function') {
+            headingNode.scrollIntoView({ block: 'start', behavior: 'auto' })
+          }
+          return true
+        }) ?? false
+
+      if (navigated) {
+        // Do not release this simply after a paint frame: a clamped bottom
+        // navigation can never make an earlier final heading win a pure
+        // viewport-based calculation. Input listeners below release it on the
+        // next intentional user navigation.
+        setActiveHeadingPosition(heading.pos)
       }
-    }) ?? null
-  ), [])
-
-  const headingElementForPosition = useCallback((pos: number): HTMLElement | null => (
-    editorRef.current?.action((ctx) => {
-      const heading = headingsByPositionRef.current.get(pos)
-      return heading ? headingElement(ctx.get(editorViewCtx), heading) : null
-    }) ?? null
-  ), [])
-
-  const navigateToHeading = useCallback((requestedHeading: EditorHeading): boolean => {
-    if (!active) return false
-    // A portal can outlive a document refresh for one React commit.  Resolve
-    // the click through the current editor's position map, never an array
-    // index, and refuse a stale heading identity rather than navigating a
-    // different chapter.
-    const heading = headingsByPositionRef.current.get(requestedHeading.pos)
-    if (!heading || heading.key !== requestedHeading.key) return false
-
-    const navigated = editorRef.current?.action((ctx) => {
-      const editorView = ctx.get(editorViewCtx)
-      const headingNode = headingElement(editorView, heading)
-      const stage = editorRootRef.current?.closest<HTMLElement>('.document-stage')
-      if (!headingNode) return false
-
-      // Measure against the real document scroll root. Outline navigation is
-      // intentionally scroll-only in both presentation modes. Moving the
-      // editable selection here makes WKWebView reveal its caret afterwards,
-      // which can overwrite the target position (most visibly near a long
-      // document's final headings). A click in the outline is navigation, not
-      // an edit operation.
-      let targetTop: number | null = null
-      if (stage) {
-        targetTop = headingScrollTop(stage, headingNode)
-        // Register the target before mutating the scroll container. Near the
-        // document bottom several final headings can be visible at the same
-        // time, while `maxScrollTop` prevents the requested heading from
-        // reaching the activation line. The explicit outline choice remains
-        // authoritative until the user deliberately scrolls again.
-        pendingNavigationRef.current = { pos: heading.pos }
-      } else if (typeof headingNode.scrollIntoView === 'function') {
-        pendingNavigationRef.current = null
-      }
-
-      if (stage && targetTop !== null) {
-        // Element#scrollTo with an options dictionary intermittently no-ops
-        // in the current macOS WKWebView after an outline button has taken
-        // focus.  The scrollTop property targets the same real scroll root
-        // and is synchronous, which makes the destination deterministic.
-        stage.scrollTop = targetTop
-      } else if (typeof headingNode.scrollIntoView === 'function') {
-        headingNode.scrollIntoView({ block: 'start', behavior: 'auto' })
-      }
-      return true
-    }) ?? false
-
-    if (navigated) {
-      // Do not release this simply after a paint frame: a clamped bottom
-      // navigation can never make an earlier final heading win a pure
-      // viewport-based calculation. Input listeners below release it on the
-      // next intentional user navigation.
-      setActiveHeadingPosition(heading.pos)
-    }
-    return navigated
-  }, [active])
+      return navigated
+    },
+    [active],
+  )
 
   useEffect(() => {
     if (!active || !isReady) return
@@ -753,15 +901,19 @@ export function MilkdownEditor({
       const pending = pendingNavigationRef.current
 
       if (pending) {
-        setActiveHeadingPosition((previous) => previous === pending.pos ? previous : pending.pos)
+        setActiveHeadingPosition((previous) => (previous === pending.pos ? previous : pending.pos))
         return
       }
 
       const current = activeHeadingFromScroll(headings, headingElementForPosition, stage)
-      setActiveHeadingPosition((previous) => previous === current ? previous : current)
+      setActiveHeadingPosition((previous) => (previous === current ? previous : current))
     }
-    const onScroll = () => { if (!frame) frame = requestAnimationFrame(updateActiveHeading) }
-    const cancelPendingNavigation = () => { pendingNavigationRef.current = null }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(updateActiveHeading)
+    }
+    const cancelPendingNavigation = () => {
+      pendingNavigationRef.current = null
+    }
     updateActiveHeading()
     stage.addEventListener('scroll', onScroll, { passive: true })
     stage.addEventListener('wheel', cancelPendingNavigation, { passive: true })
@@ -782,103 +934,141 @@ export function MilkdownEditor({
     }
   }, [active, headingElementForPosition, headings, isReady])
 
-  const restoreSelection = useCallback((editorView: EditorView, selection?: EditorSelectionSnapshot) => {
-    if (!selection) return true
-    if (!isValidEditorSelectionSnapshot(editorView.state, selection)) return false
-    editorView.dispatch(editorView.state.tr.setSelection(TextSelection.create(editorView.state.doc, selection.from, selection.to)))
-    return true
-  }, [])
+  const restoreSelection = useCallback(
+    (editorView: EditorView, selection?: EditorSelectionSnapshot) => {
+      if (!selection) return true
+      if (!isValidEditorSelectionSnapshot(editorView.state, selection)) return false
+      editorView.dispatch(
+        editorView.state.tr.setSelection(
+          TextSelection.create(editorView.state.doc, selection.from, selection.to),
+        ),
+      )
+      return true
+    },
+    [],
+  )
 
-  const runEditorCommand = useCallback(<T,>(command: CmdKey<T>, payload?: T, selection?: EditorSelectionSnapshot) => {
-    const editor = editorRef.current
-    if (!editor) return false
-    let accepted = true
-    if (selection) {
-      accepted = editor.action((ctx) => restoreSelection(ctx.get(editorViewCtx), selection))
-    } else {
-      syncEditorSelectionFromDOM()
-    }
-    if (!accepted) return false
-    const applied = editor.action(callCommand(command, payload))
-    if (!applied) return false
-    focusEditor()
-    return true
-  }, [focusEditor, restoreSelection, syncEditorSelectionFromDOM])
-
-  const runProseCommand = useCallback((command: Command, selection?: EditorSelectionSnapshot) => {
-    const editor = editorRef.current
-    if (!editor) return false
-    const applied = editor.action((ctx) => {
-      const editorView = ctx.get(editorViewCtx)
-      if (!restoreSelection(editorView, selection)) return false
-      if (!selection) syncProseMirrorSelectionFromDOM(editorView)
-      return command(editorView.state, editorView.dispatch)
-    })
-    if (!applied) return false
-    focusEditor()
-    return true
-  }, [focusEditor, restoreSelection])
-
-  const editorCommands: EditorCommands = useMemo(() => createEditorCommands({
-    runMilkdown: runEditorCommand,
-    runProse: runProseCommand,
-    readState: () => editorRef.current?.action((ctx) => ctx.get(editorViewCtx).state) ?? null,
-  }), [runEditorCommand, runProseCommand])
-
-  const pasteLink = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
-    if (presentationModeRef.current !== 'edit') return
-    const href = event.clipboardData.getData('text/plain').trim()
-    if (!isExternalHttpUrl(href)) return
-    const selection = captureEditorSelection(true)
-    if (!selection) return
-    const applied = selection.from === selection.to
-      ? editorCommands.insertLink(href, href, selection)
-      : editorCommands.applyLinkToSelection(href, selection)
-    if (applied) event.preventDefault()
-  }, [captureEditorSelection, editorCommands])
-
-  const openLinkEditor = useCallback((mode: LinkPopoverMode, selection: EditorSelectionSnapshot | null, href = '', anchor: { left: number; top: number } | null = null) => {
-    const view = contextualStoreRef.current?.getSnapshot().view
-    let resolvedAnchor = anchor
-    if (!resolvedAnchor && view && selection) {
-      try {
-        const start = view.coordsAtPos(selection.from)
-        const end = view.coordsAtPos(selection.to)
-        resolvedAnchor = { left: (start.left + end.right) / 2, top: Math.min(start.top, end.top) }
-      } catch {
-        resolvedAnchor = null
+  const runEditorCommand = useCallback(
+    <T,>(command: CmdKey<T>, payload?: T, selection?: EditorSelectionSnapshot) => {
+      const editor = editorRef.current
+      if (!editor) return false
+      let accepted = true
+      if (selection) {
+        accepted = editor.action((ctx) => restoreSelection(ctx.get(editorViewCtx), selection))
+      } else {
+        syncEditorSelectionFromDOM()
       }
-    }
-    setLinkSelection(selection)
-    setLinkMode(mode)
-    setLinkCanRemove(Boolean(href))
-    setLinkText(mode === 'insert' ? '' : selection?.text ?? '')
-    setLinkUrl(href)
-    setLinkAnchor(resolvedAnchor)
-    setBlockMenuTarget(null)
-    setLinkEditorOpen(true)
-  }, [])
+      if (!accepted) return false
+      const applied = editor.action(callCommand(command, payload))
+      if (!applied) return false
+      focusEditor()
+      return true
+    },
+    [focusEditor, restoreSelection, syncEditorSelectionFromDOM],
+  )
 
-  const openLinkEditorForSelection = useCallback((selection: EditorSelectionSnapshot, anchor: { left: number; top: number } | null = null) => {
-    if (selection.from === selection.to) {
-      openLinkEditor('insert', selection, '', anchor)
-      return
-    }
-    const href = linkHrefAtSelection(selection)
-    openLinkEditor(href ? 'edit' : 'create-from-selection', selection, href ?? '', anchor)
-  }, [openLinkEditor])
+  const runProseCommand = useCallback(
+    (command: Command, selection?: EditorSelectionSnapshot) => {
+      const editor = editorRef.current
+      if (!editor) return false
+      const applied = editor.action((ctx) => {
+        const editorView = ctx.get(editorViewCtx)
+        if (!restoreSelection(editorView, selection)) return false
+        if (!selection) syncProseMirrorSelectionFromDOM(editorView)
+        return command(editorView.state, editorView.dispatch)
+      })
+      if (!applied) return false
+      focusEditor()
+      return true
+    },
+    [focusEditor, restoreSelection],
+  )
 
-  const openSelectionLinkEditor = useCallback((anchor: { left: number; top: number } | null = null) => {
-    const selection = captureEditorSelection()
-    if (!selection) return
-    openLinkEditorForSelection(selection, anchor)
-  }, [captureEditorSelection, openLinkEditorForSelection])
+  const editorCommands: EditorCommands = useMemo(
+    () =>
+      createEditorCommands({
+        runMilkdown: runEditorCommand,
+        runProse: runProseCommand,
+        readState: () => editorRef.current?.action((ctx) => ctx.get(editorViewCtx).state) ?? null,
+      }),
+    [runEditorCommand, runProseCommand],
+  )
 
-  const openInsertLinkEditor = useCallback((anchor: { left: number; top: number } | null = null) => {
-    const selection = captureEditorSelection(true)
-    if (!selection || selection.from !== selection.to) return
-    openLinkEditorForSelection(selection, anchor)
-  }, [captureEditorSelection, openLinkEditorForSelection])
+  const pasteLink = useCallback(
+    (event: React.ClipboardEvent<HTMLDivElement>) => {
+      if (presentationModeRef.current !== 'edit') return
+      const href = event.clipboardData.getData('text/plain').trim()
+      if (!isExternalHttpUrl(href)) return
+      const selection = captureEditorSelection(true)
+      if (!selection) return
+      const applied =
+        selection.from === selection.to
+          ? editorCommands.insertLink(href, href, selection)
+          : editorCommands.applyLinkToSelection(href, selection)
+      if (applied) event.preventDefault()
+    },
+    [captureEditorSelection, editorCommands],
+  )
+
+  const openLinkEditor = useCallback(
+    (
+      mode: LinkPopoverMode,
+      selection: EditorSelectionSnapshot | null,
+      href = '',
+      anchor: { left: number; top: number } | null = null,
+    ) => {
+      const view = contextualStoreRef.current?.getSnapshot().view
+      let resolvedAnchor = anchor
+      if (!resolvedAnchor && view && selection) {
+        try {
+          const start = view.coordsAtPos(selection.from)
+          const end = view.coordsAtPos(selection.to)
+          resolvedAnchor = { left: (start.left + end.right) / 2, top: Math.min(start.top, end.top) }
+        } catch {
+          resolvedAnchor = null
+        }
+      }
+      setLinkSelection(selection)
+      setLinkMode(mode)
+      setLinkCanRemove(Boolean(href))
+      setLinkText(mode === 'insert' ? '' : (selection?.text ?? ''))
+      setLinkUrl(href)
+      setLinkAnchor(resolvedAnchor)
+      setBlockMenuTarget(null)
+      setLinkEditorOpen(true)
+    },
+    [],
+  )
+
+  const openLinkEditorForSelection = useCallback(
+    (selection: EditorSelectionSnapshot, anchor: { left: number; top: number } | null = null) => {
+      if (selection.from === selection.to) {
+        openLinkEditor('insert', selection, '', anchor)
+        return
+      }
+      const href = linkHrefAtSelection(selection)
+      openLinkEditor(href ? 'edit' : 'create-from-selection', selection, href ?? '', anchor)
+    },
+    [openLinkEditor],
+  )
+
+  const openSelectionLinkEditor = useCallback(
+    (anchor: { left: number; top: number } | null = null) => {
+      const selection = captureEditorSelection()
+      if (!selection) return
+      openLinkEditorForSelection(selection, anchor)
+    },
+    [captureEditorSelection, openLinkEditorForSelection],
+  )
+
+  const openInsertLinkEditor = useCallback(
+    (anchor: { left: number; top: number } | null = null) => {
+      const selection = captureEditorSelection(true)
+      if (!selection || selection.from !== selection.to) return
+      openLinkEditorForSelection(selection, anchor)
+    },
+    [captureEditorSelection, openLinkEditorForSelection],
+  )
 
   useEffect(() => {
     if (!active || presentationMode !== 'edit') return undefined
@@ -892,7 +1082,13 @@ export function MilkdownEditor({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, captureEditorSelection, openInsertLinkEditor, openSelectionLinkEditor, presentationMode])
+  }, [
+    active,
+    captureEditorSelection,
+    openInsertLinkEditor,
+    openSelectionLinkEditor,
+    presentationMode,
+  ])
 
   const cancelLinkEditor = useCallback(() => {
     setLinkEditorOpen(false)
@@ -906,11 +1102,12 @@ export function MilkdownEditor({
     const href = linkUrl.trim()
     if (!href) return
     const text = linkText.trim() || href
-    const applied = linkMode === 'insert'
-      ? editorCommands.insertLink(text, href, linkSelection ?? undefined)
-      : linkMode === 'edit'
-        ? editorCommands.updateLink(href, linkSelection ?? undefined)
-        : editorCommands.applyLinkToSelection(href, linkSelection ?? undefined)
+    const applied =
+      linkMode === 'insert'
+        ? editorCommands.insertLink(text, href, linkSelection ?? undefined)
+        : linkMode === 'edit'
+          ? editorCommands.updateLink(href, linkSelection ?? undefined)
+          : editorCommands.applyLinkToSelection(href, linkSelection ?? undefined)
     if (!applied) {
       cancelLinkEditor()
       return
@@ -932,44 +1129,80 @@ export function MilkdownEditor({
     setLinkAnchor(null)
   }, [cancelLinkEditor, editorCommands, linkSelection])
 
-  const containsContextualInteraction = useCallback((target: EventTarget | null) => (
-    target instanceof Node
-    && (editorRootRef.current?.contains(target) || contextualOverlayMount?.contains(target) || false)
-  ), [contextualOverlayMount])
+  const containsContextualInteraction = useCallback(
+    (target: EventTarget | null) =>
+      target instanceof Node &&
+      (editorRootRef.current?.contains(target) ||
+        contextualOverlayMount?.contains(target) ||
+        false),
+    [contextualOverlayMount],
+  )
 
   const closeBlockMenu = useCallback(() => setBlockMenuTarget(null), [])
 
-  const runBlockMenuCommand = useCallback((command: BlockMenuCommand, target: BlockTarget) => {
-    const valid = active && presentationModeRef.current === 'edit' && editorRef.current?.action((ctx) => {
-      const state = ctx.get(editorViewCtx).state
-      return isValidBlockTarget(state, editorId, target)
-    })
-    if (!valid) {
-      closeBlockMenu()
-      return
-    }
-
-    switch (command) {
-      case 'paragraph': editorCommands.setParagraph(target.selection); break
-      case 'heading-1': editorCommands.setHeading1(target.selection); break
-      case 'heading-2': editorCommands.setHeading2(target.selection); break
-      case 'heading-3': editorCommands.setHeading3(target.selection); break
-      case 'heading-4': editorCommands.setHeading4(target.selection); break
-      case 'heading-5': editorCommands.setHeading5(target.selection); break
-      case 'heading-6': editorCommands.setHeading6(target.selection); break
-      case 'blockquote': editorCommands.setQuote(target.selection); break
-      case 'bullet-list': editorCommands.toggleBulletList(target.selection); break
-      case 'ordered-list': editorCommands.toggleOrderedList(target.selection); break
-      case 'code-block': editorCommands.setCodeBlock(target.selection); break
-      case 'table': editorCommands.insertTable(target.selection); break
-      case 'divider': {
-        if (editorCommands.insertDivider(target)) focusEditorView()
-        break
+  const runBlockMenuCommand = useCallback(
+    (command: BlockMenuCommand, target: BlockTarget) => {
+      const valid =
+        active &&
+        presentationModeRef.current === 'edit' &&
+        editorRef.current?.action((ctx) => {
+          const state = ctx.get(editorViewCtx).state
+          return isValidBlockTarget(state, editorId, target)
+        })
+      if (!valid) {
+        closeBlockMenu()
+        return
       }
-      case 'delete-block': editorCommands.deleteBlock(target); break
-    }
-    closeBlockMenu()
-  }, [active, closeBlockMenu, editorCommands, editorId, focusEditorView])
+
+      switch (command) {
+        case 'paragraph':
+          editorCommands.setParagraph(target.selection)
+          break
+        case 'heading-1':
+          editorCommands.setHeading1(target.selection)
+          break
+        case 'heading-2':
+          editorCommands.setHeading2(target.selection)
+          break
+        case 'heading-3':
+          editorCommands.setHeading3(target.selection)
+          break
+        case 'heading-4':
+          editorCommands.setHeading4(target.selection)
+          break
+        case 'heading-5':
+          editorCommands.setHeading5(target.selection)
+          break
+        case 'heading-6':
+          editorCommands.setHeading6(target.selection)
+          break
+        case 'blockquote':
+          editorCommands.setQuote(target.selection)
+          break
+        case 'bullet-list':
+          editorCommands.toggleBulletList(target.selection)
+          break
+        case 'ordered-list':
+          editorCommands.toggleOrderedList(target.selection)
+          break
+        case 'code-block':
+          editorCommands.setCodeBlock(target.selection)
+          break
+        case 'table':
+          editorCommands.insertTable(target.selection)
+          break
+        case 'divider': {
+          if (editorCommands.insertDivider(target)) focusEditorView()
+          break
+        }
+        case 'delete-block':
+          editorCommands.deleteBlock(target)
+          break
+      }
+      closeBlockMenu()
+    },
+    [active, closeBlockMenu, editorCommands, editorId, focusEditorView],
+  )
 
   useEffect(() => {
     if (!active || presentationMode !== 'edit' || linkEditorOpen) closeBlockMenu()
@@ -982,20 +1215,26 @@ export function MilkdownEditor({
     return () => stage?.removeEventListener('scroll', cancelLinkEditor)
   }, [cancelLinkEditor, linkEditorOpen])
 
-  const runTableCommand = useCallback((command: typeof addRowBeforeCommand) => {
-    editorRef.current?.action(callCommand(command.key))
-    setContextMenu(null)
-    focusEditor()
-  }, [focusEditor])
+  const runTableCommand = useCallback(
+    (command: typeof addRowBeforeCommand) => {
+      editorRef.current?.action(callCommand(command.key))
+      setContextMenu(null)
+      focusEditor()
+    },
+    [focusEditor],
+  )
 
-  const runTableProseCommand = useCallback((command: Command) => {
-    editorRef.current?.action((ctx) => {
-      const editorView = ctx.get(editorViewCtx)
-      return command(editorView.state, editorView.dispatch)
-    })
-    setContextMenu(null)
-    focusEditor()
-  }, [focusEditor])
+  const runTableProseCommand = useCallback(
+    (command: Command) => {
+      editorRef.current?.action((ctx) => {
+        const editorView = ctx.get(editorViewCtx)
+        return command(editorView.state, editorView.dispatch)
+      })
+      setContextMenu(null)
+      focusEditor()
+    },
+    [focusEditor],
+  )
 
   const openEditorMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (presentationModeRef.current !== 'edit') return
@@ -1017,41 +1256,70 @@ export function MilkdownEditor({
     })
     setContextMenu({
       ...menuState,
-      top: Math.max(8, Math.min(event.clientY, window.innerHeight - (menuState.inTable ? 420 : 250))),
+      top: Math.max(
+        8,
+        Math.min(event.clientY, window.innerHeight - (menuState.inTable ? 420 : 250)),
+      ),
       left: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
     })
   }, [])
 
-  const runContextCommand = useCallback((command: 'cut' | 'copy' | 'select-all' | 'bold' | 'italic' | 'link') => {
-    const selection = contextMenu?.selection
-    const anchor = contextMenu ? { left: contextMenu.left, top: contextMenu.top } : null
-    setContextMenu(null)
-    if (command === 'bold') return editorCommands.toggleBold(selection ?? undefined)
-    if (command === 'italic') return editorCommands.toggleItalic(selection ?? undefined)
-    if (command === 'link') {
-      if (selection) openLinkEditorForSelection(selection, anchor)
-      return
-    }
-    focusEditor()
-    if (command === 'select-all') {
-      document.execCommand('selectAll')
-      return
-    }
-    if (command === 'cut' || command === 'copy') {
-      document.execCommand(command)
-    }
-  }, [contextMenu, editorCommands, focusEditor, openLinkEditorForSelection])
+  const runContextCommand = useCallback(
+    (command: 'cut' | 'copy' | 'select-all' | 'bold' | 'italic' | 'link') => {
+      const selection = contextMenu?.selection
+      const anchor = contextMenu ? { left: contextMenu.left, top: contextMenu.top } : null
+      setContextMenu(null)
+      if (command === 'bold') return editorCommands.toggleBold(selection ?? undefined)
+      if (command === 'italic') return editorCommands.toggleItalic(selection ?? undefined)
+      if (command === 'link') {
+        if (selection) openLinkEditorForSelection(selection, anchor)
+        return
+      }
+      focusEditor()
+      if (command === 'select-all') {
+        document.execCommand('selectAll')
+        return
+      }
+      if (command === 'cut' || command === 'copy') {
+        document.execCommand(command)
+      }
+    },
+    [contextMenu, editorCommands, focusEditor, openLinkEditorForSelection],
+  )
 
-  const runContextTableCommand = useCallback((command: 'row-before' | 'row-after' | 'column-before' | 'column-after' | 'delete-row' | 'delete-column') => {
-    switch (command) {
-      case 'row-before': runTableCommand(addRowBeforeCommand); break
-      case 'row-after': runTableCommand(addRowAfterCommand); break
-      case 'column-before': runTableCommand(addColBeforeCommand); break
-      case 'column-after': runTableCommand(addColAfterCommand); break
-      case 'delete-row': runTableProseCommand(deleteRow); break
-      case 'delete-column': runTableProseCommand(deleteColumn); break
-    }
-  }, [runTableCommand, runTableProseCommand])
+  const runContextTableCommand = useCallback(
+    (
+      command:
+        | 'row-before'
+        | 'row-after'
+        | 'column-before'
+        | 'column-after'
+        | 'delete-row'
+        | 'delete-column',
+    ) => {
+      switch (command) {
+        case 'row-before':
+          runTableCommand(addRowBeforeCommand)
+          break
+        case 'row-after':
+          runTableCommand(addRowAfterCommand)
+          break
+        case 'column-before':
+          runTableCommand(addColBeforeCommand)
+          break
+        case 'column-after':
+          runTableCommand(addColAfterCommand)
+          break
+        case 'delete-row':
+          runTableProseCommand(deleteRow)
+          break
+        case 'delete-column':
+          runTableProseCommand(deleteColumn)
+          break
+      }
+    },
+    [runTableCommand, runTableProseCommand],
+  )
 
   const toggleTaskItem = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (presentationModeRef.current !== 'edit') return
@@ -1113,80 +1381,88 @@ export function MilkdownEditor({
         if (!event.defaultPrevented) pasteImage(event)
       }}
     >
-      {contextualOverlayMount && active && presentationMode === 'edit' ? createPortal(
-        <>
-          <SelectionToolbar
-            active={active}
-            containsInteractionTarget={containsContextualInteraction}
-            copy={editorCopy}
-            dismissedSelectionRef={dismissedSelectionRef}
-            interactionOpen={linkEditorOpen || Boolean(blockMenuTarget)}
-            store={contextualStoreRef.current!}
-            onCommand={(command) => {
-              if (command === 'bold') editorCommands.toggleBold()
-              if (command === 'italic') editorCommands.toggleItalic()
-              if (command === 'strike') editorCommands.toggleStrike()
-              if (command === 'inline-code') editorCommands.toggleInlineCode()
-            }}
-            onLink={openSelectionLinkEditor}
-          />
-          <BlockHandle
-            active={active}
-            editorId={editorId}
-            interactionOpen={linkEditorOpen}
-            label={editorCopy.addBlock}
-            menuTarget={blockMenuTarget}
-            store={contextualStoreRef.current!}
-            onOpenMenu={setBlockMenuTarget}
-          />
-          {blockMenuTarget ? (
-            <BlockMenu
-              copy={editorCopy}
-              target={blockMenuTarget}
-              onClose={closeBlockMenu}
-              onCommand={runBlockMenuCommand}
-            />
-          ) : null}
-          {linkEditorOpen && linkSelection ? (
-            <EditorLinkPopover
-              canRemove={linkCanRemove}
-              copy={editorCopy}
-              href={linkUrl}
-              hrefValid={isExternalHttpUrl(linkUrl.trim())}
-              mode={linkMode}
-              position={linkAnchor}
-              selection={linkSelection}
-              text={linkText}
-              onApply={applyLink}
-              onCancel={cancelLinkEditor}
-              onHrefChange={setLinkUrl}
-              onRemove={removeLink}
-              onTextChange={setLinkText}
-            />
-          ) : null}
-        </>,
-        contextualOverlayMount,
-      ) : null}
-      {outlineMount && (outlineLayout === 'inline' || outlineOpen) ? createPortal(
-        <>
-          {outlineOpen && outlineLayout === 'drawer' ? <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} /> : null}
-          <EditorOutline
-            activePosition={activeHeadingPosition}
-            closeLabel={editorCopy.closeOutline}
-            drawer={outlineLayout === 'drawer'}
-            emptyLabel={editorCopy.noOutline}
-            headings={headings}
-            label={editorCopy.outline}
-            onClose={onCloseOutline}
-            onSelect={(heading) => {
-              if (navigateToHeading(heading) && outlineLayout === 'drawer') onCloseOutline?.()
-            }}
-          />
-        </>,
-        outlineMount,
-      ) : null}
+      {contextualOverlayMount && active && presentationMode === 'edit'
+        ? createPortal(
+            <>
+              <SelectionToolbar
+                active={active}
+                containsInteractionTarget={containsContextualInteraction}
+                copy={editorCopy}
+                dismissedSelectionRef={dismissedSelectionRef}
+                interactionOpen={linkEditorOpen || Boolean(blockMenuTarget)}
+                store={contextualStoreRef.current!}
+                onCommand={(command) => {
+                  if (command === 'bold') editorCommands.toggleBold()
+                  if (command === 'italic') editorCommands.toggleItalic()
+                  if (command === 'strike') editorCommands.toggleStrike()
+                  if (command === 'inline-code') editorCommands.toggleInlineCode()
+                }}
+                onLink={openSelectionLinkEditor}
+              />
+              <BlockHandle
+                active={active}
+                editorId={editorId}
+                interactionOpen={linkEditorOpen}
+                label={editorCopy.addBlock}
+                menuTarget={blockMenuTarget}
+                store={contextualStoreRef.current!}
+                onOpenMenu={setBlockMenuTarget}
+              />
+              {blockMenuTarget ? (
+                <BlockMenu
+                  copy={editorCopy}
+                  target={blockMenuTarget}
+                  onClose={closeBlockMenu}
+                  onCommand={runBlockMenuCommand}
+                />
+              ) : null}
+              {linkEditorOpen && linkSelection ? (
+                <EditorLinkPopover
+                  canRemove={linkCanRemove}
+                  copy={editorCopy}
+                  href={linkUrl}
+                  hrefValid={isExternalHttpUrl(linkUrl.trim())}
+                  mode={linkMode}
+                  position={linkAnchor}
+                  selection={linkSelection}
+                  text={linkText}
+                  onApply={applyLink}
+                  onCancel={cancelLinkEditor}
+                  onHrefChange={setLinkUrl}
+                  onRemove={removeLink}
+                  onTextChange={setLinkText}
+                />
+              ) : null}
+            </>,
+            contextualOverlayMount,
+          )
+        : null}
+      {outlineMount && (outlineLayout === 'inline' || outlineOpen)
+        ? createPortal(
+            <>
+              {outlineOpen && outlineLayout === 'drawer' ? (
+                <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} />
+              ) : null}
+              <EditorOutline
+                activePosition={activeHeadingPosition}
+                closeLabel={editorCopy.closeOutline}
+                drawer={outlineLayout === 'drawer'}
+                emptyLabel={editorCopy.noOutline}
+                headings={headings}
+                label={editorCopy.outline}
+                onClose={onCloseOutline}
+                onSelect={(heading) => {
+                  if (navigateToHeading(heading) && outlineLayout === 'drawer') onCloseOutline?.()
+                }}
+              />
+            </>,
+            outlineMount,
+          )
+        : null}
       <span aria-hidden="true" className="milkdown-editor__empty-state">
-        <span className="milkdown-editor__placeholder">{placeholder ?? editorCopy.startWriting}</span>
+        <span className="milkdown-editor__placeholder">
+          {placeholder ?? editorCopy.startWriting}
+        </span>
         <span className="milkdown-editor__hint">{editorCopy.startWritingHint}</span>
       </span>
       {presentationMode === 'edit' && contextMenu ? (
@@ -1195,7 +1471,13 @@ export function MilkdownEditor({
           copy={editorCopy}
           hasSelection={contextMenu.hasSelection}
           inTable={contextMenu.inTable}
-          linkLabel={contextMenu.link ? editorCopy.editLink : contextMenu.hasSelection ? editorCopy.addLink : editorCopy.insertLink}
+          linkLabel={
+            contextMenu.link
+              ? editorCopy.editLink
+              : contextMenu.hasSelection
+                ? editorCopy.addLink
+                : editorCopy.insertLink
+          }
           position={{ left: contextMenu.left, top: contextMenu.top }}
           onCommand={runContextCommand}
           onDismiss={dismissContextMenu}
@@ -1217,7 +1499,8 @@ function readHeadings(state: EditorState): EditorHeading[] {
     // If it has not completed yet, do not expose a navigable heading that
     // could resolve to a different DOM node; the next document update supplies
     // the stable id and publishes it to the outline.
-    if (text && id) headings.push({ id, key: id, level: Number(node.attrs.level) || 1, pos: position, text })
+    if (text && id)
+      headings.push({ id, key: id, level: Number(node.attrs.level) || 1, pos: position, text })
   })
 
   return headings
@@ -1261,18 +1544,25 @@ function createCodeBlockNodeView(
 
     const updateControls = (nextNode = node) => {
       const selected = String(nextNode.attrs.language ?? '')
-      const selectedOption = languageOptions.find((option) => option.value === selected) ?? languageOptions[0]
+      const selectedOption =
+        languageOptions.find((option) => option.value === selected) ?? languageOptions[0]
       const selectedLabel = selectedOption.value ? selectedOption.label : copyRef.current.plainText
       card.dataset.language = selected
       label.textContent = copyRef.current.codeBlock
       languageTrigger.textContent = selectedLabel
-      languageTrigger.setAttribute('aria-label', `${copyRef.current.codeBlockLanguage}: ${selectedLabel}`)
+      languageTrigger.setAttribute(
+        'aria-label',
+        `${copyRef.current.codeBlockLanguage}: ${selectedLabel}`,
+      )
       languageTrigger.disabled = presentationModeRef.current !== 'edit'
       copyButton.setAttribute('aria-label', copyRef.current.copy)
       copyButton.title = copyRef.current.copy
 
       for (const option of languageMenu.querySelectorAll<HTMLButtonElement>('[role="option"]')) {
-        option.setAttribute('aria-selected', String(option.dataset.language === selectedOption.value))
+        option.setAttribute(
+          'aria-selected',
+          String(option.dataset.language === selectedOption.value),
+        )
       }
     }
 
@@ -1287,7 +1577,9 @@ function createCodeBlockNodeView(
         if (presentationModeRef.current !== 'edit') return
         const position = getPos()
         if (typeof position === 'number') {
-          editorView.dispatch(editorView.state.tr.setNodeAttribute(position, 'language', option.value))
+          editorView.dispatch(
+            editorView.state.tr.setNodeAttribute(position, 'language', option.value),
+          )
         }
         closeLanguageMenu()
       })
@@ -1300,7 +1592,10 @@ function createCodeBlockNodeView(
       languageMenu.hidden = !isOpening
       languageTrigger.setAttribute('aria-expanded', String(isOpening))
     })
-    copyButton.addEventListener('click', () => void navigator.clipboard?.writeText(node.textContent))
+    copyButton.addEventListener(
+      'click',
+      () => void navigator.clipboard?.writeText(node.textContent),
+    )
 
     const closeMenuOnOutsidePress = (event: PointerEvent) => {
       if (event.target instanceof Node && !card.contains(event.target)) closeLanguageMenu()
@@ -1337,7 +1632,10 @@ function createCodeBlockNodeView(
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the NodeView lifecycle directly.
-export function createImageNodeView(documentPathRef: MutableRefObject<string | null>, copyRef: MutableRefObject<EditorCopy>): NodeViewConstructor {
+export function createImageNodeView(
+  documentPathRef: MutableRefObject<string | null>,
+  copyRef: MutableRefObject<EditorCopy>,
+): NodeViewConstructor {
   return (node) => {
     const source = String(node.attrs.src ?? '')
     const alt = String(node.attrs.alt ?? '')
@@ -1367,10 +1665,11 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
       currentImage = null
     }
 
-    const failureLabel = () => copyRef.current.loadImageError
-      .replace(/\s*[—–-]\s*.*$/, '')
-      .replace(/[，,]\s*.*$/, '')
-      .trim() || copyRef.current.loadImageError
+    const failureLabel = () =>
+      copyRef.current.loadImageError
+        .replace(/\s*[—–-]\s*.*$/, '')
+        .replace(/[，,]\s*.*$/, '')
+        .trim() || copyRef.current.loadImageError
 
     const showPlaceholder = (state: 'empty' | 'error', imageAlt: string, token: number) => {
       if (token !== generation) return
@@ -1390,7 +1689,10 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
       status.className = 'local-image-placeholder__status'
       status.textContent = failureLabel()
       placeholder.append(status)
-      placeholder.setAttribute('aria-label', imageAlt ? `${imageAlt}. ${status.textContent}` : status.textContent)
+      placeholder.setAttribute(
+        'aria-label',
+        imageAlt ? `${imageAlt}. ${status.textContent}` : status.textContent,
+      )
       root.replaceChildren(placeholder)
     }
 
@@ -1420,9 +1722,10 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
         showPlaceholder('error', nextAlt, token)
       }
       root.replaceChildren(image)
-      image.src = documentPathRef.current && isTauri()
-        ? convertFileSrc(resolveDocumentPath(documentPathRef.current, nextSource))
-        : nextSource
+      image.src =
+        documentPathRef.current && isTauri()
+          ? convertFileSrc(resolveDocumentPath(documentPathRef.current, nextSource))
+          : nextSource
     }
 
     render()
@@ -1430,10 +1733,11 @@ export function createImageNodeView(documentPathRef: MutableRefObject<string | n
       dom: root,
       update: (nextNode) => {
         if (
-          nextNode.type !== currentNode.type
-          || isExternalHttpUrl(String(nextNode.attrs.src ?? ''))
-          || isMarkdownDocumentPath(String(nextNode.attrs.src ?? ''))
-        ) return false
+          nextNode.type !== currentNode.type ||
+          isExternalHttpUrl(String(nextNode.attrs.src ?? '')) ||
+          isMarkdownDocumentPath(String(nextNode.attrs.src ?? ''))
+        )
+          return false
         currentNode = nextNode
         render()
         return true
@@ -1498,10 +1802,11 @@ function createRemoteImageView(node: Parameters<NodeViewConstructor>[0], copy: E
     dom: container,
     update: (nextNode: Parameters<NodeViewConstructor>[0]) => {
       if (
-        nextNode.type !== currentNode.type
-        || String(nextNode.attrs.src ?? '') !== String(currentNode.attrs.src ?? '')
-        || !isExternalHttpUrl(String(nextNode.attrs.src ?? ''))
-      ) return false
+        nextNode.type !== currentNode.type ||
+        String(nextNode.attrs.src ?? '') !== String(currentNode.attrs.src ?? '') ||
+        !isExternalHttpUrl(String(nextNode.attrs.src ?? ''))
+      )
+        return false
       currentNode = nextNode
       syncRuntimeAttributes()
       return true

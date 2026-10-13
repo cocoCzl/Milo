@@ -20,19 +20,35 @@ import { useApplicationSettings } from './useApplicationSettings'
 describe('useApplicationSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    settingsBoundary.load.mockResolvedValue({ appearance: 'light', locale: 'en', documentZoom: 125 })
+    settingsBoundary.load.mockResolvedValue({
+      appearance: 'light',
+      locale: 'en',
+      documentZoom: 125,
+    })
     settingsBoundary.save.mockImplementation(async (settings) => settings)
   })
 
   it('loads persisted settings through the public native boundary', async () => {
     const hook = renderHook(() => useApplicationSettings())
 
-    await waitFor(() => expect(hook.result.current.settings).toEqual({
-      settingsVersion: 5, appearance: 'light', locale: 'en', documentZoom: 125, interfaceZoom: 120,
-      documentFontStyle: 'sans', readingWidth: 'standard', lineHeight: 'standard',
-      currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 224,
-      startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
-    }))
+    await waitFor(() =>
+      expect(hook.result.current.settings).toEqual({
+        settingsVersion: 5,
+        appearance: 'light',
+        locale: 'en',
+        documentZoom: 125,
+        interfaceZoom: 120,
+        documentFontStyle: 'sans',
+        readingWidth: 'standard',
+        lineHeight: 'standard',
+        currentFolder: null,
+        recentFiles: [],
+        recentFolders: [],
+        sidebarVisible: true,
+        sidebarWidth: 224,
+        startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
+      }),
+    )
     expect(settingsBoundary.load).toHaveBeenCalledOnce()
   })
 
@@ -47,14 +63,31 @@ describe('useApplicationSettings', () => {
     })
 
     expect(hook.result.current.settings).toEqual({
-      settingsVersion: 5, appearance: 'dark', locale: 'zh-CN', documentZoom: 160, interfaceZoom: 140,
-      documentFontStyle: 'sans', readingWidth: 'standard', lineHeight: 'standard',
-      currentFolder: null, recentFiles: [], recentFolders: [], sidebarVisible: true, sidebarWidth: 224,
+      settingsVersion: 5,
+      appearance: 'dark',
+      locale: 'zh-CN',
+      documentZoom: 160,
+      interfaceZoom: 140,
+      documentFontStyle: 'sans',
+      readingWidth: 'standard',
+      lineHeight: 'standard',
+      currentFolder: null,
+      recentFiles: [],
+      recentFolders: [],
+      sidebarVisible: true,
+      sidebarWidth: 224,
       startupSession: { activeDocumentPath: null, openDocumentPaths: [] },
     })
-    await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({
-      appearance: 'dark', locale: 'zh-CN', documentZoom: 160, interfaceZoom: 140,
-    })))
+    await waitFor(() =>
+      expect(settingsBoundary.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          appearance: 'dark',
+          locale: 'zh-CN',
+          documentZoom: 160,
+          interfaceZoom: 140,
+        }),
+      ),
+    )
   })
 
   it('persists reading preferences independently from document content state', async () => {
@@ -66,12 +99,22 @@ describe('useApplicationSettings', () => {
       hook.result.current.setLineHeight('relaxed')
     })
 
-    expect(hook.result.current.settings).toEqual(expect.objectContaining({
-      documentFontStyle: 'serif', readingWidth: 'wide', lineHeight: 'relaxed',
-    }))
-    await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({
-      documentFontStyle: 'serif', readingWidth: 'wide', lineHeight: 'relaxed',
-    })))
+    expect(hook.result.current.settings).toEqual(
+      expect.objectContaining({
+        documentFontStyle: 'serif',
+        readingWidth: 'wide',
+        lineHeight: 'relaxed',
+      }),
+    )
+    await waitFor(() =>
+      expect(settingsBoundary.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          documentFontStyle: 'serif',
+          readingWidth: 'wide',
+          lineHeight: 'relaxed',
+        }),
+      ),
+    )
   })
 
   it('persists the independent warm appearance preference', async () => {
@@ -82,7 +125,11 @@ describe('useApplicationSettings', () => {
     })
 
     expect(hook.result.current.settings.appearance).toBe('warm')
-    await waitFor(() => expect(settingsBoundary.save).toHaveBeenLastCalledWith(expect.objectContaining({ appearance: 'warm' })))
+    await waitFor(() =>
+      expect(settingsBoundary.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ appearance: 'warm' }),
+      ),
+    )
   })
 
   it('normalizes legacy oversized widths while preserving valid custom widths', async () => {
@@ -120,21 +167,23 @@ describe('useApplicationSettings', () => {
     })
     const hook = renderHook(() => useApplicationSettings())
 
-    await waitFor(() => expect(hook.result.current.settings).toEqual({
-      settingsVersion: 5,
-      appearance: 'warm',
-      locale: 'zh-CN',
-      documentZoom: 130,
-      interfaceZoom: 125,
-      documentFontStyle: 'sans',
-      readingWidth: 'standard',
-      lineHeight: 'standard',
-      currentFolder: '/notes',
-      recentFiles: ['/notes/a.md'],
-      recentFolders: ['/notes'],
-      sidebarVisible: false,
-      sidebarWidth: 280,
-      startupSession: { activeDocumentPath: '/notes/a.md', openDocumentPaths: ['/notes/a.md'] },
-    }))
+    await waitFor(() =>
+      expect(hook.result.current.settings).toEqual({
+        settingsVersion: 5,
+        appearance: 'warm',
+        locale: 'zh-CN',
+        documentZoom: 130,
+        interfaceZoom: 125,
+        documentFontStyle: 'sans',
+        readingWidth: 'standard',
+        lineHeight: 'standard',
+        currentFolder: '/notes',
+        recentFiles: ['/notes/a.md'],
+        recentFolders: ['/notes'],
+        sidebarVisible: false,
+        sidebarWidth: 280,
+        startupSession: { activeDocumentPath: '/notes/a.md', openDocumentPaths: ['/notes/a.md'] },
+      }),
+    )
   })
 })

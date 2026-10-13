@@ -17,7 +17,12 @@ afterEach(() => {
 
 describe('MilkdownEditor external links', () => {
   async function renderLink(presentationMode: 'edit' | 'read' = 'edit') {
-    const view = render(<MilkdownEditor initialMarkdown="[百度](https://www.baidu.com/)" presentationMode={presentationMode} />)
+    const view = render(
+      <MilkdownEditor
+        initialMarkdown="[百度](https://www.baidu.com/)"
+        presentationMode={presentationMode}
+      />,
+    )
     const link = await waitFor(() => {
       const element = view.container.querySelector<HTMLAnchorElement>('.ProseMirror a')
       expect(element).toBeInTheDocument()

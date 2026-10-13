@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { Schema } from '@milkdown/prose/model'
 import { EditorState, TextSelection, type Command } from '@milkdown/prose/state'
 import { wrapInHeadingCommand } from '@milkdown/preset-commonmark'
-import { createEditorCommands, isValidEditorSelectionSnapshot, splitTopLevelParagraphAtStart } from './editorCommands'
+import {
+  createEditorCommands,
+  isValidEditorSelectionSnapshot,
+  splitTopLevelParagraphAtStart,
+} from './editorCommands'
 import type { BlockTarget } from './blockControls'
 
 function runner() {
@@ -22,7 +26,11 @@ function dividerState(blocks: string[]) {
       text: {},
     },
   })
-  const doc = schema.node('doc', undefined, blocks.map((text) => schema.node('paragraph', undefined, text ? [schema.text(text)] : [])))
+  const doc = schema.node(
+    'doc',
+    undefined,
+    blocks.map((text) => schema.node('paragraph', undefined, text ? [schema.text(text)] : [])),
+  )
   return EditorState.create({ doc, selection: TextSelection.create(doc, 1) })
 }
 
@@ -35,7 +43,11 @@ function applyDivider(state: EditorState, insertAfterPosition: number) {
   } as BlockTarget
   commands.insertDivider(target)
   const command = (host.runProse.mock.calls as unknown as Array<[Command]>)[0]![0]
-  expect(command(state, (transaction) => { state = state.apply(transaction) })).toBe(true)
+  expect(
+    command(state, (transaction) => {
+      state = state.apply(transaction)
+    }),
+  ).toBe(true)
   return state
 }
 
@@ -46,7 +58,11 @@ describe('editorCommands', () => {
     const selection = { doc: state.doc, from: 1, to: 1, text: '' }
     const commands = createEditorCommands(host)
     commands[`setHeading${level}`](selection)
-    expect(host.runMilkdown).toHaveBeenCalledExactlyOnceWith(wrapInHeadingCommand.key, level, selection)
+    expect(host.runMilkdown).toHaveBeenCalledExactlyOnceWith(
+      wrapInHeadingCommand.key,
+      level,
+      selection,
+    )
     expect(host.runProse).not.toHaveBeenCalled()
   })
 
@@ -66,14 +82,16 @@ describe('editorCommands', () => {
     let transactionJSON: unknown
     let after = before
 
-    expect(splitTopLevelParagraphAtStart(before, (transaction) => {
-      transactionJSON = {
-        steps: transaction.steps.map((step) => step.toJSON()),
-        selectionBefore: { from: before.selection.from, to: before.selection.to },
-        selectionAfter: { from: transaction.selection.from, to: transaction.selection.to },
-      }
-      after = before.apply(transaction)
-    })).toBe(true)
+    expect(
+      splitTopLevelParagraphAtStart(before, (transaction) => {
+        transactionJSON = {
+          steps: transaction.steps.map((step) => step.toJSON()),
+          selectionBefore: { from: before.selection.from, to: before.selection.to },
+          selectionAfter: { from: transaction.selection.from, to: transaction.selection.to },
+        }
+        after = before.apply(transaction)
+      }),
+    ).toBe(true)
 
     expect(transactionJSON).toEqual({
       steps: [{ stepType: 'replace', from: 0, to: 0, slice: { content: [{ type: 'paragraph' }] } }],
@@ -95,7 +113,14 @@ describe('editorCommands', () => {
       selectionBefore: { from: after.selection.from, to: after.selection.to },
       selectionAfter: { from: inputTransaction.selection.from, to: inputTransaction.selection.to },
     }).toEqual({
-      steps: [{ stepType: 'replace', from: 1, to: 1, slice: { content: [{ type: 'text', text: '标题' }] } }],
+      steps: [
+        {
+          stepType: 'replace',
+          from: 1,
+          to: 1,
+          slice: { content: [{ type: 'text', text: '标题' }] },
+        },
+      ],
       selectionBefore: { from: 1, to: 1 },
       selectionAfter: { from: 3, to: 3 },
     })
@@ -129,18 +154,27 @@ describe('editorCommands', () => {
     ])
     const dispatch = vi.fn()
 
-    expect(splitTopLevelParagraphAtStart(
-      EditorState.create({ doc: topLevelDoc, selection: TextSelection.create(topLevelDoc, 2) }),
-      dispatch,
-    )).toBe(false)
-    expect(splitTopLevelParagraphAtStart(
-      EditorState.create({ doc: topLevelDoc, selection: TextSelection.create(topLevelDoc, 1, 2) }),
-      dispatch,
-    )).toBe(false)
-    expect(splitTopLevelParagraphAtStart(
-      EditorState.create({ doc: nestedDoc, selection: TextSelection.create(nestedDoc, 2) }),
-      dispatch,
-    )).toBe(false)
+    expect(
+      splitTopLevelParagraphAtStart(
+        EditorState.create({ doc: topLevelDoc, selection: TextSelection.create(topLevelDoc, 2) }),
+        dispatch,
+      ),
+    ).toBe(false)
+    expect(
+      splitTopLevelParagraphAtStart(
+        EditorState.create({
+          doc: topLevelDoc,
+          selection: TextSelection.create(topLevelDoc, 1, 2),
+        }),
+        dispatch,
+      ),
+    ).toBe(false)
+    expect(
+      splitTopLevelParagraphAtStart(
+        EditorState.create({ doc: nestedDoc, selection: TextSelection.create(nestedDoc, 2) }),
+        dispatch,
+      ),
+    ).toBe(false)
     expect(dispatch).not.toHaveBeenCalled()
   })
 
@@ -174,28 +208,50 @@ describe('editorCommands', () => {
         link: { attrs: { href: {} }, inclusive: false },
       },
     })
-    const doc = schema.node('doc', undefined, [schema.node('paragraph', undefined, [schema.text('hello')])])
+    const doc = schema.node('doc', undefined, [
+      schema.node('paragraph', undefined, [schema.text('hello')]),
+    ])
     let state = EditorState.create({ doc, selection: TextSelection.create(doc, 1, 6) })
     const beforeText = state.doc.textContent
-    const beforeBlocks = state.doc.content.content.map((node) => ({ type: node.type.name, childCount: node.childCount }))
+    const beforeBlocks = state.doc.content.content.map((node) => ({
+      type: node.type.name,
+      childCount: node.childCount,
+    }))
     const host = runner()
     const commands = createEditorCommands(host)
     const proseCalls = host.runProse.mock.calls as unknown as Array<[Command]>
 
     commands.applyLinkToSelection('https://example.com')
     const apply = proseCalls[0]![0]
-    expect(apply(state, (transaction) => { state = state.apply(transaction) })).toBe(true)
+    expect(
+      apply(state, (transaction) => {
+        state = state.apply(transaction)
+      }),
+    ).toBe(true)
     expect(state.doc.rangeHasMark(1, 6, schema.marks.link)).toBe(true)
-    expect(schema.marks.link.isInSet(state.doc.nodeAt(1)!.marks)?.attrs.href).toBe('https://example.com')
+    expect(schema.marks.link.isInSet(state.doc.nodeAt(1)!.marks)?.attrs.href).toBe(
+      'https://example.com',
+    )
     expect(state.doc.textContent).toBe(beforeText)
-    expect(state.doc.content.content.map((node) => ({ type: node.type.name, childCount: node.childCount }))).toEqual(beforeBlocks)
+    expect(
+      state.doc.content.content.map((node) => ({
+        type: node.type.name,
+        childCount: node.childCount,
+      })),
+    ).toEqual(beforeBlocks)
     let hasHardBreak = false
-    state.doc.descendants((node) => { if (node.type.name === 'hard_break') hasHardBreak = true })
+    state.doc.descendants((node) => {
+      if (node.type.name === 'hard_break') hasHardBreak = true
+    })
     expect(hasHardBreak).toBe(false)
 
     commands.removeLink()
     const remove = proseCalls[1]![0]
-    expect(remove(state, (transaction) => { state = state.apply(transaction) })).toBe(true)
+    expect(
+      remove(state, (transaction) => {
+        state = state.apply(transaction)
+      }),
+    ).toBe(true)
     expect(state.doc.rangeHasMark(1, 6, schema.marks.link)).toBe(false)
     expect(state.doc.textContent).toBe('hello')
   })
@@ -209,14 +265,20 @@ describe('editorCommands', () => {
       },
       marks: { link: { attrs: { href: {} }, inclusive: false } },
     })
-    const doc = schema.node('doc', undefined, [schema.node('paragraph', undefined, [schema.text('before')])])
+    const doc = schema.node('doc', undefined, [
+      schema.node('paragraph', undefined, [schema.text('before')]),
+    ])
     let state = EditorState.create({ doc, selection: TextSelection.create(doc, 7) })
     const host = runner()
     const commands = createEditorCommands(host)
     const proseCalls = host.runProse.mock.calls as unknown as Array<[Command]>
 
     commands.insertLink('百度', 'https://www.baidu.com/')
-    expect(proseCalls[0]![0](state, (transaction) => { state = state.apply(transaction) })).toBe(true)
+    expect(
+      proseCalls[0]![0](state, (transaction) => {
+        state = state.apply(transaction)
+      }),
+    ).toBe(true)
     expect(state.doc.textContent).toBe('before百度')
     expect(state.doc.childCount).toBe(1)
     expect(state.doc.rangeHasMark(7, 9, schema.marks.link)).toBe(true)
@@ -233,7 +295,9 @@ describe('editorCommands', () => {
         text: { group: 'inline' },
       },
     })
-    const doc = schema.node('doc', undefined, [schema.node('paragraph', undefined, [schema.text('hello')])])
+    const doc = schema.node('doc', undefined, [
+      schema.node('paragraph', undefined, [schema.text('hello')]),
+    ])
     const state = EditorState.create({ doc, selection: TextSelection.create(doc, 1, 6) })
     const snapshot = { doc: state.doc, from: 1, to: 6, text: 'hello' }
     const changed = state.apply(state.tr.insertText('!', 6))

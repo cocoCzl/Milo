@@ -19,9 +19,23 @@ function target(position: number, top = 100): BlockTarget {
 describe('Block Handle hover ownership', () => {
   it('activates only from a block gutter, then keeps ownership across the complete block corridor', () => {
     const current = target(1)
-    expect(resolveBlockHandleHover({ current: null, candidate: current, pointer: { left: 190, top: 112 }, pointerInBlockUi: false })).toBe(current)
+    expect(
+      resolveBlockHandleHover({
+        current: null,
+        candidate: current,
+        pointer: { left: 190, top: 112 },
+        pointerInBlockUi: false,
+      }),
+    ).toBe(current)
     expect(isWithinBlockHoverCorridor(current, { left: 650, top: 112 })).toBe(true)
-    expect(resolveBlockHandleHover({ current, candidate: current, pointer: { left: 650, top: 112 }, pointerInBlockUi: false })).toBe(current)
+    expect(
+      resolveBlockHandleHover({
+        current,
+        candidate: current,
+        pointer: { left: 650, top: 112 },
+        pointerInBlockUi: false,
+      }),
+    ).toBe(current)
   })
 
   it('keeps the frozen target through repeated Handle and menu pointer moves without re-resolving a block', () => {
@@ -41,12 +55,33 @@ describe('Block Handle hover ownership', () => {
   it('changes blocks only after the pointer has left the owned corridor and entered another gutter', () => {
     const first = target(1, 100)
     const second = target(8, 180)
-    expect(resolveBlockHandleHover({ current: first, candidate: null, pointer: { left: 190, top: 160 }, pointerInBlockUi: false })).toBeNull()
-    expect(resolveBlockHandleHover({ current: first, candidate: second, pointer: { left: 190, top: 192 }, pointerInBlockUi: false })).toBe(second)
+    expect(
+      resolveBlockHandleHover({
+        current: first,
+        candidate: null,
+        pointer: { left: 190, top: 160 },
+        pointerInBlockUi: false,
+      }),
+    ).toBeNull()
+    expect(
+      resolveBlockHandleHover({
+        current: first,
+        candidate: second,
+        pointer: { left: 190, top: 192 },
+        pointerInBlockUi: false,
+      }),
+    ).toBe(second)
   })
 
   it('clears only after leaving the editor block, gutter, Handle, and menu ownership areas', () => {
     const current = target(1)
-    expect(resolveBlockHandleHover({ current, candidate: null, pointer: { left: 100, top: 50 }, pointerInBlockUi: false })).toBeNull()
+    expect(
+      resolveBlockHandleHover({
+        current,
+        candidate: null,
+        pointer: { left: 100, top: 50 },
+        pointerInBlockUi: false,
+      }),
+    ).toBeNull()
   })
 })

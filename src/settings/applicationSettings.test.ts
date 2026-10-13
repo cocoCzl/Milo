@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { clampDocumentZoom, clampInterfaceZoom, clampSidebarWidth, defaultApplicationSettings, normalizeAppearancePreference, normalizeDocumentFontStyle, normalizeLineHeight, normalizeReadingWidth, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './applicationSettings'
+import {
+  clampDocumentZoom,
+  clampInterfaceZoom,
+  clampSidebarWidth,
+  defaultApplicationSettings,
+  normalizeAppearancePreference,
+  normalizeDocumentFontStyle,
+  normalizeLineHeight,
+  normalizeReadingWidth,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+} from './applicationSettings'
 
 describe('Application Settings', () => {
   it('starts with system appearance, system locale, and readable zoom defaults', () => {

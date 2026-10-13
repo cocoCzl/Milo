@@ -16,17 +16,25 @@ function isCompositionTextDeletion(event: Event) {
   return input.inputType === 'deleteCompositionText' && input.isComposing
 }
 
-export function isSafariCompositionReplacementBreak(dom: Node | string, compositionDeleteActive: boolean) {
-  if (!compositionDeleteActive || !(dom instanceof HTMLElement) || dom.tagName !== 'BR' || dom.attributes.length !== 0) return false
+export function isSafariCompositionReplacementBreak(
+  dom: Node | string,
+  compositionDeleteActive: boolean,
+) {
+  if (
+    !compositionDeleteActive ||
+    !(dom instanceof HTMLElement) ||
+    dom.tagName !== 'BR' ||
+    dom.attributes.length !== 0
+  )
+    return false
 
   const parent = dom.parentElement
   const editorRoot = parent?.closest<HTMLElement>('.ProseMirror')
   if (!parent || !editorRoot) return false
 
   const replacedParagraphAtRoot = parent === editorRoot
-  const placeholderInsideParagraph = parent.tagName === 'P'
-    && parent.childNodes.length === 1
-    && parent.firstChild === dom
+  const placeholderInsideParagraph =
+    parent.tagName === 'P' && parent.childNodes.length === 1 && parent.firstChild === dom
 
   return replacedParagraphAtRoot || placeholderInsideParagraph
 }
@@ -57,7 +65,7 @@ class SafariCompositionDOMParser extends ProseMirrorDOMParser {
       ...options,
       ruleFromNode: (dom: Node) => {
         const artifact = isSafariEmptyCompositionBreak(dom)
-        return artifact ? { ignore: true } : ruleFromNode?.(dom) ?? null
+        return artifact ? { ignore: true } : (ruleFromNode?.(dom) ?? null)
       },
     } as InternalParseOptions
   }
@@ -76,29 +84,33 @@ class SafariCompositionDOMParser extends ProseMirrorDOMParser {
 // its own trailing-break DOM hack, so the schema parser must combine the exact
 // DOM shape with the short-lived native input lifecycle. Authored hardbreaks
 // carry attributes and paste/Markdown parsing has no active editor marker.
-export const miloSafariCompositionHardbreakSchema = hardbreakSchema.extendSchema((base) => (ctx) => {
-  const schema = base(ctx)
-  return {
-    ...schema,
-    parseDOM: [
-      {
-        tag: 'br',
-        getAttrs: (dom: Node | string) => isSafariEmptyCompositionBreak(dom) ? false : null,
-      },
-      ...(schema.parseDOM ?? []).filter((rule) => rule.tag !== 'br'),
-    ],
-  }
-})
+export const miloSafariCompositionHardbreakSchema = hardbreakSchema.extendSchema(
+  (base) => (ctx) => {
+    const schema = base(ctx)
+    return {
+      ...schema,
+      parseDOM: [
+        {
+          tag: 'br',
+          getAttrs: (dom: Node | string) => (isSafariEmptyCompositionBreak(dom) ? false : null),
+        },
+        ...(schema.parseDOM ?? []).filter((rule) => rule.tag !== 'br'),
+      ],
+    }
+  },
+)
 
 export function createSafariCompositionHardbreakPlugin() {
   let domParser: ProseMirrorDOMParser | null = null
   const domParserProxy = {
     parse: (dom: Node, options?: ParseOptions) => {
-      if (!domParser) throw new Error('Safari composition DOM parser used before editor state initialization')
+      if (!domParser)
+        throw new Error('Safari composition DOM parser used before editor state initialization')
       return domParser.parse(dom, options)
     },
     parseSlice: (dom: Node, options?: ParseOptions) => {
-      if (!domParser) throw new Error('Safari composition DOM parser used before editor state initialization')
+      if (!domParser)
+        throw new Error('Safari composition DOM parser used before editor state initialization')
       return domParser.parseSlice(dom, options)
     },
   } as ProseMirrorDOMParser

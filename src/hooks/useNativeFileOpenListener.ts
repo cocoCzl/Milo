@@ -9,9 +9,11 @@ export function useNativeFileOpenListener(onOpenPath: (path: string) => void) {
   useEffect(() => {
     if (!isTauri()) return
     let unlisten: (() => void) | undefined
-    void listen<string>('milo://open-file', (event) => onOpenPathRef.current(event.payload)).then((stop) => {
-      unlisten = stop
-    })
+    void listen<string>('milo://open-file', (event) => onOpenPathRef.current(event.payload)).then(
+      (stop) => {
+        unlisten = stop
+      },
+    )
     return () => unlisten?.()
   }, [])
 }

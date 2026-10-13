@@ -97,7 +97,14 @@ describe('FileSidebar', () => {
         folder="/notes/current"
         recentFiles={['/notes/current/one.md']}
         recentFolders={[]}
-        tree={{ children: [{ children: [], isDirectory: false, name: 'one.md', path: '/notes/current/one.md' }], isDirectory: true, name: 'current', path: '/notes/current' }}
+        tree={{
+          children: [
+            { children: [], isDirectory: false, name: 'one.md', path: '/notes/current/one.md' },
+          ],
+          isDirectory: true,
+          name: 'current',
+          path: '/notes/current',
+        }}
         width={224}
         onChooseFolder={vi.fn()}
         onClearRecent={vi.fn()}
@@ -110,7 +117,9 @@ describe('FileSidebar', () => {
       />,
     )
 
-    expect(container.querySelector('.file-sidebar__brand')).toHaveTextContent('MiloWrite a clearer tomorrow')
+    expect(container.querySelector('.file-sidebar__brand')).toHaveTextContent(
+      'MiloWrite a clearer tomorrow',
+    )
     expect(screen.getByRole('region', { name: 'Recent files and folders' })).toBeVisible()
     const workspace = screen.getByRole('region', { name: 'Workspace' })
     expect(workspace).toHaveTextContent('current')
@@ -140,7 +149,9 @@ describe('FileSidebar', () => {
       />,
     )
 
-    expect(screen.getByRole('region', { name: 'Recent files and folders' })).toHaveTextContent('No recent items.')
+    expect(screen.getByRole('region', { name: 'Recent files and folders' })).toHaveTextContent(
+      'No recent items.',
+    )
     const workspace = screen.getByRole('region', { name: 'Workspace' })
     expect(workspace).toHaveTextContent('No folder selected')
     expect(workspace).toHaveTextContent('Open a folder.')

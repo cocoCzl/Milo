@@ -44,7 +44,15 @@ function sameTarget(current: BlockTarget | null, next: BlockTarget | null) {
   return current?.doc === next?.doc && current?.targetBlockPosition === next?.targetBlockPosition
 }
 
-export function BlockHandle({ active, editorId, interactionOpen, label, menuTarget, onOpenMenu, store }: BlockHandleProps) {
+export function BlockHandle({
+  active,
+  editorId,
+  interactionOpen,
+  label,
+  menuTarget,
+  onOpenMenu,
+  store,
+}: BlockHandleProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [hoverTarget, setHoverTarget] = useState<BlockTarget | null>(null)
   const hoverTargetRef = useRef<BlockTarget | null>(null)
@@ -78,7 +86,12 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
       const pointer = pointerRef.current
       if (!pointer || !view.dom.isConnected) return
       const direct = blockTargetAtCoords(view, editorId, pointer)
-      const fallback = direct ?? blockTargetAtCoords(view, editorId, { left: view.dom.getBoundingClientRect().left + 2, top: pointer.top })
+      const fallback =
+        direct ??
+        blockTargetAtCoords(view, editorId, {
+          left: view.dom.getBoundingClientRect().left + 2,
+          top: pointer.top,
+        })
       const current = hoverTargetRef.current
       const next = resolveBlockHandleHover({
         current,
@@ -95,7 +108,9 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
     const onPointerLeave = (event: PointerEvent) => {
       const current = hoverTargetRef.current
       const retainForBlockUi = isBlockUiTarget(event.relatedTarget)
-      const retainForCorridor = Boolean(current && isWithinBlockHoverCorridor(current, { left: event.clientX, top: event.clientY }))
+      const retainForCorridor = Boolean(
+        current && isWithinBlockHoverCorridor(current, { left: event.clientX, top: event.clientY }),
+      )
       if (!retainForBlockUi && !retainForCorridor) setStableHoverTarget(null)
     }
     const onDocumentPointerMove = (event: PointerEvent) => {
@@ -107,7 +122,10 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
     }
     root.addEventListener('pointermove', onPointerMove, { passive: true })
     root.addEventListener('pointerleave', onPointerLeave, { passive: true })
-    document.addEventListener('pointermove', onDocumentPointerMove, { capture: true, passive: true })
+    document.addEventListener('pointermove', onDocumentPointerMove, {
+      capture: true,
+      passive: true,
+    })
     return () => {
       root.removeEventListener('pointermove', onPointerMove)
       root.removeEventListener('pointerleave', onPointerLeave)
@@ -125,7 +143,8 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
     }
     stage.addEventListener('scroll', refreshGeometry, { capture: true, passive: true })
     window.addEventListener('resize', refreshGeometry, { passive: true })
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refreshGeometry)
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refreshGeometry)
     observer?.observe(stage)
     return () => {
       stage.removeEventListener('scroll', refreshGeometry, { capture: true })
@@ -135,16 +154,24 @@ export function BlockHandle({ active, editorId, interactionOpen, label, menuTarg
   }, [snapshot.view])
 
   useEffect(() => {
-    if (blocked || menuTarget || !snapshot.view || !selected?.empty || !selected.$from.parent.inlineContent) return
+    if (
+      blocked ||
+      menuTarget ||
+      !snapshot.view ||
+      !selected?.empty ||
+      !selected.$from.parent.inlineContent
+    )
+      return
     const cursorTarget = blockTargetAtPosition(snapshot.view, editorId, selected.from)
     if (cursorTarget) setStableHoverTarget(cursorTarget)
   }, [blocked, editorId, menuTarget, selected, setStableHoverTarget, snapshot.view])
 
   if (!target) return null
   const stage = snapshot.view?.dom.closest<HTMLElement>('.document-stage')
-  const liveRect = snapshot.view?.state?.doc === target.doc
-    ? blockTargetAtPosition(snapshot.view, editorId, target.targetBlockPosition)?.rect
-    : null
+  const liveRect =
+    snapshot.view?.state?.doc === target.doc
+      ? blockTargetAtPosition(snapshot.view, editorId, target.targetBlockPosition)?.rect
+      : null
   const rect = liveRect ?? target.rect
   // Production editors always live in a document stage. The stage-less path
   // keeps embedded/test consumers on the pre-existing block-center behavior

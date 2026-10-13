@@ -27,8 +27,7 @@ export type ImageAsset = {
   relativePath: string
 }
 
-export const macOSSafeSaveV2 = typeof navigator !== 'undefined'
-  && /Mac/i.test(navigator.platform)
+export const macOSSafeSaveV2 = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
 
 export function usesMacOSSafeSaveV2(): boolean {
   return macOSSafeSaveV2
@@ -57,7 +56,10 @@ export async function readMarkdownFile(path: string): Promise<MarkdownFile> {
   return invoke<MarkdownFile>('read_markdown_document', { path })
 }
 
-export async function recoverAndReadMarkdownFile(path: string, safeSaveEnabled = usesMacOSSafeSaveV2()): Promise<MarkdownFile> {
+export async function recoverAndReadMarkdownFile(
+  path: string,
+  safeSaveEnabled = usesMacOSSafeSaveV2(),
+): Promise<MarkdownFile> {
   if (safeSaveEnabled) {
     try {
       await invoke('recover_markdown_document_safe_v2', { path })
@@ -66,10 +68,10 @@ export async function recoverAndReadMarkdownFile(path: string, safeSaveEnabled =
       const classified = /^SAFE_SAVE_RECOVERY_BLOCKED\[([^\]]+)\]:\s*([\s\S]*)$/.exec(detail)
       if (classified) {
         throw new Error(
-          'Milo detected an unfinished file recovery state.\n'
-          + 'To avoid overwriting data, the file was not opened or modified.\n'
-          + `Recovery category: ${classified[1]}.\n`
-          + `Details: ${classified[2]}`,
+          'Milo detected an unfinished file recovery state.\n' +
+            'To avoid overwriting data, the file was not opened or modified.\n' +
+            `Recovery category: ${classified[1]}.\n` +
+            `Details: ${classified[2]}`,
         )
       }
       throw reason
@@ -105,7 +107,10 @@ export async function browseMarkdownFolder(path: string): Promise<MarkdownTreeNo
   return invoke<MarkdownTreeNode>('browse_markdown_folder', { path })
 }
 
-export async function writeImageAsset(documentPath: string, image: PastedImage): Promise<ImageAsset> {
+export async function writeImageAsset(
+  documentPath: string,
+  image: PastedImage,
+): Promise<ImageAsset> {
   return invoke<ImageAsset>('write_image_asset', { request: { documentPath, ...image } })
 }
 
