@@ -554,9 +554,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     let stopped = false
     const stopWatching = new Map<number, () => Promise<void>>()
     tabsRef.current.forEach((tab) => {
-      if (!tab.document.path) return
-      void watchMarkdownFile(tab.document.path, () => {
-        if (!stopped) void handleWatchedChange(tab.id, tab.document.path!)
+      const path = tab.document.path
+      if (!path) return
+      void watchMarkdownFile(path, () => {
+        if (!stopped) void handleWatchedChange(tab.id, path)
       })
         .then((stop) => {
           if (stopped) {
@@ -592,8 +593,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   useEffect(() => {
     const timers = tabsRef.current.flatMap((tab) => {
+      const path = tab.document.path
       if (
-        !tab.document.path ||
+        !path ||
         !tab.document.isDirty ||
         tab.document.protectionReason ||
         tab.activity !== 'idle' ||
@@ -603,7 +605,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const origin = originForTab(tab)
       const revision = tab.document.revision
       const timer = window.setTimeout(() => {
-        void saveToPath(origin, origin.path!, false, revision)
+        void saveToPath(origin, path, false, revision)
       }, 1000)
       return [{ timer }]
     })

@@ -96,15 +96,14 @@ const miloPrismPlugin = $prose((ctx) => {
               (entry, index) => entry.node.attrs.language !== newNodes[index]?.node.attrs.language,
             ) ||
             transaction.steps.some((step) => {
-              const rangedStep = step as unknown as { from?: number; to?: number }
+              // ProseMirror's abstract Step omits the range fields exposed by
+              // concrete replacement steps. Keep this assertion at that library
+              // boundary, then capture and narrow both optional values locally.
+              const { from, to } = step as unknown as { from?: number; to?: number }
               return (
-                rangedStep.from !== undefined &&
-                rangedStep.to !== undefined &&
-                oldNodes.some(
-                  (entry) =>
-                    entry.pos >= rangedStep.from! &&
-                    entry.pos + entry.node.nodeSize <= rangedStep.to!,
-                )
+                from !== undefined &&
+                to !== undefined &&
+                oldNodes.some((entry) => entry.pos >= from && entry.pos + entry.node.nodeSize <= to)
               )
             })
           )
