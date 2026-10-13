@@ -511,3 +511,32 @@ compositionend 本身不足以证明内容稳定：当前 ProseMirror 会先解�
 修改前实例 `Milo Outline Before.app` PID15752，来源为613f781旧构建（dd1c39c仅文档）；修改后实例 `Milo Outline After.app` PID16492，来源为本次CSS工作区构建。两者在证据根目录，CUA分别绑定独立测试标识。本次正式构建可执行文件SHA-256为 `f869ec895fd55b3fbd9bdd7fe99a01f9aa2039d5038b6227766e7c7e519b7bb0`；临时重新签名副本SHA-256为 `74d86477b227f1e5d526f4961805ed3ee42565ff457bdb36d561bbe487a09a10`（前副本df664defab0e9cb87c4dac90107d28f85da6d057a177168ec1cf9038c276a068），签名元数据差异不当作源码变化。
 
 本次构建/测试/原生样例对应dd1c39c加本独立提交的CSS及测试内容，之后仅补充报告，不再改相关源码；提交完整hash在交付回复记录。深色标签、首次空白窗口及其他暂缓项仍保持前述范围。本视觉任务到此结束。
+
+### 独立交互修复：公共 Tooltip 点击后残留（2026-10-13）
+
+基于 `932f3e3ec7f1a5136c0092347d85f6f3b89dc5e7`，用户另行授权；与大纲视觉提交分开。修改仅为 `src/components/Tooltip.tsx`、`src/components/Tooltip.test.tsx` 和本报告，IconButton及其他调用方、CSS外观、保存/输入法均未改动。用户 `img.png` 保留，不纳入提交。
+
+**根因和回归**：当前Tooltip将所有focus设为持续显示条件，mouseleave遇到focusedRef便不关闭，同时没有外部pointerdown关闭处理。先新增“外部pointerdown但按钮仍有焦点”回归，旧实现失败（提示仍在DOM），原3项通过；修复后通过。未将该确定性复现描述为完整原生鼠标路径复现，也没有归因于WKWebView。
+
+**最小修复**：捕获pointerdown仅取消显示任务并关闭提示，不阻止事件/默认动作、不调用blur。后续同次操作的focus不再被当作键盘聚焦；Tab恢复键盘聚焦准入，click也关闭提示且原处理器仍执行。Escape、窗口失焦和disabled关闭并取消任务，监听器随卸载释放。保留原350ms延迟和定位；对原pointer-events:none的提示及按钮间隙做坐标命中检查，鼠标可移至提示阅读，离开两者关闭，不增加遮挡层或定时隐藏。保留调用方ref、事件处理器和原aria-describedby，显示时追加本提示ID。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| Tooltip回归 | 最终22项通过；原3项保留。覆盖鼠标点击focus时序、重新hover/Tab、正文/空白/其他按钮、未blur外部pointerdown、关闭后超过350ms不重开、Escape、窗口失焦、Tooltip及按钮自身disabled、StrictMode重复挂载释放、ref/处理器/aria及定位。按钮自身动态disabled的两项先失败再修复，测试保持同一组件挂载，未用卸载替代禁用验证。 |
+| `npm run format:check` / `npm run lint` / `npm run typecheck` | 全部通过，未关闭检查。format:check仅检查；实际格式化仅写入本次两个TSX文件。 |
+| `npm test` | 最终代码完整前端36个测试文件、341项通过；没有新增skip/todo或放宽失败断言。 |
+| `npm run tauri -- build --debug --bundles app` | 最终代码正常审批后通过（tsc/Vite/Rust编译）。正式产物 `src-tauri/target/debug/bundle/macos/Milo.app`，可执行文件SHA-256 `09b159b835bc141f92e4d54a6396f54b05e1086a574a87db95edabb3e50a133e`。 |
+| Rust/Safe Save单元回归 | 本次未重复运行；未修改后端及保存逻辑，前述结果不冒充本次重验。 |
+
+中间扩展测试时，fixture返回值多留了逗号导致format/lint/typecheck和构建明确失败（TS1109）；修正该测试文件语法后，以上完整前端检查、341项测试和构建均重跑通过，没有关闭检查。此前339项和第一版构建是中间结果，不代表最终代码。
+
+#### 本次原生范围与缺口
+
+证据根 `/private/tmp/milo-tooltip-fti96g42/`，两套专用临时.app和home-before/home-after；沿用已验证的HOME隔离方式，未覆盖旧测试环境。Before来自前次大纲修正构建，After来自本次新构建；仅临时副本改显示名/测试标识并ad-hoc签名，正式配置不变。实际PID18855/18858及可执行路径通过ps核实；CUA分别绑定 `io.github.milo.tooltip.before.test` / `io.github.milo.tooltip.after.test`。实际设置位置均为各临时HOME内 `Library/Application Support/io.github.milo.editor/settings.json`，会话/最近文件仅本次tooltip-test.md；详细指纹见manifest.json。真实设置本次前后SHA-256相同（fffcead3b9bfbd1acffb64b6a2771e07d4cde85adcb3811a8c0ed8239b752c37），没有终止用户实例或操作真实文档。
+
+- **通过（最终代码实际样例）**：补齐按钮disabled清理后重新构建，另启动 `Milo Tooltip Final.app` PID20809，CUA绑定 `io.github.milo.tooltip.final.test`，使用全新home-final；实际进程路径、设置、仅含测试文档的会话均核实。macOS27.0.1（26A434），1280×820窗口，100%缩放。浅色/深色真实坐标点击侧边栏能切换，再点击空白区域未留下提示；没有用AX按钮动作代替这些点击。证据 `screenshots/final-{dark,light}-click-blank.png` 和CUA状态变化。
+- **中间版本实际观察，最终未完整确认**：深色从正文Shift+Tab聚焦侧边栏时，工具返回截图实际出现“显示侧边栏”及焦点环；随后真实坐标点击空白区域，截图中提示消失。专注按钮键盘提示也曾出现在AX。保存的截图未稳定保留显示瞬间，最终版本键盘遍历也未稳定捕获显示状态，因此不把所有键盘/Escape及两主题提示外观矩阵计为最终原生通过；确定性测试保留相应覆盖。
+- **通过（最终代码）**：浅色真实拖动选择测试句子（`final-light-selection.png`），Right后继续输入，AX更新且磁盘核对为 `Select this test sentence TOOLTIPEDIT FINAL.`，正文选区/编辑焦点及既有自动保存没有被关闭提示的监听阻断。仅修改专用测试文档。旧after-light-selection样例对应中间版本，不代替最终结果。
+- **未执行/未完整复现**：当前CUA公开API只有click/drag/scroll和键盘，没有独立鼠标移动或hover接口。未用拖动、零距离滚动、AX click、模拟DOM事件或其他技术冒充“hover→离开→点击”的完整真实时序；因此仅悬停后移开、移至提示阅读、快速离开/点击的原生时序仍待有该能力时验证。旧应用的有限点击/键盘尝试未稳定复现截图残留；已确定性复现的未blur路径不据此撤销，也不将旧应用行为猜测为系统问题。浅色提示显示/外观及所有其他共用按钮的完整原生矩阵未完成。
+
+上述自动化和新构建对应本独立提交的产品及测试内容，随后只补充报告；完整提交SHA在交付回复记录。修复已独立交付，原生验收只通过上述实际样例，未宣称完整鼠标验收通过；不push、不发版，不混入其他优化。
