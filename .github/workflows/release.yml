@@ -8,7 +8,14 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    name: Verify release source on macOS
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: verify
     name: Sign, notarize, and publish macOS release
     runs-on: macos-14
     env:
@@ -28,6 +35,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: rustfmt, clippy
       - name: Verify release credentials are configured
         run: |
           test -n "$APPLE_CERTIFICATE"
@@ -39,7 +47,7 @@ jobs:
           test -n "$KEYCHAIN_PASSWORD"
       - run: npm ci
       - run: npm run test
-      - run: npm run lint
+      - run: npm run lint -- --max-warnings=0
       - name: Import Developer ID certificate
         run: |
           certificate_path="$RUNNER_TEMP/milo-certificate.p12"

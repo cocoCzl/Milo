@@ -89,7 +89,7 @@ Milo registers as an optional macOS editor for `.md` and `.markdown` files so Fi
 _Avoid_: default-app takeover, exclusive file ownership
 
 **Code Block Language**:
-The optional language identifier on a fenced Markdown code block. Milo preserves it and offers a lightweight in-place selector, while MVP code blocks remain unhighlighted until Shiki support arrives.
+The optional language identifier on a fenced Markdown code block. Milo preserves it and offers a lightweight in-place selector. The editor uses `miloPrism` with Refractor for syntax decorations; Shiki remains deferred. The authored code stays in a stable `<pre>` content DOM for Safari/WKWebView composition.
 _Avoid_: syntax-highlighting theme, executable code
 
 **Editable Table**:
