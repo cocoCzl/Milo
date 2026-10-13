@@ -5,6 +5,7 @@ import {
   nodeViewCtx,
   prosePluginsCtx,
   rootCtx,
+  serializerCtx,
   type CmdKey,
 } from '@milkdown/core'
 import { history } from '@milkdown/plugin-history'
@@ -67,6 +68,7 @@ import {
 } from './headingNavigation'
 import { createCodeBlockNodeView } from './codeBlockNodeView'
 import { createImageNodeView } from './imageNodeView'
+import { createCompositionSaveBoundary, type EditorComposition } from './compositionSaveBoundary'
 
 const tableDefaultCellMinWidth = 100
 const createTableNodeView: NodeViewConstructor = (node) =>
@@ -89,6 +91,7 @@ type MilkdownEditorProps = {
   documentPath?: string | null
   initialMarkdown: string
   onMarkdownChange?: (markdown: string) => void
+  onCompositionChange?: (state: EditorComposition) => void
   onPasteImage?: (image: PastedImage) => Promise<string | null>
   placeholder?: string
   presentationMode?: PresentationMode
@@ -174,6 +177,7 @@ export function MilkdownEditor({
   documentPath = null,
   initialMarkdown,
   onMarkdownChange,
+  onCompositionChange,
   onPasteImage,
   placeholder,
   presentationMode = 'edit',
@@ -191,6 +195,7 @@ export function MilkdownEditor({
   const copyRef = useRef(editorCopy)
   const documentPathRef = useRef(documentPath)
   const onMarkdownChangeRef = useRef(onMarkdownChange)
+  const onCompositionChangeRef = useRef(onCompositionChange)
   const onPasteImageRef = useRef(onPasteImage)
   const presentationModeRef = useRef<PresentationMode>(presentationMode)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -217,6 +222,7 @@ export function MilkdownEditor({
   if (!contextualStoreRef.current) contextualStoreRef.current = new ContextualEditorStore()
 
   onMarkdownChangeRef.current = onMarkdownChange
+  onCompositionChangeRef.current = onCompositionChange
   onPasteImageRef.current = onPasteImage
   presentationModeRef.current = presentationMode
   ariaLabelRef.current = ariaLabel
@@ -240,6 +246,12 @@ export function MilkdownEditor({
         ctx.update(prosePluginsCtx, (plugins) => [
           createContextualEditorPlugin(contextualStoreRef.current!),
           createSafariCompositionHardbreakPlugin(),
+          createCompositionSaveBoundary(
+            (view) => ctx.get(serializerCtx)(view.state.doc),
+            (state) => {
+              if (!disposed) onCompositionChangeRef.current?.(state)
+            },
+          ),
           new Plugin({
             props: {
               handleKeyDown: (editorView, event) => {
@@ -285,10 +297,10 @@ export function MilkdownEditor({
           ],
           ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
         ])
-        ctx.get(listenerCtx).markdownUpdated((updateCtx, markdown) => {
+        ctx.get(listenerCtx).markdownUpdated((updateCtx) => {
           if (!disposed) {
-            onMarkdownChangeRef.current?.(markdown)
             const editorView = updateCtx.get(editorViewCtx)
+            onMarkdownChangeRef.current?.(updateCtx.get(serializerCtx)(editorView.state.doc))
             if (editorView.state) setHeadings(readHeadings(editorView.state))
           }
         })

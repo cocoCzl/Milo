@@ -685,6 +685,172 @@ describe('useDocumentSession', () => {
     expect(fileOnDisk).toBe('# External source')
   })
 
+  it.each([0, 500])(
+    'blocks autosave and manual save when composition starts after %sms',
+    async (delay) => {
+      const session = await openSavedDocument()
+      vi.useFakeTimers()
+      const origin = originFor(session, session.result.current.activeTabId!)
+      if (delay) act(() => updateActive(session, '# Confirmed pending edit'))
+      await act(async () => vi.advanceTimersByTimeAsync(delay))
+      act(() => session.result.current.updateComposition(origin, { phase: 'composing' }))
+      act(() => session.result.current.updateMarkdown(origin, '# Confirmed pending edit ni hao'))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000)
+        await expect(session.result.current.saveDocument()).resolves.toBe(false)
+        await expect(session.result.current.saveAsDocument()).resolves.toBe(false)
+      })
+      expect(fileOnDisk).toBe('# Before\n')
+      expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+      expect(mocks.pickMarkdownSavePath).not.toHaveBeenCalled()
+      act(() => session.result.current.requestCloseTab(origin.tabId))
+      await act(async () => session.result.current.saveAndCloseTab())
+      expect(session.result.current.closingTabId).toBe(origin.tabId)
+      expect(session.result.current.tabs).toHaveLength(1)
+      act(() =>
+        session.result.current.updateComposition(origin, {
+          phase: 'settled',
+          markdown: '# Confirmed pending edit 你好',
+        }),
+      )
+      await act(async () => vi.advanceTimersByTimeAsync(1000))
+      expect(fileOnDisk).toBe('# Confirmed pending edit 你好')
+      expect(session.result.current.document.isDirty).toBe(false)
+    },
+  )
+
+  it('saves confirmed edits after cancellation and does not block another tab', async () => {
+    const files = new Map([
+      [path, '# Before\n'],
+      ['/tmp/other.md', '# Other\n'],
+    ])
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: files.get(requestedPath)!,
+      lineEnding: 'lf' as const,
+      hasBom: false,
+    }))
+    mocks.writeMarkdownFile.mockImplementation(async (document) => {
+      files.set(document.path, document.markdown)
+      return { ...document }
+    })
+    const session = await openSavedDocument()
+    const source = originFor(session, session.result.current.activeTabId!)
+    await act(async () => session.result.current.openDocumentAtPath('/tmp/other.md'))
+    const other = originFor(session, session.result.current.activeTabId!)
+    vi.useFakeTimers()
+    act(() => session.result.current.updateMarkdown(source, '# Confirmed edit'))
+    await act(async () => vi.advanceTimersByTimeAsync(500))
+    act(() => session.result.current.updateComposition(source, { phase: 'composing' }))
+    act(() => session.result.current.updateMarkdown(source, '# Confirmed edit ni hao'))
+    act(() => session.result.current.updateMarkdown(other, '# Other saved independently'))
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(files.get(path)).toBe('# Before\n')
+    expect(files.get('/tmp/other.md')).toBe('# Other saved independently')
+    act(() =>
+      session.result.current.updateComposition(source, {
+        phase: 'settled',
+        markdown: '# Confirmed edit',
+      }),
+    )
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(files.get(path)).toBe('# Confirmed edit')
+    act(() => session.result.current.updateMarkdown(source, '# After cancellation'))
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(files.get(path)).toBe('# After cancellation')
+    expect(
+      session.result.current.tabs.find((tab) => tab.id === source.tabId)?.document.isDirty,
+    ).toBe(false)
+  })
+
+  it('rechecks composition after an asynchronous save preflight', async () => {
+    const session = await openSavedDocument()
+    const origin = originFor(session, session.result.current.activeTabId!)
+    act(() => updateActive(session, '# Confirmed snapshot'))
+    let finishRead!: () => void
+    mocks.recoverAndReadMarkdownFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRead = () =>
+            resolve({ path, markdown: '# Before\n', lineEnding: 'lf', hasBom: false })
+        }),
+    )
+    let save!: Promise<boolean>
+    await act(async () => {
+      save = session.result.current.saveDocument()
+    })
+    act(() => session.result.current.updateComposition(origin, { phase: 'composing' }))
+    act(() => updateActive(session, '# Confirmed snapshot ni hao'))
+    await act(async () => {
+      finishRead()
+      await expect(save).resolves.toBe(false)
+    })
+    expect(fileOnDisk).toBe('# Before\n')
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('finishes an already-started confirmed write without marking an active composition saved or closing it', async () => {
+    const session = await openSavedDocument()
+    const origin = originFor(session, session.result.current.activeTabId!)
+    act(() => updateActive(session, '# Confirmed snapshot'))
+    act(() => session.result.current.requestCloseTab(origin.tabId))
+    let finishWrite!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(
+      (document) =>
+        new Promise((resolve) => {
+          finishWrite = () => {
+            fileOnDisk = document.markdown
+            resolve({ ...document })
+          }
+        }),
+    )
+    let close!: Promise<void>
+    await act(async () => {
+      close = session.result.current.saveAndCloseTab()
+    })
+    expect(mocks.writeMarkdownFile).toHaveBeenCalledTimes(1)
+    act(() => session.result.current.updateComposition(origin, { phase: 'composing' }))
+    // Even before the 200ms listener forwards new text, the active composition
+    // must keep the tab dirty and prevent a close on the older write completion.
+    await act(async () => {
+      finishWrite()
+      await close
+    })
+    expect(fileOnDisk).toBe('# Confirmed snapshot')
+    expect(session.result.current.tabs).toHaveLength(1)
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.saveFeedback).not.toBe('saved')
+    expect(session.result.current.closingTabId).toBe(origin.tabId)
+    act(() => updateActive(session, '# Confirmed snapshot ni hao'))
+    act(() =>
+      session.result.current.updateComposition(origin, {
+        phase: 'settled',
+        markdown: '# Confirmed snapshot 你好',
+      }),
+    )
+    expect(session.result.current.document.isDirty).toBe(true)
+    await act(async () => session.result.current.saveAndCloseTab())
+    expect(fileOnDisk).toBe('# Confirmed snapshot 你好')
+    expect(session.result.current.tabs).toHaveLength(0)
+  })
+
+  it('returns to clean after cancelling a composition back to an already-written snapshot', async () => {
+    const session = await openSavedDocument()
+    const origin = originFor(session, session.result.current.activeTabId!)
+    act(() => updateActive(session, '# Confirmed snapshot'))
+    await act(async () => session.result.current.saveDocument())
+    act(() => session.result.current.updateComposition(origin, { phase: 'composing' }))
+    act(() => updateActive(session, '# Confirmed snapshot ni hao'))
+    act(() =>
+      session.result.current.updateComposition(origin, {
+        phase: 'settled',
+        markdown: '# Confirmed snapshot',
+      }),
+    )
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(fileOnDisk).toBe('# Confirmed snapshot')
+  })
+
   it('reloads the external version on request and preserves local text after a write failure', async () => {
     const session = await openSavedDocument()
 

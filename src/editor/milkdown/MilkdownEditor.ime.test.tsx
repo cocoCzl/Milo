@@ -9,6 +9,86 @@ import { proseMirrorDocJSON } from './editorTestFixtures'
 afterEach(cleanup)
 
 describe('MilkdownEditor ime', () => {
+  it('announces composition synchronously and settles after a final input that follows compositionend', async () => {
+    const onCompositionChange = vi.fn()
+    const onMarkdownChange = vi.fn()
+    const { container } = render(
+      <MilkdownEditor
+        initialMarkdown="Before"
+        onCompositionChange={onCompositionChange}
+        onMarkdownChange={onMarkdownChange}
+      />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    fireEvent.compositionStart(editor)
+    expect(onCompositionChange).toHaveBeenLastCalledWith({ phase: 'composing' })
+    const paragraph = editor.querySelector('p')!
+    paragraph.textContent = 'Before ni hao'
+    fireEvent.input(editor, { inputType: 'insertCompositionText', isComposing: true })
+    fireEvent.compositionEnd(editor, { data: '你好' })
+    expect(onCompositionChange).toHaveBeenCalledTimes(1)
+    // WKWebView can deliver the final input/DOM replacement after compositionend.
+    paragraph.textContent = 'Before 你好'
+    fireEvent.input(editor, { inputType: 'insertFromComposition', isComposing: false })
+    await waitFor(() =>
+      expect(onCompositionChange).toHaveBeenLastCalledWith({
+        phase: 'settled',
+        markdown: 'Before 你好\n',
+      }),
+    )
+    await waitFor(() => expect(onMarkdownChange).toHaveBeenLastCalledWith('Before 你好\n'))
+  })
+
+  it('settles a cancelled composition without waiting for a markdown listener event', async () => {
+    const onCompositionChange = vi.fn()
+    const { container } = render(
+      <MilkdownEditor initialMarkdown="Confirmed" onCompositionChange={onCompositionChange} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    fireEvent.compositionStart(editor)
+    fireEvent.compositionEnd(editor, { data: '' })
+    expect(onCompositionChange).toHaveBeenCalledTimes(1)
+    await waitFor(() =>
+      expect(onCompositionChange).toHaveBeenLastCalledWith({
+        phase: 'settled',
+        markdown: 'Confirmed\n',
+      }),
+    )
+  })
+
+  it('keeps a restarted composition blocked and cancels settlement on editor disposal', async () => {
+    const onCompositionChange = vi.fn()
+    const { container, unmount } = render(
+      <MilkdownEditor initialMarkdown="Before" onCompositionChange={onCompositionChange} />,
+    )
+    const editor = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(element).toBeInTheDocument()
+      return element!
+    })
+    fireEvent.compositionStart(editor)
+    fireEvent.compositionEnd(editor)
+    fireEvent.compositionStart(editor)
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+    )
+    expect(onCompositionChange.mock.calls).toEqual([[{ phase: 'composing' }]])
+    fireEvent.compositionEnd(editor)
+    unmount()
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())),
+    )
+    expect(onCompositionChange.mock.calls).toEqual([[{ phase: 'composing' }]])
+  })
+
   it('commits a Chinese IME composition without HTML or invisible-character pollution', async () => {
     const onMarkdownChange = vi.fn()
     const { container } = render(

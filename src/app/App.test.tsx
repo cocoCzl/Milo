@@ -8,10 +8,12 @@ const preferenceMocks = vi.hoisted(() => ({
 
 const editorMocks = vi.hoisted(() => ({
   hasHeadings: true,
+  compositionChanges: new Map<string, (state: EditorComposition) => void>(),
   markdownChanges: new Map<string, (markdown: string) => void>(),
 }))
 
 import { App } from './App'
+import type { EditorComposition } from '../editor/milkdown/compositionSaveBoundary'
 
 vi.mock('../editor/milkdown/MilkdownEditor', () => ({
   MilkdownEditor: ({
@@ -21,6 +23,7 @@ vi.mock('../editor/milkdown/MilkdownEditor', () => ({
     initialMarkdown,
     onCloseOutline,
     onMarkdownChange,
+    onCompositionChange,
     outlineLayout,
     outlineOpen,
     presentationMode = 'edit',
@@ -31,10 +34,12 @@ vi.mock('../editor/milkdown/MilkdownEditor', () => ({
     initialMarkdown: string
     onCloseOutline?: () => void
     onMarkdownChange?: (markdown: string) => void
+    onCompositionChange?: (state: EditorComposition) => void
     outlineLayout?: 'inline' | 'drawer'
     outlineOpen?: boolean
     presentationMode?: string
   }) => {
+    if (onCompositionChange) editorMocks.compositionChanges.set(editorId, onCompositionChange)
     if (onMarkdownChange) editorMocks.markdownChanges.set(editorId, onMarkdownChange)
     return (
       <div
@@ -87,6 +92,7 @@ beforeEach(() => {
   preferenceMocks.save.mockClear()
   editorMocks.hasHeadings = true
   editorMocks.markdownChanges.clear()
+  editorMocks.compositionChanges.clear()
   preferenceMocks.load.mockResolvedValue({
     settingsVersion: 3,
     appearance: 'system',
@@ -252,6 +258,20 @@ describe('App', () => {
     const editors = screen.getAllByRole('textbox', { hidden: true })
     expect(editors[0]).toHaveAttribute('data-markdown', 'A1')
     expect(editors[1]).toHaveAttribute('data-markdown', '')
+  })
+
+  it('routes an editor composition to its document close guard without blocking a clean second tab', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    const firstComposition = editorMocks.compositionChanges.values().next().value!
+    act(() => firstComposition({ phase: 'composing' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    const closeButtons = screen.getAllByRole('button', { name: 'Close Untitled' })
+    fireEvent.click(closeButtons[1])
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Close Untitled' }))
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getByRole('alertdialog')).toBeVisible()
   })
 
   it("keeps each tab's document scroll position separate and clamps a restored position", () => {

@@ -25,6 +25,7 @@ export const emptyDocumentTab: DocumentTab = {
     revision: 0,
   },
   activity: 'idle',
+  isComposing: false,
   error: null,
   saveError: null,
   watchError: null,
@@ -53,6 +54,7 @@ export type DocumentTab = {
   id: number
   document: DocumentSession
   activity: DocumentActivity
+  isComposing: boolean
   error: string | null
   saveError: string | null
   watchError: string | null
@@ -76,6 +78,7 @@ export function createTab(document: DocumentSession): DocumentTab {
     id: document.id,
     document,
     activity: 'idle',
+    isComposing: false,
     error: null,
     saveError: null,
     watchError: null,

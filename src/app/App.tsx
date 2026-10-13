@@ -787,6 +787,12 @@ export function App() {
                     markdown,
                   )
                 }
+                onCompositionChange={(state) =>
+                  session.updateComposition(
+                    { tabId: tab.id, documentId: tab.document.id, path: tab.document.path },
+                    state,
+                  )
+                }
                 onPasteImage={(image) =>
                   session.pasteImage(image, {
                     tabId: tab.id,

@@ -13,6 +13,7 @@ import {
   type DocumentOrigin,
 } from './documentSessionModel'
 import { readableError } from '../lib/readableError'
+import type { EditorComposition } from '../editor/milkdown/compositionSaveBoundary'
 import {
   pickMarkdownFile,
   pickMarkdownSavePath,
@@ -120,6 +121,27 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const createNewDocument = useCallback(() => {
     appendTab(createUntitledDocument())
   }, [appendTab])
+
+  const updateComposition = useCallback(
+    (origin: DocumentOrigin, state: EditorComposition) => {
+      if (!getOriginTab(origin)) return
+      if (state.phase === 'settled') updateMarkdown(origin, state.markdown)
+      replaceTab(origin.tabId, (tab) => ({
+        ...tab,
+        isComposing: state.phase === 'composing',
+        document:
+          state.phase === 'settled' && tab.document.persistedMarkdown !== null
+            ? {
+                ...tab.document,
+                isDirty:
+                  composeMarkdownDocument(tab.document.frontMatter, tab.document.markdown) !==
+                  tab.document.persistedMarkdown,
+              }
+            : tab.document,
+      }))
+    },
+    [getOriginTab, replaceTab, updateMarkdown],
+  )
 
   const openDocumentAtPath = useCallback(
     async (path: string) => {
@@ -245,6 +267,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const savedTab = getOriginTab(origin)
       if (
         !savedTab ||
+        savedTab.isComposing ||
         savedTab.document.protectionReason ||
         (expectedRevision !== undefined &&
           (savedTab.document.revision !== expectedRevision ||
@@ -295,7 +318,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         }
       }
 
-      if (!getOriginTab(origin)) return false
+      if (!getOriginTab(origin) || getOriginTab(origin)?.isComposing) return false
       if (safeSaveEnabled && allowExternalOverwrite) {
         try {
           expectedDisk = await recoverAndReadMarkdownFile(path)
@@ -305,6 +328,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           return false
         }
       }
+      if (!getOriginTab(origin) || getOriginTab(origin)?.isComposing) return false
       replaceTab(origin.tabId, (tab) => ({
         ...tab,
         activity: 'saving',
@@ -351,12 +375,15 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
             title: titleFromPath(savedFile.path),
             lineEnding: savedFile.lineEnding,
             hasBom: savedFile.hasBom,
-            isDirty: tab.document.markdown !== savedSnapshot.markdown,
+            isDirty: tab.isComposing || tab.document.markdown !== savedSnapshot.markdown,
             persistedMarkdown: serializedMarkdown,
           },
           externalChange: null,
           notice: null,
-          saveFeedback: 'saved',
+          saveFeedback:
+            tab.isComposing || tab.document.markdown !== savedSnapshot.markdown
+              ? 'pending'
+              : 'saved',
           saveError: null,
         }))
         return true
@@ -385,7 +412,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const saveAsDocument = useCallback(
     async (id = activeTabIdRef.current) => {
       const tab = getTab(id)
-      if (!tab || tab.document.protectionReason) return false
+      if (!tab || tab.isComposing || tab.document.protectionReason) return false
       const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
       const path = await pickMarkdownSavePath(defaultPath)
       return path ? saveToPath(originForTab(tab), path) : false
@@ -442,6 +469,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         replaceTab(tabId, (tab) => ({
           ...tab,
           activity: 'idle',
+          isComposing: false,
           document: {
             ...tab.document,
             path: file.path,
@@ -501,7 +529,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           return
         }
         if (file.markdown === latestTab.document.persistedMarkdown) return
-        if (latestTab.document.isDirty) {
+        if (latestTab.document.isDirty || latestTab.isComposing) {
           replaceTab(id, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
           return
         }
@@ -544,6 +572,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         tab.document.revision,
         tab.document.protectionReason,
         tab.activity,
+        tab.isComposing,
         tab.externalChange,
       ].join(':'),
     )
@@ -599,6 +628,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         !tab.document.isDirty ||
         tab.document.protectionReason ||
         tab.activity !== 'idle' ||
+        tab.isComposing ||
         tab.externalChange
       )
         return []
@@ -653,7 +683,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     (id: number) => {
       const tab = getTab(id)
       if (!tab) return
-      if (tab.document.isDirty || tab.saveError) setClosingTabId(id)
+      if (tab.document.isDirty || tab.isComposing || tab.saveError) setClosingTabId(id)
       else removeTab(id)
     },
     [getTab, removeTab],
@@ -672,8 +702,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   }, [closingTabId])
 
   const saveAndCloseTab = useCallback(async () => {
-    if (closingTabId !== null && (await saveDocument(closingTabId))) removeTab(closingTabId)
-  }, [closingTabId, removeTab, saveDocument])
+    if (closingTabId === null || !(await saveDocument(closingTabId))) return
+    const tab = getTab(closingTabId)
+    if (tab && !tab.isComposing && !tab.document.isDirty) removeTab(closingTabId)
+  }, [closingTabId, getTab, removeTab, saveDocument])
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? emptyDocumentTab,
@@ -714,5 +746,6 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     selectTab,
     tabs,
     updateMarkdown,
+    updateComposition,
   }
 }

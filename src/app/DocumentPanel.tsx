@@ -3,10 +3,12 @@ import { MilkdownEditor } from '../editor/milkdown/MilkdownEditor'
 import type { DocumentTab } from '../hooks/documentSessionModel'
 import type { InterfaceCopy } from './interfaceCopy'
 import type { PresentationMode } from './presentationMode'
+import type { EditorComposition } from '../editor/milkdown/compositionSaveBoundary'
 
 type DocumentPanelProps = {
   active: boolean
   copy: InterfaceCopy
+  onCompositionChange: (state: EditorComposition) => void
   onMarkdownChange: (markdown: string) => void
   onPasteImage: (
     image: import('../file-system/nativeMarkdownFile').PastedImage,
@@ -30,6 +32,7 @@ export function DocumentPanel({
   active,
   copy,
   onMarkdownChange,
+  onCompositionChange,
   onPasteImage,
   onOverwrite,
   onReload,
@@ -75,6 +78,7 @@ export function DocumentPanel({
           documentPath={document.path}
           onCloseOutline={onCloseOutline}
           onMarkdownChange={onMarkdownChange}
+          onCompositionChange={onCompositionChange}
           onPasteImage={onPasteImage}
           outlineDrawerMount={outlineDrawerMount}
           contextualOverlayMount={contextualOverlayMount}
@@ -135,6 +139,7 @@ type DocumentEditorWorkspaceProps = {
   documentPath: string | null
   editorId: string
   onCloseOutline: () => void
+  onCompositionChange: (state: EditorComposition) => void
   onMarkdownChange: (markdown: string) => void
   onPasteImage: (
     image: import('../file-system/nativeMarkdownFile').PastedImage,
@@ -156,6 +161,7 @@ function DocumentEditorWorkspace({
   editorId,
   onCloseOutline,
   onMarkdownChange,
+  onCompositionChange,
   onPasteImage,
   outlineDrawerMount,
   contextualOverlayMount,
@@ -179,6 +185,7 @@ function DocumentEditorWorkspace({
         initialMarkdown={document.markdown}
         onCloseOutline={onCloseOutline}
         onMarkdownChange={onMarkdownChange}
+        onCompositionChange={onCompositionChange}
         onPasteImage={onPasteImage}
         contextualOverlayMount={contextualOverlayMount}
         outlineLayout={outlineLayout}
