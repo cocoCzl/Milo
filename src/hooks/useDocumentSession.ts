@@ -4,7 +4,16 @@ import { composeMarkdownDocument, inspectMarkdownDocument } from '../editor/mark
 import { watchMarkdownFile } from '../file-system/nativeFileWatcher'
 import type { StartupSession } from '../settings/applicationSettings'
 import {
-  type LineEnding,
+  createDocumentState,
+  createTab,
+  emptyDocumentTab,
+  titleFromPath,
+  type DocumentSession,
+  type DocumentTab,
+  type DocumentOrigin,
+} from './documentSessionModel'
+import { readableError } from '../lib/readableError'
+import {
   pickMarkdownFile,
   pickMarkdownSavePath,
   recoverAndReadMarkdownFile,
@@ -15,111 +24,11 @@ import {
   writeMarkdownFileSafely,
 } from '../file-system/nativeMarkdownFile'
 
-type DocumentActivity = 'idle' | 'opening' | 'saving'
-type SaveFeedback = 'idle' | 'pending' | 'saving' | 'saved'
-type ExternalChange = 'pending' | 'retained'
-type WatchState = 'inactive' | 'active' | 'unavailable'
-
-const emptyDocumentTab: DocumentTab = {
-  id: 0,
-  document: {
-    id: 0,
-    path: null,
-    title: '',
-    markdown: '',
-    lineEnding: 'lf',
-    hasBom: false,
-    frontMatter: '',
-    isDirty: false,
-    protectionReason: null,
-    persistedMarkdown: null,
-    editorVersion: 0,
-    revision: 0,
-  },
-  activity: 'idle',
-  error: null,
-  saveError: null,
-  watchError: null,
-  watchState: 'inactive',
-  externalChange: null,
-  notice: null,
-  saveFeedback: 'idle',
-}
-
-export type DocumentSession = {
-  id: number
-  path: string | null
-  title: string
-  markdown: string
-  lineEnding: LineEnding
-  hasBom: boolean
-  frontMatter: string
-  isDirty: boolean
-  protectionReason: string | null
-  persistedMarkdown: string | null
-  editorVersion: number
-  revision: number
-}
-
-export type DocumentTab = {
-  id: number
-  document: DocumentSession
-  activity: DocumentActivity
-  error: string | null
-  saveError: string | null
-  watchError: string | null
-  watchState: WatchState
-  externalChange: ExternalChange | null
-  notice: string | null
-  saveFeedback: SaveFeedback
-}
-
-// This identity is created at the event source and travels with every
-// asynchronous operation.  Nothing that originates in an editor may select
-// its destination from the currently visible tab later.
-export type DocumentOrigin = {
-  tabId: number
-  documentId: number
-  path: string | null
-}
-
 let documentId = 0
 
 function createUntitledDocument(): DocumentSession {
   documentId += 1
-  return {
-    id: documentId,
-    path: null,
-    title: 'Untitled',
-    markdown: '',
-    lineEnding: 'lf',
-    hasBom: false,
-    frontMatter: '',
-    isDirty: false,
-    protectionReason: null,
-    persistedMarkdown: null,
-    editorVersion: 0,
-    revision: 0,
-  }
-}
-
-function createTab(document: DocumentSession): DocumentTab {
-  return {
-    id: document.id,
-    document,
-    activity: 'idle',
-    error: null,
-    saveError: null,
-    watchError: null,
-    watchState: 'inactive',
-    externalChange: null,
-    notice: null,
-    saveFeedback: 'idle',
-  }
-}
-
-function titleFromPath(path: string): string {
-  return path.split(/[\\/]/).at(-1) ?? path
+  return createDocumentState(documentId)
 }
 
 export function useDocumentSession(untitledTitle = 'Untitled') {
@@ -804,9 +713,4 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     tabs,
     updateMarkdown,
   }
-}
-
-function readableError(reason: unknown, fallback: string): string {
-  if (typeof reason === 'string' && reason) return reason
-  return reason instanceof Error && reason.message ? reason.message : fallback
 }

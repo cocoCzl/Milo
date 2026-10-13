@@ -7,7 +7,6 @@ import {
   rootCtx,
   type CmdKey,
 } from '@milkdown/core'
-import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import { history } from '@milkdown/plugin-history'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { commonmark } from '@milkdown/preset-commonmark'
@@ -20,30 +19,20 @@ import {
   gfm,
 } from '@milkdown/preset-gfm'
 import { splitBlockAs } from '@milkdown/prose/commands'
-import {
-  NodeSelection,
-  Plugin,
-  TextSelection,
-  type Command,
-  type EditorState,
-} from '@milkdown/prose/state'
-import { CellSelection, deleteColumn, deleteRow, TableView } from '@milkdown/prose/tables'
+import { Plugin, TextSelection, type Command } from '@milkdown/prose/state'
+import { deleteColumn, deleteRow, TableView } from '@milkdown/prose/tables'
 import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
 import { callCommand } from '@milkdown/utils'
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PastedImage } from '../../file-system/nativeMarkdownFile'
 import type { PresentationMode } from '../../app/presentationMode'
 import { isExternalHttpUrl, openExternalLink } from '../../file-system/externalLink'
 import { BlockHandle } from './BlockHandle'
-import { BlockMenu, type BlockMenuCopy } from './BlockMenu'
+import { BlockMenu } from './BlockMenu'
 import { isValidBlockTarget, type BlockMenuCommand, type BlockTarget } from './blockControls'
-import { EditorContextMenu, type EditorContextMenuCopy } from './EditorContextMenu'
-import {
-  EditorLinkPopover,
-  type EditorLinkPopoverCopy,
-  type LinkPopoverMode,
-} from './EditorLinkPopover'
+import { EditorContextMenu } from './EditorContextMenu'
+import { EditorLinkPopover, type LinkPopoverMode } from './EditorLinkPopover'
 import { EditorOutline, type EditorHeading } from './EditorOutline'
 import { ContextualEditorStore, createContextualEditorPlugin } from './contextualEditorStore'
 import {
@@ -54,7 +43,7 @@ import {
   type EditorSelectionSnapshot,
 } from './editorCommands'
 import { focusEditorViewPreservingSelection } from './editorFocus'
-import { SelectionToolbar, type SelectionToolbarCopy } from './SelectionToolbar'
+import { SelectionToolbar } from './SelectionToolbar'
 import {
   createSafariCompositionHardbreakPlugin,
   miloSafariCompositionHardbreakSchema,
@@ -62,6 +51,22 @@ import {
 import { miloEmptyTableCellSerializer } from './tableEmptyCellSerializer'
 import { miloTableAlignmentSchema } from './tableAlignment'
 import { miloPrism } from './miloPrism'
+import { defaultEditorCopy, type EditorCopy } from './editorCopy'
+import {
+  readContextMenuSelection,
+  syncProseMirrorSelectionFromDOM,
+  linkHrefAtSelection,
+} from './editorSelection'
+import {
+  activeHeadingFromScroll,
+  headingAtSelection,
+  headingElement,
+  headingScrollTop,
+  readHeadings,
+  type PendingHeadingNavigation,
+} from './headingNavigation'
+import { createCodeBlockNodeView } from './codeBlockNodeView'
+import { createImageNodeView } from './imageNodeView'
 
 const tableDefaultCellMinWidth = 100
 const createTableNodeView: NodeViewConstructor = (node) =>
@@ -75,8 +80,6 @@ type EditorMenu = {
   top: number
   left: number
 }
-
-type ContextMenuSelection = Pick<EditorMenu, 'hasSelection' | 'inTable' | 'link' | 'selection'>
 
 type MilkdownEditorProps = {
   active?: boolean
@@ -94,178 +97,6 @@ type MilkdownEditorProps = {
   outlineOpen?: boolean
   contextualOverlayMount?: HTMLElement | null
   onCloseOutline?: () => void
-}
-
-type EditorCopy = BlockMenuCopy &
-  EditorContextMenuCopy &
-  EditorLinkPopoverCopy &
-  SelectionToolbarCopy & {
-    addColumnLeft: string
-    addColumnRight: string
-    addRowAbove: string
-    addRowBelow: string
-    codeBlockLanguage: string
-    closeOutline: string
-    deleteColumn: string
-    deleteBlock: string
-    deleteRow: string
-    loadImage: string
-    loadImageError: string
-    loadRemoteImage: (alt: string) => string
-    loadingImage: string
-    noOutline: string
-    outline: string
-    plainText: string
-    removeLink: string
-    insert: string
-    linkText: string
-    startWritingHint: string
-    startWriting: string
-  }
-
-const defaultEditorCopy: EditorCopy = {
-  apply: 'Apply',
-  blockquote: 'Quote',
-  bold: 'Bold',
-  bulletList: 'Bulleted list',
-  cancel: 'Cancel',
-  codeBlock: 'Code block',
-  copy: 'Copy',
-  cut: 'Cut',
-  divider: 'Divider',
-  formattingToolbar: 'Formatting',
-  heading1: 'Heading 1',
-  heading2: 'Heading 2',
-  heading3: 'Heading 3',
-  heading4: 'Heading 4',
-  heading5: 'Heading 5',
-  heading6: 'Heading 6',
-  moreHeadings: 'More Headings',
-  inlineCode: 'Inline code',
-  italic: 'Italic',
-  link: 'Link',
-  linkAddress: 'Link address',
-  orderedList: 'Numbered list',
-  paragraph: 'Body text',
-  selectAll: 'Select all',
-  strike: 'Strikethrough',
-  table: 'Table',
-  addBlock: 'Add block',
-  addColumnLeft: 'Add column left',
-  addColumnRight: 'Add column right',
-  addRowAbove: 'Add row above',
-  addRowBelow: 'Add row below',
-  codeBlockLanguage: 'Code block language',
-  closeOutline: 'Close outline',
-  deleteColumn: 'Delete column',
-  deleteRow: 'Delete row',
-  loadImage: 'Load image',
-  loadImageError: 'Could not load image — try again',
-  loadRemoteImage: (alt) => `Load remote image${alt ? `: ${alt}` : ''}`,
-  loadingImage: 'Loading image…',
-  noOutline: 'Headings will appear here.',
-  outline: 'Outline',
-  plainText: 'Plain text',
-  startWriting: 'Start with a thought…',
-  removeLink: 'Remove link',
-  deleteBlock: 'Delete block',
-  insert: 'Insert',
-  linkText: 'Link text',
-  addLink: 'Add link',
-  editLink: 'Edit link',
-  insertLink: 'Insert link…',
-  startWritingHint: 'Just type — Milo keeps the Markdown for you.',
-}
-
-const languageOptions = [
-  { value: '', label: '' },
-  { value: 'bash', label: 'Bash' },
-  { value: 'css', label: 'CSS' },
-  { value: 'html', label: 'HTML' },
-  { value: 'java', label: 'Java' },
-  { value: 'javascript', label: 'JavaScript' },
-  { value: 'json', label: 'JSON' },
-  { value: 'markdown', label: 'Markdown' },
-  { value: 'mermaid', label: 'Mermaid' },
-  { value: 'python', label: 'Python' },
-  { value: 'rust', label: 'Rust' },
-  { value: 'sql', label: 'SQL' },
-  { value: 'typescript', label: 'TypeScript' },
-]
-
-// eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the production mouseup path.
-export function syncProseMirrorSelectionFromDOM(editorView: EditorView): boolean {
-  if (
-    editorView.state.selection instanceof CellSelection ||
-    editorView.state.selection instanceof NodeSelection
-  )
-    return true
-
-  const domSelection = editorView.dom.ownerDocument.getSelection()
-
-  if (
-    !domSelection?.anchorNode ||
-    !domSelection.focusNode ||
-    !editorView.dom.contains(domSelection.anchorNode) ||
-    !editorView.dom.contains(domSelection.focusNode)
-  )
-    return false
-
-  try {
-    const selection = TextSelection.between(
-      editorView.state.doc.resolve(
-        editorView.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset),
-      ),
-      editorView.state.doc.resolve(
-        editorView.posAtDOM(domSelection.focusNode, domSelection.focusOffset),
-      ),
-    )
-
-    if (!selection.eq(editorView.state.selection)) {
-      editorView.dispatch(editorView.state.tr.setSelection(selection))
-    }
-    return true
-  } catch {
-    // A browser can briefly expose a DOM selection while replacing a node.
-    // A Link operation must never guess from a previous editor selection.
-    return false
-  }
-}
-
-// A contextmenu event is too late to trust WebKit's DOM Range: on macOS a
-// secondary click over a collapsed caret can temporarily expand that Range to
-// a word or block. ProseMirror has already synchronized genuine mouse
-// selections through the editor's mouseup path, so the editor state is the
-// authoritative context-menu selection and must be read without dispatching.
-// eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the real contextmenu capture path.
-export function readContextMenuSelection(editorView: EditorView): ContextMenuSelection {
-  const selection = editorView.state.selection
-  const snapshot: EditorSelectionSnapshot = {
-    doc: editorView.state.doc,
-    from: selection.from,
-    to: selection.to,
-    text: editorView.state.doc.textBetween(selection.from, selection.to, '\n', '\n'),
-  }
-  const link = selection.$from.marks().some((mark) => mark.type.name === 'link')
-  let inTable = false
-  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
-    if (selection.$from.node(depth).type.name === 'table') {
-      inTable = true
-      break
-    }
-  }
-  return { hasSelection: !selection.empty, inTable, link, selection: snapshot }
-}
-
-function linkHrefAtSelection(selection: EditorSelectionSnapshot): string | null {
-  const link = selection.doc.type.schema.marks.link
-  if (!link) return null
-  let href: string | null = null
-  selection.doc.nodesBetween(selection.from, selection.to, (node) => {
-    const mark = link.isInSet(node.marks)
-    if (mark && typeof mark.attrs.href === 'string' && href === null) href = mark.attrs.href
-  })
-  return href
 }
 
 const exitHeadingAsParagraph: Command = (state, dispatch) => {
@@ -333,122 +164,6 @@ const exitCodeOrTableAsParagraph: Command = (state, dispatch) => {
       .scrollIntoView(),
   )
   return true
-}
-
-const headingScrollOffset = 24
-// WebKit may report a fractional residual after a scroll is clamped at the
-// end of a long document.  Treat the final few pixels as the bottom so the
-// last visible heading, rather than its predecessor, wins the active state.
-const scrollBottomTolerance = 8
-const headingActivationTolerance = 2
-
-type PendingHeadingNavigation = {
-  pos: number
-}
-
-function headingScrollTop(stage: HTMLElement, heading: HTMLElement): number {
-  const stageRect = stage.getBoundingClientRect()
-  const headingRect = heading.getBoundingClientRect()
-  const maxScrollTop = Math.max(0, stage.scrollHeight - stage.clientHeight)
-  const targetTop = stage.scrollTop + headingRect.top - stageRect.top - headingScrollOffset
-  return Math.min(maxScrollTop, Math.max(0, targetTop))
-}
-
-type HeadingDomCache = {
-  doc: EditorState['doc']
-  elementsById: ReadonlyMap<string, HTMLElement>
-}
-
-// Milkdown's built-in heading-id plugin assigns a unique `id` to every
-// non-empty heading.  Unlike `nodeDOM(position)`, that id survives the
-// ProseMirror block-boundary ambiguity seen in WKWebView.  It is also more
-// reliable than pairing heading nodes and DOM elements by their list indexes:
-// an editor extension may add a heading-like DOM node without changing the
-// document model.  Navigation therefore resolves the active editor's current
-// heading through the same unique id used in the outline model.
-const headingDomCaches = new WeakMap<EditorView, HeadingDomCache>()
-
-function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLElement> {
-  const cached = headingDomCaches.get(editorView)
-  if (
-    cached?.doc === editorView.state.doc &&
-    Array.from(cached.elementsById.values()).every((element) => editorView.dom.contains(element))
-  )
-    return cached.elementsById
-
-  const elementsById = new Map<string, HTMLElement>()
-  editorView.dom
-    .querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
-    .forEach((element) => {
-      if (element.id && !elementsById.has(element.id)) elementsById.set(element.id, element)
-    })
-
-  headingDomCaches.set(editorView, { doc: editorView.state.doc, elementsById })
-  return elementsById
-}
-
-function headingElement(editorView: EditorView, heading: EditorHeading): HTMLElement | null {
-  const node = editorView.state.doc.nodeAt(heading.pos)
-  if (
-    node?.type.name !== 'heading' ||
-    node.textContent.trim() !== heading.text ||
-    Number(node.attrs.level) !== heading.level ||
-    node.attrs.id !== heading.id
-  ) {
-    return null
-  }
-
-  const element = headingElementsById(editorView).get(heading.id)
-  if (!element) return null
-  if (
-    element.tagName.toLowerCase() !== `h${heading.level}` ||
-    element.textContent?.trim() !== heading.text
-  ) {
-    return null
-  }
-  return element
-}
-
-function headingAtSelection(
-  state: EditorState,
-  headingsByPosition: ReadonlyMap<number, EditorHeading>,
-): number | null {
-  for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
-    if (state.selection.$from.node(depth).type.name !== 'heading') continue
-    const position = state.selection.$from.before(depth)
-    return headingsByPosition.has(position) ? position : null
-  }
-  return null
-}
-
-function activeHeadingFromScroll(
-  headings: EditorHeading[],
-  getElement: (pos: number) => HTMLElement | null,
-  stage: HTMLElement,
-): number | null {
-  if (headings.length === 0) return null
-
-  const stageRect = stage.getBoundingClientRect()
-  const remainingScroll = Math.max(0, stage.scrollHeight - stage.clientHeight - stage.scrollTop)
-  // The final document padding and WebKit fractional layout mean strict
-  // equality with maxScrollTop is not dependable.  Once the remaining travel
-  // is visually negligible, use the last heading actually intersecting the
-  // article viewport so the final chapters can become active.
-  const bottomThreshold = Math.max(scrollBottomTolerance, Math.min(48, stage.clientHeight * 0.08))
-  const isAtBottom = remainingScroll <= bottomThreshold
-  const activationLine = stageRect.top + headingScrollOffset + headingActivationTolerance
-  let current = headings[0].pos
-  let lastVisible: number | null = null
-
-  for (const heading of headings) {
-    const element = getElement(heading.pos)
-    if (!element) continue
-    const rect = element.getBoundingClientRect()
-    if (rect.bottom > stageRect.top && rect.top < stageRect.bottom) lastVisible = heading.pos
-    if (!isAtBottom && rect.top <= activationLine) current = heading.pos
-  }
-
-  return isAtBottom ? (lastVisible ?? headings[headings.length - 1].pos) : current
 }
 
 export function MilkdownEditor({
@@ -1486,345 +1201,4 @@ export function MilkdownEditor({
       ) : null}
     </div>
   )
-}
-
-function readHeadings(state: EditorState): EditorHeading[] {
-  const headings: EditorHeading[] = []
-
-  state.doc.descendants((node, position) => {
-    if (node.type.name !== 'heading') return
-    const text = node.textContent.trim()
-    const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
-    // The Milkdown heading-id plugin fills this during editor initialization.
-    // If it has not completed yet, do not expose a navigable heading that
-    // could resolve to a different DOM node; the next document update supplies
-    // the stable id and publishes it to the outline.
-    if (text && id)
-      headings.push({ id, key: id, level: Number(node.attrs.level) || 1, pos: position, text })
-  })
-
-  return headings
-}
-
-function createCodeBlockNodeView(
-  copyRef: MutableRefObject<EditorCopy>,
-  presentationModeRef: MutableRefObject<PresentationMode>,
-): NodeViewConstructor {
-  return (node, editorView, getPos) => {
-    const card = document.createElement('section')
-    const header = document.createElement('header')
-    const label = document.createElement('span')
-    const languageTrigger = document.createElement('button')
-    const languageMenu = document.createElement('div')
-    const copyButton = document.createElement('button')
-    // Safari/WKWebView can replace the nested <code> element while composing
-    // inside a <pre>.  Keep the content DOM at the stable <pre> boundary so
-    // ProseMirror observes those content mutations instead of mistaking them
-    // for NodeView chrome.
-    const contentDOM = document.createElement('pre')
-
-    card.className = 'code-block-card'
-    header.className = 'code-block-card__header'
-    label.className = 'code-block-card__label'
-    languageTrigger.className = 'code-block-card__language-trigger'
-    languageTrigger.type = 'button'
-    languageTrigger.setAttribute('aria-haspopup', 'listbox')
-    languageTrigger.setAttribute('aria-expanded', 'false')
-    languageMenu.className = 'code-block-card__language-menu'
-    languageMenu.setAttribute('role', 'listbox')
-    languageMenu.hidden = true
-    copyButton.className = 'code-block-card__copy'
-    copyButton.type = 'button'
-    contentDOM.className = 'code-block-card__content'
-
-    const closeLanguageMenu = () => {
-      languageMenu.hidden = true
-      languageTrigger.setAttribute('aria-expanded', 'false')
-    }
-
-    const updateControls = (nextNode = node) => {
-      const selected = String(nextNode.attrs.language ?? '')
-      const selectedOption =
-        languageOptions.find((option) => option.value === selected) ?? languageOptions[0]
-      const selectedLabel = selectedOption.value ? selectedOption.label : copyRef.current.plainText
-      card.dataset.language = selected
-      label.textContent = copyRef.current.codeBlock
-      languageTrigger.textContent = selectedLabel
-      languageTrigger.setAttribute(
-        'aria-label',
-        `${copyRef.current.codeBlockLanguage}: ${selectedLabel}`,
-      )
-      languageTrigger.disabled = presentationModeRef.current !== 'edit'
-      copyButton.setAttribute('aria-label', copyRef.current.copy)
-      copyButton.title = copyRef.current.copy
-
-      for (const option of languageMenu.querySelectorAll<HTMLButtonElement>('[role="option"]')) {
-        option.setAttribute(
-          'aria-selected',
-          String(option.dataset.language === selectedOption.value),
-        )
-      }
-    }
-
-    for (const option of languageOptions) {
-      const optionButton = document.createElement('button')
-      const optionLabel = option.value ? option.label : copyRef.current.plainText
-      optionButton.type = 'button'
-      optionButton.dataset.language = option.value
-      optionButton.setAttribute('role', 'option')
-      optionButton.textContent = optionLabel
-      optionButton.addEventListener('click', () => {
-        if (presentationModeRef.current !== 'edit') return
-        const position = getPos()
-        if (typeof position === 'number') {
-          editorView.dispatch(
-            editorView.state.tr.setNodeAttribute(position, 'language', option.value),
-          )
-        }
-        closeLanguageMenu()
-      })
-      languageMenu.append(optionButton)
-    }
-
-    languageTrigger.addEventListener('click', () => {
-      if (presentationModeRef.current !== 'edit') return
-      const isOpening = languageMenu.hidden
-      languageMenu.hidden = !isOpening
-      languageTrigger.setAttribute('aria-expanded', String(isOpening))
-    })
-    copyButton.addEventListener(
-      'click',
-      () => void navigator.clipboard?.writeText(node.textContent),
-    )
-
-    const closeMenuOnOutsidePress = (event: PointerEvent) => {
-      if (event.target instanceof Node && !card.contains(event.target)) closeLanguageMenu()
-    }
-    const closeMenuOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeLanguageMenu()
-    }
-    document.addEventListener('pointerdown', closeMenuOnOutsidePress)
-    document.addEventListener('keydown', closeMenuOnEscape)
-
-    header.append(label, languageTrigger, copyButton, languageMenu)
-    card.append(header, contentDOM)
-    updateControls()
-
-    return {
-      dom: card,
-      contentDOM,
-      update: (nextNode) => {
-        if (nextNode.type !== node.type) return false
-        node = nextNode
-        updateControls(nextNode)
-        return true
-      },
-      // Header controls are NodeView chrome. Every mutation at or below the
-      // content <pre> can affect authored code and must reach ProseMirror.
-      ignoreMutation: (mutation) => !contentDOM.contains(mutation.target),
-      stopEvent: (event) => event.target instanceof Node && header.contains(event.target),
-      destroy: () => {
-        document.removeEventListener('pointerdown', closeMenuOnOutsidePress)
-        document.removeEventListener('keydown', closeMenuOnEscape)
-      },
-    }
-  }
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- exported to regression-test the NodeView lifecycle directly.
-export function createImageNodeView(
-  documentPathRef: MutableRefObject<string | null>,
-  copyRef: MutableRefObject<EditorCopy>,
-): NodeViewConstructor {
-  return (node) => {
-    const source = String(node.attrs.src ?? '')
-    const alt = String(node.attrs.alt ?? '')
-    if (isExternalHttpUrl(source)) return createRemoteImageView(node, copyRef.current)
-
-    // A few Markdown exporters put a .md file path in image syntax. Sending
-    // it through Tauri's image asset protocol makes WebKit paint the protocol
-    // error inside the document, so keep this malformed image inert.
-    if (isMarkdownDocumentPath(source)) {
-      const placeholder = document.createElement('span')
-      placeholder.className = 'invalid-local-image'
-      placeholder.textContent = alt
-      return { dom: placeholder, ignoreMutation: () => true }
-    }
-
-    const root = document.createElement('span')
-    root.className = 'local-image-view'
-    root.setAttribute('contenteditable', 'false')
-    let currentNode = node
-    let currentImage: HTMLImageElement | null = null
-    let generation = 0
-
-    const clearCurrentImage = () => {
-      if (!currentImage) return
-      currentImage.onload = null
-      currentImage.onerror = null
-      currentImage = null
-    }
-
-    const failureLabel = () =>
-      copyRef.current.loadImageError
-        .replace(/\s*[—–-]\s*.*$/, '')
-        .replace(/[，,]\s*.*$/, '')
-        .trim() || copyRef.current.loadImageError
-
-    const showPlaceholder = (state: 'empty' | 'error', imageAlt: string, token: number) => {
-      if (token !== generation) return
-      clearCurrentImage()
-      root.dataset.imageState = state
-      const placeholder = document.createElement('span')
-      placeholder.className = 'local-image-placeholder'
-      placeholder.dataset.imageState = state
-      placeholder.setAttribute('contenteditable', 'false')
-      if (imageAlt) {
-        const description = document.createElement('span')
-        description.className = 'local-image-placeholder__alt'
-        description.textContent = imageAlt
-        placeholder.append(description)
-      }
-      const status = document.createElement('span')
-      status.className = 'local-image-placeholder__status'
-      status.textContent = failureLabel()
-      placeholder.append(status)
-      placeholder.setAttribute(
-        'aria-label',
-        imageAlt ? `${imageAlt}. ${status.textContent}` : status.textContent,
-      )
-      root.replaceChildren(placeholder)
-    }
-
-    const render = () => {
-      generation += 1
-      const token = generation
-      clearCurrentImage()
-      const nextSource = String(currentNode.attrs.src ?? '')
-      const nextAlt = String(currentNode.attrs.alt ?? '')
-      const nextTitle = String(currentNode.attrs.title ?? '')
-      if (!nextSource) {
-        showPlaceholder('empty', nextAlt, token)
-        return
-      }
-
-      root.dataset.imageState = 'loading'
-      const image = document.createElement('img')
-      currentImage = image
-      image.alt = nextAlt
-      if (nextTitle) image.title = nextTitle
-      image.onload = () => {
-        if (token !== generation || currentImage !== image) return
-        root.dataset.imageState = 'loaded'
-      }
-      image.onerror = () => {
-        if (token !== generation || currentImage !== image) return
-        showPlaceholder('error', nextAlt, token)
-      }
-      root.replaceChildren(image)
-      image.src =
-        documentPathRef.current && isTauri()
-          ? convertFileSrc(resolveDocumentPath(documentPathRef.current, nextSource))
-          : nextSource
-    }
-
-    render()
-    return {
-      dom: root,
-      update: (nextNode) => {
-        if (
-          nextNode.type !== currentNode.type ||
-          isExternalHttpUrl(String(nextNode.attrs.src ?? '')) ||
-          isMarkdownDocumentPath(String(nextNode.attrs.src ?? ''))
-        )
-          return false
-        currentNode = nextNode
-        render()
-        return true
-      },
-      // This atom has no contentDOM. Only mutations within its stable, inert
-      // rendering chrome are ignored; mutations outside the NodeView still
-      // reach ProseMirror normally.
-      ignoreMutation: (mutation) => mutation.target === root || root.contains(mutation.target),
-      destroy: () => {
-        generation += 1
-        clearCurrentImage()
-      },
-    }
-  }
-}
-
-function isMarkdownDocumentPath(source: string) {
-  return /\.(?:md|markdown|mdx)(?:[?#].*)?$/i.test(source.trim())
-}
-
-function createRemoteImageView(node: Parameters<NodeViewConstructor>[0], copy: EditorCopy) {
-  const container = document.createElement('span')
-  container.className = 'remote-image-view'
-  container.setAttribute('contenteditable', 'false')
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'remote-image-control'
-  button.textContent = copy.loadImage
-  let currentNode = node
-  let currentImage: HTMLImageElement | null = null
-
-  const syncRuntimeAttributes = () => {
-    const alt = String(currentNode.attrs.alt ?? '')
-    const title = String(currentNode.attrs.title ?? '')
-    button.setAttribute('aria-label', copy.loadRemoteImage(alt))
-    if (!currentImage) return
-    currentImage.alt = alt
-    if (title) currentImage.title = title
-    else currentImage.removeAttribute('title')
-  }
-
-  syncRuntimeAttributes()
-  button.addEventListener('click', () => {
-    button.disabled = true
-    button.textContent = copy.loadingImage
-    const image = document.createElement('img')
-    currentImage = image
-    syncRuntimeAttributes()
-    image.addEventListener('load', () => {
-      if (currentImage !== image) return
-      container.replaceChildren(image)
-    })
-    image.addEventListener('error', () => {
-      if (currentImage !== image) return
-      button.disabled = false
-      button.textContent = copy.loadImageError
-    })
-    image.src = String(currentNode.attrs.src ?? '')
-  })
-  container.append(button)
-  return {
-    dom: container,
-    update: (nextNode: Parameters<NodeViewConstructor>[0]) => {
-      if (
-        nextNode.type !== currentNode.type ||
-        String(nextNode.attrs.src ?? '') !== String(currentNode.attrs.src ?? '') ||
-        !isExternalHttpUrl(String(nextNode.attrs.src ?? ''))
-      )
-        return false
-      currentNode = nextNode
-      syncRuntimeAttributes()
-      return true
-    },
-    ignoreMutation: () => true,
-    destroy: () => {
-      currentImage = null
-    },
-  }
-}
-
-function resolveDocumentPath(documentPath: string, relativePath: string) {
-  if (/^[\\/]/.test(relativePath)) return relativePath
-  const base = documentPath.split(/[\\/]/).slice(0, -1)
-  for (const segment of relativePath.split(/[\\/]/)) {
-    if (!segment || segment === '.') continue
-    if (segment === '..') base.pop()
-    else base.push(segment)
-  }
-  return base.join('/')
 }

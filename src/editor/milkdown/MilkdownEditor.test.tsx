@@ -9,12 +9,9 @@ import { CellSelection, tableEditing, tableNodes } from '@milkdown/prose/tables'
 import { EditorView } from '@milkdown/prose/view'
 
 import { blockTargetAtPosition } from './blockControls'
-import {
-  createImageNodeView,
-  MilkdownEditor,
-  readContextMenuSelection,
-  syncProseMirrorSelectionFromDOM,
-} from './MilkdownEditor'
+import { MilkdownEditor } from './MilkdownEditor'
+import { createImageNodeView } from './imageNodeView'
+import { readContextMenuSelection, syncProseMirrorSelectionFromDOM } from './editorSelection'
 import { focusEditorViewPreservingSelection } from './editorFocus'
 
 afterEach(cleanup)
@@ -49,14 +46,17 @@ function localImageNodeViewTestHarness(source: string, alt = '', title: string |
   })
   const imageNode = (src: string, nextAlt = alt, nextTitle: string | null = title) =>
     schema.nodes.image.create({ src, alt: nextAlt, title: nextTitle })
-  const constructor = createImageNodeView({ current: '/documents/note.md' }, {
-    current: {
-      loadImage: 'Load image',
-      loadImageError: 'Could not load image — try again',
-      loadingImage: 'Loading image…',
-      loadRemoteImage: (imageAlt: string) => `Load remote image: ${imageAlt}`,
+  const constructor = createImageNodeView(
+    { current: '/documents/note.md' },
+    {
+      current: {
+        loadImage: 'Load image',
+        loadImageError: 'Could not load image — try again',
+        loadingImage: 'Loading image…',
+        loadRemoteImage: (imageAlt: string) => `Load remote image: ${imageAlt}`,
+      },
     },
-  } as unknown as Parameters<typeof createImageNodeView>[1])
+  )
   const view = constructor(imageNode(source), {} as EditorView, () => 1, [], {} as never)
   document.body.append(view.dom)
   return { imageNode, view }
@@ -85,14 +85,17 @@ function imageSelectionTestView(source = 'image.png') {
   )
   const mount = document.body.appendChild(document.createElement('div'))
   const transactions: number[] = []
-  const constructor = createImageNodeView({ current: '/documents/note.md' }, {
-    current: {
-      loadImageError: 'Could not load image — try again',
-      loadImage: 'Load image',
-      loadingImage: 'Loading image…',
-      loadRemoteImage: (alt: string) => `Load remote image: ${alt}`,
+  const constructor = createImageNodeView(
+    { current: '/documents/note.md' },
+    {
+      current: {
+        loadImageError: 'Could not load image — try again',
+        loadImage: 'Load image',
+        loadingImage: 'Loading image…',
+        loadRemoteImage: (alt: string) => `Load remote image: ${alt}`,
+      },
     },
-  } as unknown as Parameters<typeof createImageNodeView>[1])
+  )
   const view = new EditorView(mount, {
     state: EditorState.create({ doc }),
     nodeViews: { image: constructor },
