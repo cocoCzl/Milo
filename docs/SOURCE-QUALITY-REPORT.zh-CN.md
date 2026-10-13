@@ -472,3 +472,42 @@ compositionend 本身不足以证明内容稳定：当前 ProseMirror 会先解�
 **待人工验收/未执行**：窄窗口drawer、候选翻页/其他输入法及完整浮层矩阵；组合中原生手动保存/保存关闭未可靠到达入口、保存中的逐时序竞争及目标身份冲突未逐项原生执行（确定性测试已通过）。无需用户持续键入配合，本阶段样例由代理完成。远端CI、联网新机器安装、最低Rust和正式发布链仍未执行。
 
 **明确暂缓**：深色标签对比度、此前首次空白窗口的单独复现；Safe Save算法/错误协议、整套异步状态模型、编辑器create/destroy/图片/对话框/watcher stop的其他历史失败路径、CSS拆分和性能优化。冲突另存为阻断与组合中间文本落盘不再列为未修复，授权的两项修复至此收尾，不泛化继续优化。
+
+### 独立视觉修正：宽屏 inline 大纲（2026-10-13）
+
+用户另行授权的局部视觉任务，基于 `dd1c39caf0549d07d4b335bb9111ed1a41810bc3`；不属于前述源码整理或保存修复的范围扩张。提供的 `img.png`、`img_1.png` 均保留为用户未跟踪文件，不纳入提交。本次仅修改：
+
+- `src/styles/global.css`：只在 `.document-editor-workspace--inline` 下移除大纲底色、边框/左线、阴影及表头横线；表头保留图标和文案，用现有 text-secondary、medium 字重，空提示用 text-secondary 保持可读。不设置容器opacity，不改共用drawer表头/底板和主题变量。
+- `src/styles/global.test.ts`：新增inline视觉契约及drawer实体背景/边框/阴影/层级保护，保留现有网格/256px列宽、标题高度、六级缩进、省略、当前标记、悬停/焦点和滚动条断言；没有删改失败断言或skip/todo。新增契约先在旧CSS下失败（缺少transparent），实现后通过。
+- 本报告：仅记录本次验证。TSX、定位/portal、1150px文档区断点、正文布局、滚动/导航、保存/输入法及正式应用标识/发布配置均未修改。
+
+#### 本次实际检查
+
+| 检查 | 结果 |
+| --- | --- |
+| `npm run test -- --run src/styles/global.test.ts src/app/App.test.tsx` | 通过：21+28，共49项。 |
+| `npm run test -- --run src/editor/milkdown/EditorOutline.test.tsx src/editor/milkdown/MilkdownEditor.outline.test.tsx` | 通过：5+13，共18项。 |
+| `npx prettier --check src/styles/global.css src/styles/global.test.ts` | 通过。 |
+| `npx eslint src/styles/global.test.ts --max-warnings 0` | 通过。 |
+| `npm run tauri -- build --debug --bundles app` | 正常审批后通过，含tsc/Vite/Rust编译；原生验收使用该次新构建。 |
+| `git diff --check` | 通过。 |
+
+只跑受影响检查，没有重复全仓测试、Rust/Safe Save测试或静态审计；前述完整源码验证仍对应613f781，不冒充本次全仓重验。没有push/发版。
+
+#### 原生视觉对比和隔离
+
+证据目录：`/private/tmp/milo-outline-visual-v29w6lgg/screenshots/`，完整窗口截图命名 `before-{light,dark}-{empty,levels,long}.png` 与 `after-{light,dark}-{empty,levels,long}.png`；`compare-{light,dark}-{empty,levels,long}.png` 为原始截图同区域裁切并排（左前/右后），没有生成或修改界面像素。
+
+两套实例使用同一组专用文档：outline-empty.md、outline-levels.md（h1–h6及长标题）、outline-long.md（65项）；每对截图同一文件、1280×820窗口、文档/界面缩放100%、侧栏隐藏、正文和目录均从顶部开始。截图为2560×1640；六对截图的正文矩形 `(80,250)-(1900,1500)` 像素逐一相同，具体矩形及比较结果在证据根 `visual-comparison.json`。这验证所观察正文位置/宽度不变，不代替全部尺寸和全部滚动位置验收。
+
+- **通过**：浅色/深色三种状态的底板、左线和表头横线消失，标题/提示位置稳定；多级缩进、长标题省略和长目录独立滚动条仍在，当前章节强调色/细标记保留。
+- **通过**：修改后原生点击Section05定位正文，再按Tab，下一目录项呈现清晰焦点环；当前项和鼠标悬停反馈同时可见，证据 `after-dark-inline-keyboard.png`。
+- **通过（本次实际条件）**：1280窗口展开224px侧栏后文档区低于1150px，原生触发drawer；实体背景/分隔线/遮罩及导航层级保留，Escape关闭且入口焦点环可见，证据 `after-dark-drawer.png`、`after-dark-drawer-closed.png`。专注模式覆盖drawer同样保留实体背景，证据 `after-dark-focus-drawer.png`。未单独拖动窗口逐个遍历更窄尺寸。
+- **通过**：暖色主题inline多级标题及drawer可读，证据 `after-warm-levels.png`、`after-warm-drawer.png`；暖色未生成修改前后矩阵。
+- **未确认**：一次原生滚轮尝试未可靠命中目录滚动区域，观察到正文滚动，不能据此宣称长目录独立滚动交互通过；保留 `after-warm-scroll-before.png`、`after-warm-scroll-after.png`。独立滚动的CSS契约通过，相关规则未修改；本次没有继续反复尝试。
+
+最初旧CUA绑定只读返回了非测试窗口，未执行任何输入/设置动作，立即停止使用该绑定。随后通过正常审批启动两套新的临时HOME（home-before/home-after）；仅临时.app副本的Info.plist使用不同测试显示名/标识并重新ad-hoc签名，防止CUA按共用正式标识选错进程，未修改仓库正式标识或安全配置。实际设置均位于各临时HOME的 `Library/Application Support/io.github.milo.editor/settings.json`，startupSession/recentFiles均只含本阶段测试目录。结束时真实设置SHA-256仍为 `01d56ac57ec6f3accfab50a5f175821bbf7f39f4a35cccbc87681f769c88ca81`；未修改真实文档、标签或偏好，未终止用户实例。
+
+修改前实例 `Milo Outline Before.app` PID15752，来源为613f781旧构建（dd1c39c仅文档）；修改后实例 `Milo Outline After.app` PID16492，来源为本次CSS工作区构建。两者在证据根目录，CUA分别绑定独立测试标识。本次正式构建可执行文件SHA-256为 `f869ec895fd55b3fbd9bdd7fe99a01f9aa2039d5038b6227766e7c7e519b7bb0`；临时重新签名副本SHA-256为 `74d86477b227f1e5d526f4961805ed3ee42565ff457bdb36d561bbe487a09a10`（前副本df664defab0e9cb87c4dac90107d28f85da6d057a177168ec1cf9038c276a068），签名元数据差异不当作源码变化。
+
+本次构建/测试/原生样例对应dd1c39c加本独立提交的CSS及测试内容，之后仅补充报告，不再改相关源码；提交完整hash在交付回复记录。深色标签、首次空白窗口及其他暂缓项仍保持前述范围。本视觉任务到此结束。

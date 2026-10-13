@@ -378,6 +378,49 @@ describe('application shell foundation', () => {
       'white-space': 'nowrap',
     })
   })
+
+  it('blends only the inline outline into the page without weakening navigation feedback', () => {
+    const inline = '.document-editor-workspace--inline .editor-outline'
+    declarations(inline, {
+      background: 'transparent',
+      border: '0',
+      'box-shadow': 'none',
+      width: '100%',
+      'max-height': 'calc(100dvh - var(--top-region-height) - var(--space-4) - var(--space-4))',
+      overflow: 'hidden',
+    })
+    absentDeclaration(inline, 'border-left')
+    absentDeclaration(inline, 'opacity')
+    declarations(`${inline} .editor-outline__header`, {
+      color: 'var(--text-secondary)',
+      'font-weight': 'var(--font-weight-medium)',
+      'border-bottom': '0',
+      'letter-spacing': '0',
+    })
+    declarations(`${inline} p`, { color: 'var(--text-secondary)' })
+    declarations('.editor-outline__item:hover', {
+      color: 'var(--ink)',
+      background: 'var(--hover-fill)',
+    })
+    declarations('.editor-outline__item:focus-visible', {
+      color: 'var(--ink)',
+      background: 'var(--hover-fill)',
+    })
+    declarations('.editor-outline__item--active', {
+      color: 'var(--accent)',
+      background: 'var(--outline-active-fill)',
+    })
+    declarations('.editor-outline--drawer', {
+      'background-color': 'var(--surface-outline)',
+      'border-left': '1px solid var(--line)',
+      'box-shadow': 'var(--shadow-floating)',
+      'z-index': '1',
+    })
+    declarations('.outline-backdrop', { 'z-index': '0', background: 'rgb(0 0 0 / 1.5%)' })
+    declarations('.editor-outline--drawer .editor-outline__header', {
+      color: 'var(--text-primary)',
+    })
+  })
 })
 
 describe('editor table typography', () => {

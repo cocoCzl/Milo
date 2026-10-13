@@ -2316,7 +2316,20 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   width: 100%;
   max-height: calc(100dvh - var(--top-region-height) - var(--space-4) - var(--space-4));
   overflow: hidden;
-  border-left: 1px solid var(--context-line);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.document-editor-workspace--inline .editor-outline .editor-outline__header {
+  color: var(--text-secondary);
+  border-bottom: 0;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0;
+}
+
+.document-editor-workspace--inline .editor-outline p {
+  color: var(--text-secondary);
 }
 
 .editor-outline--drawer {
