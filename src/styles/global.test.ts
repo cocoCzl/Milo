@@ -10,10 +10,19 @@ const stylesheet = parse(readFileSync(join(process.cwd(), 'src/styles/global.css
 // Ignore presentation whitespace while preserving selector membership, values,
 // !important and media scope. Do not use jsdom layout as a WebKit substitute.
 function normalized(value: string): string {
+  // CSS string contents (such as a font family) are significant. Canonicalize
+  // quote delimiters, but only normalize whitespace and numbers outside them.
   return value
-    .replace(/\s+/g, ' ')
-    .replace(/\s*([(),])\s*/g, '$1')
-    .replace(/(?<![\w-])\.(\d)/g, '0.$1')
+    .split(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g)
+    .map((part, index) =>
+      index % 2 === 1
+        ? JSON.stringify(part.slice(1, -1))
+        : part
+            .replace(/\s+/g, ' ')
+            .replace(/\s*([(),])\s*/g, '$1')
+            .replace(/(?<![\w-])\.(\d)/g, '0.$1'),
+    )
+    .join('')
     .trim()
 }
 
