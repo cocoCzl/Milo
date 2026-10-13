@@ -344,6 +344,347 @@ describe('useDocumentSession', () => {
     expect(session.result.current.externalChange).toBeNull()
   })
 
+  it('pauses a queued autosave when a delayed watcher read finds a dirty conflict, including later retained edits', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    const session = await openSavedDocument()
+    vi.useFakeTimers()
+    act(() => updateActive(session, '# Local before notification'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+
+    fileOnDisk = '# External version'
+    let finishRead!: (file: {
+      path: string
+      markdown: string
+      lineEnding: 'lf'
+      hasBom: boolean
+    }) => void
+    mocks.recoverAndReadMarkdownFile.mockImplementationOnce(
+      () => new Promise((resolve) => (finishRead = resolve)),
+    )
+    act(() => notifyChange?.())
+    act(() => updateActive(session, '# Local while watcher read is pending'))
+    await act(async () => {
+      finishRead({ path, markdown: fileOnDisk, lineEnding: 'lf', hasBom: false })
+    })
+    expect(session.result.current.externalChange).toBe('pending')
+    expect(session.result.current.document.markdown).toBe('# Local while watcher read is pending')
+    expect(session.result.current.document.persistedMarkdown).toBe('# Before\n')
+    expect(session.result.current.document.isDirty).toBe(true)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(fileOnDisk).toBe('# External version')
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+
+    act(() => session.result.current.retainLocalChanges())
+    expect(session.result.current.externalChange).toBe('retained')
+    act(() => updateActive(session, '# Retained and edited again'))
+    expect(session.result.current.externalChange).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(session.result.current.externalChange).toBe('pending')
+    await act(async () => {
+      await expect(session.result.current.saveDocument()).resolves.toBe(false)
+    })
+    expect(session.result.current.externalChange).toBe('pending')
+    expect(session.result.current.document.markdown).toBe('# Retained and edited again')
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(fileOnDisk).toBe('# External version')
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await session.result.current.reloadExternalChange()
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(session.result.current.document.markdown).toBe('# External version')
+    expect(session.result.current.document.persistedMarkdown).toBe('# External version')
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(session.result.current.externalChange).toBeNull()
+    expect(fileOnDisk).toBe('# External version')
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('detects an external version in a delayed autosave preflight before any watcher notification', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    const session = await openSavedDocument()
+    vi.useFakeTimers()
+    let finishRead!: (file: {
+      path: string
+      markdown: string
+      lineEnding: 'lf'
+      hasBom: boolean
+    }) => void
+    mocks.recoverAndReadMarkdownFile.mockImplementationOnce(
+      () => new Promise((resolve) => (finishRead = resolve)),
+    )
+    act(() => updateActive(session, '# Local autosave snapshot'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999)
+    })
+    expect(mocks.recoverAndReadMarkdownFile).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(mocks.recoverAndReadMarkdownFile).toHaveBeenCalledTimes(2)
+    fileOnDisk = '# External during preflight'
+    act(() => updateActive(session, '# New local edit during preflight'))
+    await act(async () => {
+      finishRead({ path, markdown: fileOnDisk, lineEnding: 'lf', hasBom: false })
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(session.result.current.externalChange).toBe('pending')
+    expect(session.result.current.document.markdown).toBe('# New local edit during preflight')
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(fileOnDisk).toBe('# External during preflight')
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('writes only after explicit conflict overwrite and leaves edits during that write dirty', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    const session = await openSavedDocument()
+    vi.useFakeTimers()
+    act(() => updateActive(session, '# Local choice'))
+    fileOnDisk = '# External choice'
+    await act(async () => notifyChange?.())
+    expect(session.result.current.externalChange).toBe('pending')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+
+    let finishWrite!: () => void
+    mocks.writeMarkdownFileSafely.mockImplementationOnce(
+      (document) =>
+        new Promise((resolve) => {
+          finishWrite = () => {
+            fileOnDisk = document.markdown
+            resolve({ ...document })
+          }
+        }),
+    )
+    let overwrite!: Promise<boolean>
+    await act(async () => {
+      overwrite = session.result.current.overwriteExternalChange()
+    })
+    expect(mocks.writeMarkdownFileSafely).toHaveBeenCalledWith(
+      { path, markdown: '# Local choice', lineEnding: 'lf', hasBom: false },
+      { path, markdown: '# External choice', lineEnding: 'lf', hasBom: false },
+    )
+    expect(fileOnDisk).toBe('# External choice')
+    act(() => updateActive(session, '# New edit during explicit write'))
+    await act(async () => {
+      finishWrite()
+      await expect(overwrite).resolves.toBe(true)
+    })
+    expect(fileOnDisk).toBe('# Local choice')
+    expect(session.result.current.document.markdown).toBe('# New edit during explicit write')
+    expect(session.result.current.document.persistedMarkdown).toBe('# Local choice')
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.externalChange).toBeNull()
+  })
+
+  it('keeps both conflict versions on Save As cancellation and saves a chosen copy without changing the external file', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    const session = await openSavedDocument()
+    vi.useFakeTimers()
+    act(() => updateActive(session, '# Local copy'))
+    fileOnDisk = '# External original'
+    await act(async () => notifyChange?.())
+    expect(session.result.current.externalChange).toBe('pending')
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce(null)
+    await act(async () => {
+      await expect(session.result.current.saveAsDocument()).resolves.toBe(false)
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(session.result.current.document.path).toBe(path)
+    expect(session.result.current.document.markdown).toBe('# Local copy')
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.externalChange).toBe('pending')
+    expect(fileOnDisk).toBe('# External original')
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+
+    const copyPath = '/tmp/milo-conflict-copy.md'
+    let copyOnDisk: string | null = null
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce(copyPath)
+    mocks.writeMarkdownFileSafely.mockImplementationOnce(async (document) => {
+      expect(document.path).toBe(copyPath)
+      copyOnDisk = document.markdown
+      return { ...document }
+    })
+    await act(async () => {
+      await expect(session.result.current.saveAsDocument()).resolves.toBe(true)
+    })
+    expect(mocks.writeMarkdownFileSafely).toHaveBeenCalledWith(
+      { path: copyPath, markdown: '# Local copy', lineEnding: 'lf', hasBom: false },
+      null,
+    )
+    expect(copyOnDisk).toBe('# Local copy')
+    expect(fileOnDisk).toBe('# External original')
+    expect(session.result.current.document.path).toBe(copyPath)
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(session.result.current.externalChange).toBeNull()
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it.each(['pending', 'retained'] as const)(
+    'saves a %s conflict to a new path, then watches and autosaves only that path',
+    async (conflict) => {
+      mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+      const files = new Map([[path, '# Before\n']])
+      const callbacks = new Map<string, () => void>()
+      const stops = new Map<string, ReturnType<typeof vi.fn>>()
+      mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+        path: requestedPath,
+        markdown: files.get(requestedPath)!,
+        lineEnding: 'lf' as const,
+        hasBom: false,
+      }))
+      mocks.watchMarkdownFile.mockImplementation(async (watchedPath, callback) => {
+        callbacks.set(watchedPath, callback)
+        notifyChange = callback
+        const stop = vi.fn(async () => undefined)
+        stops.set(watchedPath, stop)
+        return stop
+      })
+      mocks.writeMarkdownFileSafely.mockImplementation(async (document, expected) => {
+        if (expected) expect(files.get(document.path)).toBe(expected.markdown)
+        else expect(files.has(document.path)).toBe(false)
+        files.set(document.path, document.markdown)
+        return { ...document }
+      })
+      const session = await openSavedDocument()
+      vi.useFakeTimers()
+      act(() => updateActive(session, '# Local copy'))
+      files.set(path, '# External original')
+      await act(async () => callbacks.get(path)?.())
+      if (conflict === 'retained') act(() => session.result.current.retainLocalChanges())
+      expect(session.result.current.externalChange).toBe(conflict)
+      const oldCallback = callbacks.get(path)!
+      const oldStop = stops.get(path)!
+      const copyPath = '/tmp/new-conflict-copy.md'
+      mocks.pickMarkdownSavePath.mockResolvedValueOnce(copyPath)
+      await act(async () => {
+        await expect(session.result.current.saveAsDocument()).resolves.toBe(true)
+      })
+      expect(files.get(path)).toBe('# External original')
+      expect(files.get(copyPath)).toBe('# Local copy')
+      expect(session.result.current.document.path).toBe(copyPath)
+      expect(session.result.current.document.persistedMarkdown).toBe('# Local copy')
+      expect(session.result.current.externalChange).toBeNull()
+      expect(oldStop).toHaveBeenCalledTimes(1)
+      expect(callbacks.has(copyPath)).toBe(true)
+      const reads = mocks.recoverAndReadMarkdownFile.mock.calls.length
+      await act(async () => oldCallback())
+      expect(mocks.recoverAndReadMarkdownFile).toHaveBeenCalledTimes(reads)
+      expect(session.result.current.document.markdown).toBe('# Local copy')
+      act(() => updateActive(session, '# Copy autosave'))
+      await act(async () => vi.advanceTimersByTimeAsync(1000))
+      expect(files.get(copyPath)).toBe('# Copy autosave')
+      expect(files.get(path)).toBe('# External original')
+      expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['pending', 'retained'] as const)(
+    'keeps a %s conflict and its snapshot when a new-path save fails',
+    async (conflict) => {
+      mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+      const session = await openSavedDocument()
+      act(() => updateActive(session, '# Local failed copy'))
+      fileOnDisk = '# External original'
+      await act(async () => notifyChange?.())
+      if (conflict === 'retained') act(() => session.result.current.retainLocalChanges())
+      const snapshot = { ...session.result.current.document }
+      mocks.pickMarkdownSavePath.mockResolvedValueOnce('/tmp/failed-copy.md')
+      mocks.writeMarkdownFileSafely.mockRejectedValueOnce(new Error('Disk full'))
+      await act(async () => {
+        await expect(session.result.current.saveAsDocument()).resolves.toBe(false)
+      })
+      expect(session.result.current.document).toEqual(snapshot)
+      expect(session.result.current.externalChange).toBe(conflict)
+      expect(session.result.current.saveError).toBe('Disk full')
+      expect(session.result.current.saveFeedback).not.toBe('saved')
+      expect(fileOnDisk).toBe('# External original')
+    },
+  )
+
+  it('keeps the original-path conflict check and propagates new-target protection failures', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Local'))
+    fileOnDisk = '# External'
+    await act(async () => notifyChange?.())
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce(path)
+    await act(async () => {
+      await expect(session.result.current.saveAsDocument()).resolves.toBe(false)
+    })
+    expect(mocks.writeMarkdownFileSafely).not.toHaveBeenCalled()
+    for (const reason of [
+      'Safe Save external change conflict: destination already exists',
+      'Safe Save target identity changed while opening for commit.',
+    ]) {
+      mocks.pickMarkdownSavePath.mockResolvedValueOnce('/tmp/occupied-copy.md')
+      mocks.writeMarkdownFileSafely.mockRejectedValueOnce(new Error(reason))
+      const snapshot = { ...session.result.current.document }
+      await act(async () => {
+        await expect(session.result.current.saveAsDocument()).resolves.toBe(false)
+      })
+      expect(mocks.writeMarkdownFileSafely).toHaveBeenLastCalledWith(
+        { path: '/tmp/occupied-copy.md', markdown: '# Local', lineEnding: 'lf', hasBom: false },
+        null,
+      )
+      expect(session.result.current.document).toEqual(snapshot)
+      expect(session.result.current.externalChange).toBe('pending')
+      expect(fileOnDisk).toBe('# External')
+    }
+  })
+
+  it('keeps a new-path save snapshot isolated while editing and switching tabs during its write', async () => {
+    mocks.usesMacOSSafeSaveV2.mockReturnValue(true)
+    const session = await openSavedDocument()
+    const sourceId = session.result.current.activeTabId!
+    act(() => updateActive(session, '# Copy snapshot'))
+    fileOnDisk = '# External source'
+    await act(async () => notifyChange?.())
+    const copyPath = '/tmp/delayed-copy.md'
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce(copyPath)
+    let finishWrite!: () => void
+    mocks.writeMarkdownFileSafely.mockImplementationOnce((document, expected) => {
+      expect(expected).toBeNull()
+      return new Promise((resolve) => {
+        finishWrite = () => resolve({ ...document })
+      })
+    })
+    let save!: Promise<boolean>
+    await act(async () => {
+      save = session.result.current.saveAsDocument()
+    })
+    const origin = originFor(session, sourceId)
+    act(() => session.result.current.updateMarkdown(origin, '# New edit during copy'))
+    act(() => session.result.current.createNewDocument())
+    const otherId = session.result.current.activeTabId
+    await act(async () => {
+      finishWrite()
+      await expect(save).resolves.toBe(true)
+    })
+    const source = session.result.current.tabs.find((tab) => tab.id === sourceId)!
+    expect(source.document.path).toBe(copyPath)
+    expect(source.document.markdown).toBe('# New edit during copy')
+    expect(source.document.persistedMarkdown).toBe('# Copy snapshot')
+    expect(source.document.isDirty).toBe(true)
+    expect(source.document.revision).toBeGreaterThan(0)
+    expect(session.result.current.activeTabId).toBe(otherId)
+    expect(session.result.current.document.path).toBeNull()
+    expect(fileOnDisk).toBe('# External source')
+  })
+
   it('reloads the external version on request and preserves local text after a write failure', async () => {
     const session = await openSavedDocument()
 

@@ -266,8 +266,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
       if (
         !allowExternalOverwrite &&
-        (savedTab.externalChange ||
-          (savedSnapshot.path === path && savedSnapshot.persistedMarkdown !== null))
+        savedSnapshot.path === path &&
+        (savedTab.externalChange || savedSnapshot.persistedMarkdown !== null)
       ) {
         if (savedSnapshot.path === path && savedSnapshot.persistedMarkdown !== null) {
           try {
