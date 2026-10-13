@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { readableError } from '../lib/readableError'
+
 import {
   clampDocumentZoom,
   clampInterfaceZoom,
@@ -43,7 +45,7 @@ export function useApplicationSettings() {
       })
       .catch((reason) => {
         if (!disposed) {
-          setSettingsError(readableError(reason))
+          setSettingsError(readableError(reason, 'Could not save Milo preferences.'))
           setIsLoading(false)
         }
       })
@@ -68,7 +70,7 @@ export function useApplicationSettings() {
       .then(() => undefined)
       .catch((reason) => {
         if (saveVersionRef.current === saveVersion) {
-          setSettingsError(readableError(reason))
+          setSettingsError(readableError(reason, 'Could not save Milo preferences.'))
         }
       })
   }, [])
@@ -178,10 +180,4 @@ function normalizeSettings(settings: ApplicationSettings): ApplicationSettings {
       openDocumentPaths: merged.startupSession?.openDocumentPaths?.slice(0, 12) ?? [],
     },
   }
-}
-
-function readableError(reason: unknown): string {
-  return reason instanceof Error && reason.message
-    ? reason.message
-    : 'Could not save Milo preferences.'
 }

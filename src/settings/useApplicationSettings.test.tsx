@@ -186,4 +186,30 @@ describe('useApplicationSettings', () => {
       }),
     )
   })
+  it.each([
+    ['native string', 'Preference storage is unavailable', 'Preference storage is unavailable'],
+    ['Error', new Error('Preferences denied'), 'Preferences denied'],
+    ['empty string', '', 'Could not save Milo preferences.'],
+    ['empty Error', new Error(''), 'Could not save Milo preferences.'],
+    ['unknown object', { message: 'untrusted shape' }, 'Could not save Milo preferences.'],
+  ])(
+    'reports a save failure from %s without rolling back the selected preference',
+    async (_label, reason, message) => {
+      settingsBoundary.save.mockRejectedValueOnce(reason)
+      const hook = renderHook(() => useApplicationSettings())
+      await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+      act(() => hook.result.current.setAppearance('dark'))
+      await waitFor(() => expect(hook.result.current.settingsError).toBe(message))
+      expect(hook.result.current.settings.appearance).toBe('dark')
+      hook.unmount()
+    },
+  )
+
+  it('preserves a native string when loading preferences fails', async () => {
+    settingsBoundary.load.mockRejectedValueOnce('Preference storage could not be read')
+    const hook = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+    expect(hook.result.current.settingsError).toBe('Preference storage could not be read')
+    hook.unmount()
+  })
 })
