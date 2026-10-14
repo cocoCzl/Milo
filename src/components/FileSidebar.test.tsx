@@ -1,22 +1,23 @@
-import { cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { FileSidebar } from './FileSidebar'
 
 const copy = {
   changeFolder: 'Change folder',
-  chooseFolder: 'Choose folder',
+  chooseFolder: 'Choose folder…',
   clearRecent: 'Clear',
   currentFolder: 'Current folder',
-  empty: 'Open a folder.',
-  emptyDirectory: 'This workspace is empty.',
-  emptyFolder: 'No folder selected',
+  empty: 'Browse documents in a folder.',
+  emptyDirectory: 'No Markdown files in this folder.',
+  loadingFolder: 'Loading folder…',
+  folderWidth: 'Folder width',
   emptyRecent: 'No recent items.',
   recent: 'Recent',
   recentLabel: 'Recent files and folders',
   removeRecent: (name: string) => `Remove ${name} from recent`,
   settings: 'Settings',
-  workspace: 'Workspace',
+  workspace: 'Folder',
 }
 
 afterEach(cleanup)
@@ -121,7 +122,7 @@ describe('FileSidebar', () => {
       'MiloWrite a clearer tomorrow',
     )
     expect(screen.getByRole('region', { name: 'Recent files and folders' })).toBeVisible()
-    const workspace = screen.getByRole('region', { name: 'Workspace' })
+    const workspace = screen.getByRole('region', { name: 'Folder' })
     expect(workspace).toHaveTextContent('current')
     expect(workspace).toHaveTextContent('one.md')
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
@@ -152,10 +153,134 @@ describe('FileSidebar', () => {
     expect(screen.getByRole('region', { name: 'Recent files and folders' })).toHaveTextContent(
       'No recent items.',
     )
-    const workspace = screen.getByRole('region', { name: 'Workspace' })
-    expect(workspace).toHaveTextContent('No folder selected')
-    expect(workspace).toHaveTextContent('Open a folder.')
+    const workspace = screen.getByRole('region', { name: 'Folder' })
+    expect(workspace).not.toHaveTextContent('No folder selected')
+    expect(screen.queryByRole('button', { name: 'Change folder' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Choose folder…' })).toBeVisible()
+    expect(workspace).toHaveTextContent('Browse documents in a folder.')
     expect(screen.getByRole('button', { name: 'Settings' })).toBeVisible()
+  })
+
+  it.each([null, '/notes/current'])('keeps Folder before Recent and Settings for %s', (folder) => {
+    const onChooseFolder = vi.fn()
+    const onOpenFile = vi.fn()
+    const onOpenFolder = vi.fn()
+    const { container } = render(
+      <FileSidebar
+        activeFile="/notes/current/one.md"
+        copy={copy}
+        folder={folder}
+        tree={
+          folder
+            ? {
+                children: [
+                  {
+                    children: [],
+                    isDirectory: false,
+                    name: 'one.md',
+                    path: '/notes/current/one.md',
+                  },
+                ],
+                isDirectory: true,
+                name: 'current',
+                path: folder,
+              }
+            : null
+        }
+        recentFiles={['/notes/current/one.md']}
+        recentFolders={['/notes/archive']}
+        width={224}
+        onChooseFolder={onChooseFolder}
+        onClearRecent={vi.fn()}
+        onOpenFile={onOpenFile}
+        onOpenFolder={onOpenFolder}
+        onOpenPreferences={vi.fn()}
+        onRemoveRecentFile={vi.fn()}
+        onRemoveRecentFolder={vi.fn()}
+        onWidthChange={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getAllByRole('region').map((region) => region.getAttribute('aria-label')),
+    ).toEqual(['Folder', 'Recent files and folders'])
+    const buttons = Array.from(container.querySelectorAll('button')).map(
+      (button) => button.getAttribute('aria-label') ?? button.textContent,
+    )
+    expect(buttons).toEqual([
+      ...(folder ? ['Change folder', 'one.md'] : ['Choose folder…']),
+      'Clear',
+      'one.md',
+      'Remove one.md from recent',
+      'archive',
+      'Remove archive from recent',
+      'Settings',
+    ])
+    // Native buttons stay in their DOM order in sequential keyboard navigation.
+    // Verify each control remains focusable rather than hiding or reordering it.
+    for (const button of container.querySelectorAll('button')) {
+      expect(button.tabIndex).toBe(0)
+      expect(button).toBeEnabled()
+      button.focus()
+      expect(button).toHaveFocus()
+    }
+    expect(container.querySelectorAll('[tabindex="-1"]')).toHaveLength(0)
+    expect(container.querySelectorAll('[tabindex]')).toHaveLength(1)
+    fireEvent.click(
+      screen.getByRole('button', { name: folder ? 'Change folder' : 'Choose folder…' }),
+    )
+    expect(onChooseFolder).toHaveBeenCalledOnce()
+    const recent = screen.getByRole('region', { name: 'Recent files and folders' })
+    fireEvent.click(within(recent).getByRole('button', { name: 'one.md' }))
+    fireEvent.click(within(recent).getByRole('button', { name: 'archive' }))
+    expect(onOpenFile).toHaveBeenCalledWith('/notes/current/one.md')
+    expect(onOpenFolder).toHaveBeenCalledWith('/notes/archive')
+    if (folder)
+      expect(
+        within(screen.getByRole('region', { name: 'Folder' })).getByRole('button', {
+          name: 'one.md',
+        }),
+      ).toHaveAttribute('aria-current', 'page')
+  })
+
+  it.each([
+    { tree: null, error: null, message: 'Loading folder…' },
+    {
+      tree: { children: [], isDirectory: true, name: 'current', path: '/notes/current' },
+      error: null,
+      message: 'No Markdown files in this folder.',
+    },
+    { tree: null, error: 'Could not read folder.', message: 'Could not read folder.' },
+    {
+      tree: { children: [], isDirectory: true, name: 'old', path: '/notes/old' },
+      error: null,
+      message: 'Loading folder…',
+    },
+  ])('distinguishes selected folder state: $message', ({ tree, error, message }) => {
+    render(
+      <FileSidebar
+        activeFile={null}
+        copy={copy}
+        folder="/notes/current"
+        folderError={error}
+        tree={tree}
+        width={224}
+        recentFiles={[]}
+        recentFolders={[]}
+        onChooseFolder={vi.fn()}
+        onClearRecent={vi.fn()}
+        onOpenFile={vi.fn()}
+        onOpenFolder={vi.fn()}
+        onOpenPreferences={vi.fn()}
+        onRemoveRecentFile={vi.fn()}
+        onRemoveRecentFolder={vi.fn()}
+        onWidthChange={vi.fn()}
+      />,
+    )
+    const folder = screen.getByRole('region', { name: 'Folder' })
+    expect(folder).toHaveTextContent(message)
+    expect(folder).not.toHaveTextContent(copy.empty)
+    expect(screen.queryByRole('button', { name: 'Choose folder…' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Change folder' })).toBeEnabled()
   })
 
   it('supports pointer and keyboard resizing within the product range', () => {
@@ -179,7 +304,7 @@ describe('FileSidebar', () => {
         onWidthChange={onWidthChange}
       />,
     )
-    const separator = screen.getByRole('separator', { name: 'Workspace width' })
+    const separator = screen.getByRole('separator', { name: 'Folder width' })
     expect(separator).toHaveAttribute('aria-valuemin', '208')
     expect(separator).toHaveAttribute('aria-valuemax', '320')
     expect(separator).toHaveAttribute('aria-valuenow', '224')
@@ -216,7 +341,7 @@ describe('FileSidebar', () => {
         onWidthChange={onWidthChange}
       />,
     )
-    const minSeparator = screen.getAllByRole('separator', { name: 'Workspace width' }).at(-1)!
+    const minSeparator = screen.getAllByRole('separator', { name: 'Folder width' }).at(-1)!
     fireEvent.keyDown(minSeparator, { key: 'ArrowLeft' })
     expect(onWidthChange).toHaveBeenLastCalledWith(208)
 
@@ -239,7 +364,7 @@ describe('FileSidebar', () => {
         onWidthChange={onWidthChange}
       />,
     )
-    const maxSeparator = screen.getAllByRole('separator', { name: 'Workspace width' }).at(-1)!
+    const maxSeparator = screen.getAllByRole('separator', { name: 'Folder width' }).at(-1)!
     fireEvent.keyDown(maxSeparator, { key: 'ArrowRight', shiftKey: true })
     expect(onWidthChange).toHaveBeenLastCalledWith(320)
 

@@ -16,7 +16,8 @@ type FileSidebarProps = {
     currentFolder: string
     empty: string
     emptyDirectory: string
-    emptyFolder: string
+    loadingFolder: string
+    folderWidth: string
     emptyRecent: string
     clearRecent: string
     recent: string
@@ -26,6 +27,7 @@ type FileSidebarProps = {
     workspace: string
   }
   folder: string | null
+  folderError?: string | null
   onChooseFolder: () => void
   onClearRecent: () => void
   onOpenFile: (path: string) => void
@@ -44,6 +46,7 @@ export function FileSidebar({
   activeFile,
   copy,
   folder,
+  folderError = null,
   onChooseFolder,
   onClearRecent,
   onOpenFile,
@@ -121,6 +124,63 @@ export function FileSidebar({
       </header>
       <div className="file-sidebar__body">
         <section
+          className="file-sidebar__section file-sidebar__workspace"
+          aria-label={copy.workspace}
+        >
+          <header className="file-sidebar__section-header">
+            <span>{copy.workspace}</span>
+          </header>
+          {folder ? (
+            <div className="file-sidebar__workspace-row">
+              <span className="file-sidebar__workspace-icon" aria-hidden="true">
+                <FolderOpen size={14} strokeWidth={1.8} />
+              </span>
+              <strong title={folder}>{fileName(folder)}</strong>
+              <button
+                aria-label={copy.changeFolder}
+                title={copy.changeFolder}
+                type="button"
+                onClick={onChooseFolder}
+              >
+                {copy.changeFolder}
+              </button>
+            </div>
+          ) : null}
+          {folderError ? (
+            <p className="file-sidebar__empty-note" role="status">
+              {folderError}
+            </p>
+          ) : !folder ? (
+            <div className="file-sidebar__empty">
+              <p>{copy.empty}</p>
+              <button type="button" onClick={onChooseFolder}>
+                <FolderOpen aria-hidden="true" size={14} strokeWidth={1.7} />
+                {copy.chooseFolder}
+              </button>
+            </div>
+          ) : tree?.path === folder ? (
+            <div className="file-sidebar__tree">
+              {tree.children.length > 0 ? (
+                tree.children.map((child) => (
+                  <TreeBranch
+                    activeFile={activeFile}
+                    key={child.path}
+                    node={child}
+                    depth={0}
+                    onOpenFile={onOpenFile}
+                  />
+                ))
+              ) : (
+                <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>
+              )}
+            </div>
+          ) : (
+            <p className="file-sidebar__empty-note" role="status">
+              {copy.loadingFolder}
+            </p>
+          )}
+        </section>
+        <section
           className="file-sidebar__section file-sidebar__recent"
           aria-label={copy.recentLabel}
         >
@@ -181,55 +241,6 @@ export function FileSidebar({
             </div>
           ))}
         </section>
-        <section
-          className="file-sidebar__section file-sidebar__workspace"
-          aria-label={copy.workspace}
-        >
-          <header className="file-sidebar__section-header">
-            <span>{copy.workspace}</span>
-          </header>
-          <div className="file-sidebar__workspace-row">
-            <span className="file-sidebar__workspace-icon" aria-hidden="true">
-              <FolderOpen size={15} strokeWidth={1.8} />
-            </span>
-            <strong title={folder ?? undefined}>
-              {folder ? fileName(folder) : copy.emptyFolder}
-            </strong>
-            <button
-              aria-label={copy.changeFolder}
-              title={copy.changeFolder}
-              type="button"
-              onClick={onChooseFolder}
-            >
-              {copy.changeFolder}
-            </button>
-          </div>
-          {tree ? (
-            <div className="file-sidebar__tree">
-              {tree.children.length > 0 ? (
-                tree.children.map((child) => (
-                  <TreeBranch
-                    activeFile={activeFile}
-                    key={child.path}
-                    node={child}
-                    depth={0}
-                    onOpenFile={onOpenFile}
-                  />
-                ))
-              ) : (
-                <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>
-              )}
-            </div>
-          ) : (
-            <div className="file-sidebar__empty">
-              <p>{copy.empty}</p>
-              <button type="button" onClick={onChooseFolder}>
-                <FolderOpen aria-hidden="true" size={14} strokeWidth={1.7} />
-                {copy.chooseFolder}
-              </button>
-            </div>
-          )}
-        </section>
       </div>
       <footer className="file-sidebar__footer">
         <button type="button" onClick={onOpenPreferences}>
@@ -238,7 +249,7 @@ export function FileSidebar({
         </button>
       </footer>
       <div
-        aria-label={`${copy.workspace} width`}
+        aria-label={copy.folderWidth}
         aria-orientation="vertical"
         aria-valuemax={SIDEBAR_MAX_WIDTH}
         aria-valuemin={SIDEBAR_MIN_WIDTH}
@@ -275,10 +286,10 @@ function TreeBranch({
         className="file-sidebar__file"
         title={node.path}
         type="button"
-        style={{ paddingLeft: 14 + depth * 14 }}
+        style={{ paddingLeft: 7 + depth * 14 }}
         onClick={() => onOpenFile(node.path)}
       >
-        <FileText aria-hidden="true" size={13} strokeWidth={1.6} />
+        <FileText aria-hidden="true" size={14} strokeWidth={1.6} />
         <span>{node.name}</span>
       </button>
     )
@@ -286,9 +297,9 @@ function TreeBranch({
 
   return (
     <details className="file-sidebar__directory" open>
-      <summary title={node.path} style={{ paddingLeft: 10 + depth * 14 }}>
+      <summary title={node.path} style={{ paddingLeft: 7 + depth * 14 }}>
         <ChevronRight aria-hidden="true" size={12} strokeWidth={1.8} />
-        <Folder aria-hidden="true" size={13} strokeWidth={1.6} />
+        <Folder aria-hidden="true" size={14} strokeWidth={1.6} />
         <span>{node.name}</span>
       </summary>
       {node.children.map((child) => (

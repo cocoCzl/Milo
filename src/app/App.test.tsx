@@ -866,9 +866,9 @@ describe('App', () => {
       'zh-CN',
     )
     expect(screen.getByRole('complementary', { name: '当前文件夹' })).toHaveTextContent(
-      '打开一个文件夹，在这里浏览 Markdown 文件。',
+      '选择文件夹，浏览文档。',
     )
-    expect(screen.getByRole('button', { name: '选择文件夹' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '选择文件夹…' })).toBeVisible()
     expect(screen.queryByRole('tab', { name: '未命名' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: '未命名 Markdown 文档' })).not.toBeInTheDocument()
     expect(

@@ -310,6 +310,8 @@ export function App() {
       return
     }
     let disposed = false
+    setFolderError(null)
+    setFolderTree(null)
     void browseMarkdownFolder(settings.currentFolder)
       .then((tree) => {
         if (!disposed) {
@@ -686,6 +688,7 @@ export function App() {
             folder={settings.currentFolder}
             activeFile={session.document.path}
             tree={folderTree}
+            folderError={folderError}
             width={settings.sidebarWidth}
             onChooseFolder={() => void chooseCurrentFolder()}
             onClearRecent={clearRecent}
@@ -703,7 +706,7 @@ export function App() {
             recentFolders={settings.recentFolders}
           />
         ) : null}
-        {folderError ? (
+        {folderError && !sidebarVisible ? (
           <div className="folder-error" role="status">
             {folderError}
           </div>
