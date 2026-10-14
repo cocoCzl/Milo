@@ -29,6 +29,198 @@ function renderTooltip() {
   return render(tooltipFixture())
 }
 
+function multipleTooltips(labels = ['A', 'B', 'C']) {
+  return (
+    <main>
+      {labels.map((label) => (
+        <Tooltip key={label} content={`Hint ${label}`}>
+          <button aria-describedby={`description-${label}`}>{label}</button>
+        </Tooltip>
+      ))}
+    </main>
+  )
+}
+
+function expectOnlyTooltip(label?: string) {
+  const tooltips = screen.queryAllByRole('tooltip', { hidden: true })
+  expect(tooltips).toHaveLength(label ? 1 : 0)
+  if (label) expect(tooltips[0]).toHaveTextContent(`Hint ${label}`)
+  for (const trigger of screen.getAllByRole('button')) {
+    const name = trigger.textContent
+    expect(trigger).toHaveAttribute(
+      'aria-describedby',
+      name === label ? `description-${name} ${tooltips[0].id}` : `description-${name}`,
+    )
+  }
+}
+
+describe('Tooltip coordination', () => {
+  it('switches pending requests A to B to C without opening expired hints', async () => {
+    render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    const b = screen.getByRole('button', { name: 'B' })
+    const c = screen.getByRole('button', { name: 'C' })
+    fireEvent.mouseEnter(a)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(100))
+    fireEvent.mouseEnter(b)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(100))
+    fireEvent.mouseEnter(c)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(150)) // A's original deadline
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(100)) // B's original deadline
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(99))
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(1))
+    expectOnlyTooltip('C')
+    await act(() => vi.runAllTimers())
+    expectOnlyTooltip('C')
+  })
+
+  it('replaces a pending A with B and preserves B through late A leave, blur and unmount', async () => {
+    const rendered = render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    const b = screen.getByRole('button', { name: 'B' })
+    fireEvent.mouseEnter(a)
+    await act(() => vi.advanceTimersByTime(100))
+    fireEvent.mouseEnter(b)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(250))
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(100))
+    expectOnlyTooltip('B')
+    fireEvent.mouseLeave(a)
+    expectOnlyTooltip('B')
+    fireEvent.blur(a)
+    expectOnlyTooltip('B')
+    rendered.rerender(multipleTooltips(['B', 'C']))
+    expectOnlyTooltip('B')
+    await act(() => vi.runAllTimers())
+    expectOnlyTooltip('B')
+  })
+
+  it('rejects an already-queued stale A callback without losing the new A cancellation handle', async () => {
+    const timeouts = vi.spyOn(globalThis, 'setTimeout')
+    render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    fireEvent.mouseEnter(a)
+    const staleShow = timeouts.mock.calls.find(([, delay]) => delay === 350)?.[0]
+    if (typeof staleShow !== 'function') throw new Error('Expected the scheduled show callback')
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'B' }))
+    act(() => staleShow())
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('B')
+    fireEvent.mouseEnter(a)
+    expectOnlyTooltip()
+    act(() => staleShow())
+    expectOnlyTooltip()
+    fireEvent.pointerDown(document.body)
+    expect(vi.getTimerCount()).toBe(0)
+    await act(() => vi.runAllTimers())
+    expectOnlyTooltip()
+  })
+
+  it.each(['escape', 'outside click', 'window blur'])(
+    'revokes all pending requests on %s and permits a fresh hover',
+    async (action) => {
+      render(multipleTooltips())
+      fireEvent.mouseEnter(screen.getByRole('button', { name: 'A' }))
+      await act(() => vi.advanceTimersByTime(100))
+      fireEvent.mouseEnter(screen.getByRole('button', { name: 'B' }))
+      if (action === 'escape') fireEvent.keyDown(document.body, { key: 'Escape' })
+      if (action === 'outside click') fireEvent.pointerDown(document.body)
+      if (action === 'window blur') fireEvent(window, new Event('blur'))
+      expectOnlyTooltip()
+      await act(() => vi.runAllTimers())
+      expectOnlyTooltip()
+      fireEvent.mouseEnter(screen.getByRole('button', { name: 'C' }))
+      expectOnlyTooltip()
+      await act(() => vi.advanceTimersByTime(350))
+      expectOnlyTooltip('C')
+    },
+  )
+
+  it('keeps the own tooltip readable but lets another trigger take priority over its grace area', async () => {
+    render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    const b = screen.getByRole('button', { name: 'B' })
+    vi.spyOn(a, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 30, 30))
+    fireEvent.mouseEnter(a)
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('A')
+    vi.spyOn(screen.getByRole('tooltip'), 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(80, 137, 100, 25),
+    )
+    fireEvent.mouseLeave(a, { clientX: 115, clientY: 134 })
+    expectOnlyTooltip('A')
+    fireEvent.mouseMove(document.body, { clientX: 115, clientY: 145 })
+    expectOnlyTooltip('A')
+    fireEvent.mouseEnter(b)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('B')
+  })
+
+  it('keeps pointer focus on A from holding its hint after a click and hover into B', async () => {
+    render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    fireEvent.mouseEnter(a)
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('A')
+    fireEvent.pointerDown(a)
+    act(() => a.focus())
+    fireEvent.click(a)
+    expectOnlyTooltip()
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'B' }))
+    expect(a).toHaveFocus()
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('B')
+  })
+
+  it('revokes A keyboard focus eligibility when the pointer enters B without blurring A', async () => {
+    render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    act(() => a.focus())
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('A')
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'B' }))
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(350))
+    expect(a).toHaveFocus()
+    expectOnlyTooltip('B')
+  })
+
+  it('replaces A with B even when B lies in A hover grace area, and can return to A', async () => {
+    render(multipleTooltips())
+    const a = screen.getByRole('button', { name: 'A' })
+    const b = screen.getByRole('button', { name: 'B' })
+    vi.spyOn(a, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 30, 30))
+    fireEvent.mouseEnter(a)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('A')
+    const oldTooltip = screen.getByRole('tooltip')
+    vi.spyOn(oldTooltip, 'getBoundingClientRect').mockReturnValue(new DOMRect(80, 137, 100, 25))
+    fireEvent.mouseLeave(a, { clientX: 140, clientY: 110, relatedTarget: b })
+    fireEvent.mouseEnter(b)
+    expectOnlyTooltip()
+    expect(oldTooltip).not.toBeInTheDocument()
+    await act(() => vi.advanceTimersByTime(349))
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(1))
+    expectOnlyTooltip('B')
+    fireEvent.mouseEnter(a)
+    expectOnlyTooltip()
+    await act(() => vi.advanceTimersByTime(350))
+    expectOnlyTooltip('A')
+  })
+})
+
 describe('Tooltip', async () => {
   it('does not show for a disabled trigger', async () => {
     render(

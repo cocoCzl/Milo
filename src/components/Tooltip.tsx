@@ -30,12 +30,17 @@ type TooltipPosition = {
 const VIEWPORT_MARGIN = 8
 const TRIGGER_GAP = 7
 
+type TooltipRequest = { dismiss: () => void }
+// Visible and pending hints share one slot in their window's document.
+const activeRequests = new WeakMap<Document, TooltipRequest>()
+
 export function Tooltip({ children, content, delay = 350, disabled = false }: TooltipProps) {
   const inactive = disabled || children.props.disabled === true
   const tooltipId = useId()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const tooltipRef = useRef<HTMLSpanElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestRef = useRef<{ document: Document; request: TooltipRequest } | null>(null)
   const focusedRef = useRef(false)
   const pointerFocusRef = useRef(false)
   const [visible, setVisible] = useState(false)
@@ -49,6 +54,12 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
 
   const hide = useCallback(() => {
     clearTimer()
+    const owned = requestRef.current
+    if (owned && activeRequests.get(owned.document) === owned.request) {
+      activeRequests.delete(owned.document)
+    }
+    requestRef.current = null
+    focusedRef.current = false
     setVisible(false)
     setPosition(null)
   }, [clearTimer])
@@ -56,11 +67,20 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
   const showAfterDelay = useCallback(() => {
     if (inactive) return
     clearTimer()
+    const ownerDocument = triggerRef.current?.ownerDocument
+    if (!ownerDocument) return
+    const previous = activeRequests.get(ownerDocument)
+    const request = { dismiss: hide }
+    const previousOwned = requestRef.current?.request
+    requestRef.current = { document: ownerDocument, request }
+    activeRequests.set(ownerDocument, request)
+    if (previous && previous !== previousOwned) previous.dismiss()
     timerRef.current = setTimeout(() => {
+      if (activeRequests.get(ownerDocument) !== request) return
       timerRef.current = null
       setVisible(true)
     }, delay)
-  }, [clearTimer, delay, inactive])
+  }, [clearTimer, delay, hide, inactive])
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current
