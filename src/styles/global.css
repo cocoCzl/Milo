@@ -614,9 +614,8 @@ button:focus-visible,
   isolation: isolate;
 }
 
-/* WKWebView can expose body/root-grid portals in the accessibility tree while
-   omitting their composited pixels. Keep the Radix portal in the same stable,
-   non-scrolling workspace layer used by the proven Outline drawer portal. */
+/* Keep the preferences portal in the stable, non-scrolling workspace layer.
+   Portal placement has not been established as the cause of missing pixels. */
 .preferences-dialog-layer {
   position: absolute;
   z-index: var(--overlay-dialog);
@@ -671,13 +670,16 @@ button:focus-visible,
   --status-error: #b96658;
 }
 
+/* WKWebView can stall entry animations at time zero while reporting the page
+   hidden, even with modal focus active. Keep both modal surfaces visible without
+   waiting for an animation clock; see docs/KNOWN_ISSUES.md. */
 .preferences-dialog__backdrop {
   position: fixed;
   inset: 0;
   pointer-events: auto;
   background: var(--dialog-backdrop);
   backdrop-filter: blur(1.5px);
-  animation: preferences-backdrop-in 120ms ease-out;
+  animation: none;
 }
 
 .preferences-dialog {
@@ -697,7 +699,7 @@ button:focus-visible,
   font-size: var(--ui-font-md);
   pointer-events: auto;
   transform: translate(-50%, -50%);
-  animation: preferences-dialog-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: none;
   -webkit-app-region: no-drag;
 }
 
@@ -910,19 +912,6 @@ button:focus-visible,
 
 .preferences-dialog__error {
   color: var(--status-error);
-}
-
-@keyframes preferences-backdrop-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes preferences-dialog-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% - 5px)) scale(0.99);
-  }
 }
 
 .icon-button-shell {

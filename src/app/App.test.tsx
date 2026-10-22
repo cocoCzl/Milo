@@ -684,6 +684,7 @@ describe('App', () => {
 
   it('closes modal preferences from its backdrop or Escape', async () => {
     render(<App />)
+    const originalPointerEvents = document.body.style.pointerEvents
 
     const openPreferences = () => {
       fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
@@ -692,6 +693,7 @@ describe('App', () => {
     openPreferences()
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
 
+    expect(document.body.style.pointerEvents).toBe('none')
     const backdrop = document.querySelector('.preferences-dialog__backdrop')!
     fireEvent.pointerDown(backdrop, { button: 0, pointerType: 'mouse' })
     fireEvent.click(backdrop)
@@ -699,11 +701,16 @@ describe('App', () => {
       expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
     )
 
+    expect(document.body.style.pointerEvents).toBe(originalPointerEvents)
+    expect(document.querySelector('.preferences-dialog__portal')).toBeNull()
+
     openPreferences()
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
     )
+    expect(document.body.style.pointerEvents).toBe(originalPointerEvents)
+    expect(document.querySelector('.preferences-dialog__portal')).toBeNull()
   })
 
   it('opens the same modal preferences from the pinned sidebar footer and restores that trigger', async () => {

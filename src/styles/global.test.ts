@@ -167,12 +167,6 @@ describe('application shell foundation', () => {
         media,
       )
     }
-    declarations('.preferences-dialog__backdrop', {
-      animation: 'preferences-backdrop-in 120ms ease-out',
-    })
-    declarations('.preferences-dialog', {
-      animation: 'preferences-dialog-in 140ms cubic-bezier(.2, .8, .2, 1)',
-    })
     declarations('.milo-tooltip', { animation: 'milo-tooltip-in 100ms ease-out' })
     for (const selector of [
       '.preferences-dialog__backdrop',
@@ -308,6 +302,18 @@ describe('application shell foundation', () => {
     })
     declarations('.preferences-dialog__backdrop', { position: 'fixed', inset: '0' })
     declarations('body:has(.preferences-dialog__portal) .milo-tooltip', { display: 'none' })
+  })
+
+  it('does not gate modal visibility on an advancing animation clock', () => {
+    // A native WKWebView reproduction stalled both entry animations at time 0
+    // (opacity 0) while modal focus/input isolation was already active. This is
+    // a stylesheet contract, not proof of native pixels; verify those on macOS.
+    for (const selector of ['.preferences-dialog__backdrop', '.preferences-dialog']) {
+      declarations(selector, { animation: 'none', 'pointer-events': 'auto' })
+      absentDeclaration(selector, 'opacity', '0')
+      absentDeclaration(selector, 'visibility', 'hidden')
+    }
+    declarations('.preferences-dialog', { transform: 'translate(-50%, -50%)' })
   })
 
   it('keeps the focus outline entry viewport-fixed while allowing only the drawer outline', () => {
