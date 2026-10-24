@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to build without moving it
+        required: true
+        default: v0.3.0
+        type: string
 
 permissions:
   contents: write
@@ -11,6 +18,8 @@ jobs:
   verify:
     name: Verify release source on macOS
     uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ inputs.release_tag || github.ref }}
     permissions:
       contents: read
 
@@ -20,6 +29,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -28,12 +39,19 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - name: Check tag and all application versions
-        run: node scripts/check-release-version.mjs "$GITHUB_REF_NAME"
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          node scripts/check-release-version.mjs "$RELEASE_TAG"
+      - name: Install signature-verification dependency
+        run: command -v rg >/dev/null || brew install ripgrep
       - name: Build and verify ad-hoc Universal DMG and SHA-256
         run: ./scripts/build-macos-universal.sh
       - name: Create draft prerelease
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
           draft: true
           prerelease: true
           make_latest: 'false'
