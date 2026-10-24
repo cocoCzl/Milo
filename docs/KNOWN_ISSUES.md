@@ -10,7 +10,7 @@ Earlier native acceptance on Apple Silicon / macOS 27.0.1 covered 30 open/close 
 
 ## Real Chinese IME — human verification pending
 
-Candidate confirmation and save timing with a real Chinese input method remain unverified. No corresponding save failure or data loss has been reproduced. Composition settlement deliberately waits for stable rendering frames; persistent suspension could defer saving. Pasted Chinese and synthetic composition tests do not establish native IME acceptance.
+Full candidate-window and save-timing acceptance with a real Chinese input method remains pending. On the 0.3.0 candidate, native pinyin keys `n`, `i`, then Space produced `你`; Auto Save wrote it to disk and document/app reopening preserved it. This is a real input-method smoke check, not pasted text, but the candidate window could not be reliably observed/controlled for the complete timing matrix. No corresponding save failure or data loss has been reproduced. Composition settlement deliberately waits for stable rendering frames; persistent suspension could defer saving. Pasted Chinese and synthetic composition tests do not establish native IME acceptance.
 
 On the final candidate, use a disposable saved Markdown file and confirm a distinct Chinese phrase. Separately check idle Auto Save, immediate app switching, minimize/restore, immediate Command-S, and normal close/quit with save protection. Reopen and compare the actual saved text after each case. Unconfirmed or cancelled candidates are not expected saved text.
 

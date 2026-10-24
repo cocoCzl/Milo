@@ -49,7 +49,7 @@ Users need **macOS 13 or later**. Node.js, Rust and source build tools are unnec
 
 Passing ad-hoc signature integrity checks does not imply Apple certification or Gatekeeper trust. Do not disable Gatekeeper globally or remove quarantine from the entire download directory. Browser download and quarantined first-open behavior still require verification once a release attachment is available.
 
-Hardware coverage: Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS 13–26 have not been tested on hardware. Real Chinese IME candidate confirmation and save timing await human verification; see [Known issues](docs/KNOWN_ISSUES.md). Use disposable or backed-up documents for beta testing.
+Hardware coverage: Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS 13–26 have not been tested on hardware. A native pinyin confirmation/Auto Save smoke check passed; the full Chinese IME candidate-window/save-timing matrix awaits human verification; see [Known issues](docs/KNOWN_ISSUES.md). Use disposable or backed-up documents for beta testing.
 
 Report problems through [GitHub Issues](https://github.com/cocoCzl/Milo/issues), including app version, macOS version, chip, reproduction steps and relevant screenshots. Avoid sharing private documents.
 

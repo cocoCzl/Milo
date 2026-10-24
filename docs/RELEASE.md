@@ -47,6 +47,16 @@ Native coverage is Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS
 
 See [Known issues](KNOWN_ISSUES.md) for current product status and [bilingual release notes](RELEASE_NOTES_0.3.0.md) for the draft release body. Pending checks must be updated with actual results before public publication.
 
+## 0.3.0 local candidate record — 2026-10-24
+
+- Built from clean source commit `8bb63c8ddc25c23074be2d091d28c46e980b3041`; later acceptance-documentation changes do not alter application code or packaging configuration.
+- DMG: **7,866,299 bytes**; SHA-256: `5f9bd1f55afd6e65214c82a6abfbf26be0c50cbb04d9679f3d44f5e4c4eb2aa0`. The adjacent checksum file is 91 bytes.
+- Existing local CI gates passed: 362 frontend tests, 33 Rust tests, formatting, TypeScript, lint, rustfmt, Clippy, production and bundled Debug builds. Final Universal build, image checks, both architecture/deployment-target checks and strict ad-hoc signature verification passed. Gatekeeper **rejected** it (exit 3); no Developer ID or notarization is claimed.
+- Mounted the final image read-only and launched its exact executable on the 16 GB arm64 / macOS 27.0.1 host. Preferences/backdrop pixels, Escape and close-button dismissal, persisted 100% → 110% zoom, editing, explicit save/Auto Save, document close/reopen, normal window-close process exit and app restart/session restoration passed. Zoom was restored and the original settings/session file restored byte-for-byte after exit. The image contains the application and Applications link; no source build tools or dependency directories.
+- Native `n`, `i`, Space produced `你`, which Auto Save persisted and reopening retained. Candidate-window control and the complete immediate-switch/minimize/manual-save/close timing matrix remain for human confirmation. This evidence used real key input, not pasted Chinese or synthetic composition.
+- After 30 seconds with only one empty saved document, `vmmap` reported a **35.3 MiB main-process physical footprint**. This excludes separate WebKit processes and is not a complete aggregate-memory budget sign-off. Startup/open timing and aggregate-memory confirmation remain manual; native automation calls cannot establish the subsecond timing budgets reliably. Deferred Mermaid/KaTeX/Shiki packages are absent from the locked build inputs.
+- No browser-download/quarantine installation was performed: no downloadable attachment exists in this local-only preparation. No push, remote tag, draft creation or public publication was performed.
+
 ## Release workflow and handoff
 
 After maintainer approval, push the reviewed commit and `v0.3.0`. The tag triggers existing CI, checks all five application version sources against the tag, builds and verifies the DMG and checksum, and uploads only those two artifacts. `.github/workflows/release.yml` explicitly sets **`draft: true`, `prerelease: true`, `make_latest: 'false'`**. No build directory, dependency directory or updater is shipped.

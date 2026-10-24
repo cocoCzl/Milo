@@ -49,7 +49,7 @@ Mermaid、KaTeX、Shiki、源码模式、导出和搜索会在后续阶段再引
 
 ad-hoc 签名完整性检查通过不代表 Apple 认证或 Gatekeeper 信任通过。请勿全局关闭 Gatekeeper 或批量移除下载目录的隔离属性。实际浏览器下载及隔离后的首次打开体验仍待公开附件可用后验证。
 
-已实机验证范围：Apple Silicon（arm64）、macOS 27.0.1（26A434）；Intel、macOS 13–26 未实机覆盖。真实中文输入法候选确认与保存时序待人工确认；详见[已知问题](docs/KNOWN_ISSUES.md)。测试版建议先使用可丢弃文件或已备份文档。
+已实机验证范围：Apple Silicon（arm64）、macOS 27.0.1（26A434）；Intel、macOS 13–26 未实机覆盖。原生拼音确认与自动保存冒烟检查已通过；完整中文候选窗口与保存时序仍待人工确认；详见[已知问题](docs/KNOWN_ISSUES.md)。测试版建议先使用可丢弃文件或已备份文档。
 
 请通过 [GitHub Issues](https://github.com/cocoCzl/Milo/issues) 反馈，提供版本、macOS 版本、芯片类型、复现步骤及必要截图；避免上传私密文档。
 
