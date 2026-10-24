@@ -74,6 +74,8 @@ _Avoid_: Apple-Silicon-only release, legacy macOS support
 
 **Public Release**:
 Version 0.3.0 is the first public beta: a GitHub Pre-release containing an explicitly ad-hoc signed, unnotarized Universal DMG for macOS 13 or later. No Apple Developer membership, Developer ID certificate or notarization credentials are required. The identifier stays `io.github.milo.editor`. Ad-hoc integrity, Developer ID identity and Apple notarization/Gatekeeper trust are separate checks; expected Gatekeeper rejection must be disclosed. Release automation creates a draft prerelease, never stable Latest.
+
+The actual draft attachment has been browser-downloaded with quarantine retained and matched file-for-file to the running `/Applications/Milo.app`. Manual installation, system permission and first opening are maintainer-confirmed evidence on arm64 / macOS 27.0.1; they do not imply full feature acceptance. Remaining native IME and performance boundaries are recorded in the release runbook. Validation must preserve real documents, settings and the existing session.
 _Avoid_: Apple-certified beta, notarized beta, silent signing fallback
 
 **Repository Quality Gate**:

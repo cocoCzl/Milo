@@ -6,7 +6,7 @@ Milo 是一款免费的、Local-first 的 macOS Markdown 编辑器。它让你�
 
 Markdown 文件始终是你的数据源，可以继续被 VS Code、Vim、Obsidian、Typora、Git 和其他 Markdown 工具读取。
 
-Milo 0.3.0 是首个公开测试版，将通过 GitHub Pre-release 分发。目前正在准备候选包，公开发布后即可下载。
+Milo 0.3.0 是首个公开测试版，将通过 GitHub Pre-release 分发。候选附件现已进入仅维护者可见的草稿，公开发布后即可下载。
 
 ## Milo 的定位
 
@@ -47,9 +47,9 @@ Mermaid、KaTeX、Shiki、源码模式、导出和搜索会在后续阶段再引
 2. 打开 DMG，将 Milo 拖到“应用程序”，推出磁盘映像后从“应用程序”打开。
 3. 应用采用 **ad-hoc 签名**，没有 Developer ID 身份签名，也未经 Apple 公证。首次打开可能被 macOS 拦截；确认下载来源及校验值后，先尝试打开一次，再前往“系统设置 → 隐私与安全性”，找到 Milo 的“仍要打开”，并按系统提示确认。不同 macOS 版本的提示可能不同；参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
-ad-hoc 签名完整性检查通过不代表 Apple 认证或 Gatekeeper 信任通过。请勿全局关闭 Gatekeeper 或批量移除下载目录的隔离属性。实际浏览器下载及隔离后的首次打开体验仍待公开附件可用后验证。
+ad-hoc 签名完整性检查通过不代表 Apple 认证或 Gatekeeper 信任通过。请勿全局关闭 Gatekeeper 或批量移除下载目录的隔离属性。草稿附件已通过 Chrome 下载，保留隔离属性并核对校验值；维护者已确认在 arm64 / macOS 27.0.1 上手动完成安装、系统允许和打开文档。这是单台设备安装路径的用户确认，不代表逐个系统提示或全部功能均已验收，其他 macOS 版本可能不同。
 
-已实机验证范围：Apple Silicon（arm64）、macOS 27.0.1（26A434）；Intel、macOS 13–26 未实机覆盖。原生拼音确认与自动保存冒烟检查已通过；完整中文候选窗口与保存时序仍待人工确认；详见[已知问题](docs/KNOWN_ISSUES.md)。测试版建议先使用可丢弃文件或已备份文档。
+已实机验证范围：Apple Silicon（arm64）、macOS 27.0.1（26A434）；Intel、macOS 13–26 未实机覆盖。此前本地候选的原生拼音确认与自动保存冒烟检查已通过；完整中文候选窗口与保存时序仍待人工确认；详见[已知问题](docs/KNOWN_ISSUES.md)。测试版建议先使用可丢弃文件或已备份文档。
 
 请通过 [GitHub Issues](https://github.com/cocoCzl/Milo/issues) 反馈，提供版本、macOS 版本、芯片类型、复现步骤及必要截图；避免上传私密文档。
 

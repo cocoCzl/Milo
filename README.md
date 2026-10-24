@@ -6,7 +6,7 @@ Milo is a free, local-first Markdown editor for macOS. It opens a Markdown file 
 
 Your Markdown files remain the source of truth. They stay portable across VS Code, Vim, Obsidian, Typora, Git, and other Markdown tools.
 
-Milo 0.3.0 is the first public beta, distributed as a GitHub Pre-release. The candidate is being prepared; public download will be available after publication.
+Milo 0.3.0 is the first public beta, distributed as a GitHub Pre-release. Its candidate is in a draft visible to maintainers; public download will be available after publication.
 
 ## What Milo is for
 
@@ -47,9 +47,9 @@ Users need **macOS 13 or later**. Node.js, Rust and source build tools are unnec
 2. Open the DMG, drag Milo to Applications, eject the disk image, then open Milo from Applications.
 3. Milo is **ad-hoc signed**, without a Developer ID identity signature or Apple notarization. macOS may block the first opening. After checking the source and checksum, try opening it once, then go to **System Settings → Privacy & Security → Open Anyway** for Milo and follow the system prompts. Wording varies by macOS version; see [Apple's instructions](https://support.apple.com/en-us/102445).
 
-Passing ad-hoc signature integrity checks does not imply Apple certification or Gatekeeper trust. Do not disable Gatekeeper globally or remove quarantine from the entire download directory. Browser download and quarantined first-open behavior still require verification once a release attachment is available.
+Passing ad-hoc signature integrity checks does not imply Apple certification or Gatekeeper trust. Do not disable Gatekeeper globally or remove quarantine from the entire download directory. The draft attachment was downloaded in Chrome with quarantine retained and its checksum verified. The maintainer confirmed manually installing it, allowing it through the system prompts and opening a document on arm64 / macOS 27.0.1. This confirms that installation path on one host, not every prompt or all application features; other macOS versions may differ.
 
-Hardware coverage: Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS 13–26 have not been tested on hardware. A native pinyin confirmation/Auto Save smoke check passed; the full Chinese IME candidate-window/save-timing matrix awaits human verification; see [Known issues](docs/KNOWN_ISSUES.md). Use disposable or backed-up documents for beta testing.
+Hardware coverage: Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS 13–26 have not been tested on hardware. An earlier local candidate passed a native pinyin confirmation/Auto Save smoke check; the full Chinese IME candidate-window/save-timing matrix awaits human verification; see [Known issues](docs/KNOWN_ISSUES.md). Use disposable or backed-up documents for beta testing.
 
 Report problems through [GitHub Issues](https://github.com/cocoCzl/Milo/issues), including app version, macOS version, chip, reproduction steps and relevant screenshots. Avoid sharing private documents.
 
