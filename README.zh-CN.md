@@ -6,7 +6,7 @@ Milo 是一款免费的、Local-first 的 macOS Markdown 编辑器。它让你�
 
 Markdown 文件始终是你的数据源，可以继续被 VS Code、Vim、Obsidian、Typora、Git 和其他 Markdown 工具读取。
 
-Milo 当前仍处于积极开发和测试阶段。
+Milo 0.3.0 是首个公开测试版，将通过 GitHub Pre-release 分发。目前正在准备候选包，公开发布后即可下载。
 
 ## Milo 的定位
 
@@ -39,13 +39,23 @@ Milo 只把文档内容保存到本地 Markdown 文件。应用偏好、最近�
 
 Mermaid、KaTeX、Shiki、源码模式、导出和搜索会在后续阶段再引入，避免影响 MVP 的启动速度。
 
-## 环境要求
+## 下载与安装
 
-- macOS 13 或更高版本
-- Node.js 24
-- 带 macOS toolchain 的稳定版 Rust
+普通用户只需 **macOS 13 或更高版本**，无需安装 Node.js、Rust 或源码构建工具。Universal DMG 同时包含 Apple Silicon（arm64）与 Intel（x86_64）架构。
 
-已验证的发布目标是同时支持 Apple Silicon 与 Intel 的 universal macOS 构建。
+1. 公开发布后，在 [GitHub Releases](https://github.com/cocoCzl/Milo/releases) 中选择 **v0.3.0 / Pre-release**，下载 `Milo_0.3.0_universal.dmg` 和同名 `.sha256` 文件。在下载目录运行 `shasum -a 256 -c Milo_0.3.0_universal.dmg.sha256` 可核对完整性。
+2. 打开 DMG，将 Milo 拖到“应用程序”，推出磁盘映像后从“应用程序”打开。
+3. 应用采用 **ad-hoc 签名**，没有 Developer ID 身份签名，也未经 Apple 公证。首次打开可能被 macOS 拦截；确认下载来源及校验值后，先尝试打开一次，再前往“系统设置 → 隐私与安全性”，找到 Milo 的“仍要打开”，并按系统提示确认。不同 macOS 版本的提示可能不同；参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+
+ad-hoc 签名完整性检查通过不代表 Apple 认证或 Gatekeeper 信任通过。请勿全局关闭 Gatekeeper 或批量移除下载目录的隔离属性。实际浏览器下载及隔离后的首次打开体验仍待公开附件可用后验证。
+
+已实机验证范围：Apple Silicon（arm64）、macOS 27.0.1（26A434）；Intel、macOS 13–26 未实机覆盖。真实中文输入法候选确认与保存时序待人工确认；详见[已知问题](docs/KNOWN_ISSUES.md)。测试版建议先使用可丢弃文件或已备份文档。
+
+请通过 [GitHub Issues](https://github.com/cocoCzl/Milo/issues) 反馈，提供版本、macOS 版本、芯片类型、复现步骤及必要截图；避免上传私密文档。
+
+## 开发环境
+
+仅源码开发需要 Node.js 24、稳定版 Rust、Xcode Command Line Tools 和两个 macOS Rust target。
 
 ## 本地开发
 
@@ -70,7 +80,7 @@ npm run build
 ./scripts/build-macos-universal.sh
 ```
 
-产物位于 `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`。该命令生成本地未签名产物；Apple 签名、公证、Gatekeeper 验证和公开发布会在未来正式发布时处理。
+产物位于 `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`。该命令明确生成 ad-hoc 签名、未公证的测试版，并验证签名完整性、架构、版本、最低系统版本和包体积，再生成 `.sha256` 文件。不需要 Apple 账号、证书或 Secrets。
 
 ## 项目结构
 
@@ -84,7 +94,7 @@ src/
   settings/       JSON 应用设置
   styles/         以排版为中心的视觉系统
 src-tauri/        Rust 命令、macOS 菜单、打包与原生服务
-docs/             UI 约束、已知问题与未来发布运行手册
+docs/             UI 约束、已知问题与发布运行手册
 ```
 
 ## 文档

@@ -6,7 +6,7 @@ Milo is a free, local-first Markdown editor for macOS. It opens a Markdown file 
 
 Your Markdown files remain the source of truth. They stay portable across VS Code, Vim, Obsidian, Typora, Git, and other Markdown tools.
 
-Milo is under active development and testing.
+Milo 0.3.0 is the first public beta, distributed as a GitHub Pre-release. The candidate is being prepared; public download will be available after publication.
 
 ## What Milo is for
 
@@ -39,13 +39,23 @@ Remote image URLs are never requested until you choose to load a particular imag
 
 Mermaid, KaTeX, Shiki, Source Mode, export, and search are deliberately deferred so they cannot slow the MVP startup path.
 
-## Requirements
+## Download and install
 
-- macOS 13 or later
-- Node.js 24
-- Rust stable with the macOS toolchain
+Users need **macOS 13 or later**. Node.js, Rust and source build tools are unnecessary. The Universal DMG contains both Apple Silicon (arm64) and Intel (x86_64) architectures.
 
-The validated distribution target is one universal macOS build for Apple Silicon and Intel.
+1. Once published, select **v0.3.0 / Pre-release** on [GitHub Releases](https://github.com/cocoCzl/Milo/releases). Download `Milo_0.3.0_universal.dmg` and its `.sha256` file. In the download directory, verify with `shasum -a 256 -c Milo_0.3.0_universal.dmg.sha256`.
+2. Open the DMG, drag Milo to Applications, eject the disk image, then open Milo from Applications.
+3. Milo is **ad-hoc signed**, without a Developer ID identity signature or Apple notarization. macOS may block the first opening. After checking the source and checksum, try opening it once, then go to **System Settings → Privacy & Security → Open Anyway** for Milo and follow the system prompts. Wording varies by macOS version; see [Apple's instructions](https://support.apple.com/en-us/102445).
+
+Passing ad-hoc signature integrity checks does not imply Apple certification or Gatekeeper trust. Do not disable Gatekeeper globally or remove quarantine from the entire download directory. Browser download and quarantined first-open behavior still require verification once a release attachment is available.
+
+Hardware coverage: Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS 13–26 have not been tested on hardware. Real Chinese IME candidate confirmation and save timing await human verification; see [Known issues](docs/KNOWN_ISSUES.md). Use disposable or backed-up documents for beta testing.
+
+Report problems through [GitHub Issues](https://github.com/cocoCzl/Milo/issues), including app version, macOS version, chip, reproduction steps and relevant screenshots. Avoid sharing private documents.
+
+## Development requirements
+
+Source development requires Node.js 24, Rust stable, Xcode Command Line Tools and both macOS Rust targets.
 
 ## Local development
 
@@ -70,7 +80,7 @@ npm run build
 ./scripts/build-macos-universal.sh
 ```
 
-The output is a universal DMG under `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`. This creates a local unsigned artifact only; Apple signing, notarization, Gatekeeper validation, and public release remain future maintainer steps.
+The output is a universal DMG under `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`. This explicitly creates an ad-hoc signed, unnotarized beta, verifies signature integrity, architectures, versions, minimum OS and package size, then generates a `.sha256` file. No Apple account, certificate or Secrets are required.
 
 ## Project layout
 
@@ -84,15 +94,15 @@ src/
   settings/       JSON-backed application preferences
   styles/         Typography-first visual system
 src-tauri/        Rust commands, macOS menu, packaging, and native services
-docs/             UI contracts, known issues, and future release runbooks
+docs/             UI contracts, known issues, and release runbooks
 ```
 
 ## Documentation
 
 - [UI design and editor invariants](docs/UI_DESIGN.md)
 - [Known issues](docs/KNOWN_ISSUES.md)
-- [Release runbook](docs/RELEASE.md): future Apple signing, notarization, performance, and release steps.
-- [发布说明（简体中文）](docs/RELEASE.zh-CN.md)：未来 Apple 签名、公证、性能验证与发布步骤。
+- [Release runbook](docs/RELEASE.md): beta packaging, verification and release steps.
+- [发布说明（简体中文）](docs/RELEASE.zh-CN.md)：测试版打包、验证与发布步骤。
 
 ## License
 

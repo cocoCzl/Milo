@@ -73,12 +73,12 @@ The first supported release target: macOS 13 or later, distributed as one univer
 _Avoid_: Apple-Silicon-only release, legacy macOS support
 
 **Public Release**:
-A GitHub Release containing a signed and Apple-notarized macOS `.dmg`. Unsigned builds are limited to local development.
-_Avoid_: unsigned public build, ad-hoc installer
+Version 0.3.0 is the first public beta: a GitHub Pre-release containing an explicitly ad-hoc signed, unnotarized Universal DMG for macOS 13 or later. No Apple Developer membership, Developer ID certificate or notarization credentials are required. The identifier stays `io.github.milo.editor`. Ad-hoc integrity, Developer ID identity and Apple notarization/Gatekeeper trust are separate checks; expected Gatekeeper rejection must be disclosed. Release automation creates a draft prerelease, never stable Latest.
+_Avoid_: Apple-certified beta, notarized beta, silent signing fallback
 
 **Repository Quality Gate**:
-Every pull request and main-branch change must pass TypeScript checking, linting, unit tests, and a macOS build check. A version tag additionally triggers signing, notarization, and GitHub Release publication.
-_Avoid_: unverified main branch, release-only testing
+Every pull request and master-branch change must pass formatting, TypeScript checking, linting, frontend/Rust tests, Clippy and a macOS build check. A matching version tag additionally builds and verifies the ad-hoc Universal DMG and SHA-256 file, then attaches only those files to a draft GitHub Pre-release. Public publication is a separate maintainer action.
+_Avoid_: unverified master branch, release-only testing
 
 **Application Settings**:
 Global preferences and session state held in one JSON file in the operating system's app-data location. They include appearance, interface and document zoom, window state, recent files and folders, and the last open document-tab session; no settings file is created in a user's document folder.
