@@ -13,7 +13,9 @@ cleanup() {
   rmdir "$mount_point" || true
 }
 trap cleanup EXIT
-hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount_point"
+# Tauri embeds our GPL license in the image; answer its mount-time notice
+# explicitly so this read-only verification also works without an interactive stdin.
+printf 'Y\n' | hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount_point"
 app="$mount_point/Milo.app"
 plist="$app/Contents/Info.plist"
 for key in CFBundleShortVersionString CFBundleVersion; do
@@ -22,13 +24,18 @@ done
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = io.github.milo.editor
 test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" = 13.0
 binary="$app/Contents/MacOS/milo"
-lipo -verify_arch arm64 x86_64 "$binary"
+architectures=$(lipo -archs "$binary")
+echo "Architectures: $architectures"
+case "$architectures" in
+  'arm64 x86_64'|'x86_64 arm64') ;;
+  *) echo 'Expected exactly arm64 and x86_64' >&2; exit 1 ;;
+esac
 for arch in arm64 x86_64; do
   signature=$(codesign -d --verbose=4 --arch "$arch" "$app" 2>&1)
   echo "$signature"
   echo "$signature" | rg -q '^Signature=adhoc$'
   echo "$signature" | rg -q '^TeamIdentifier=not set$'
-  minimum=$(otool -l -arch "$arch" "$binary" | awk '/LC_BUILD_VERSION/ {build=1} build && /minos/ {print $2; exit}')
+  minimum=$(otool -l -arch "$arch" "$binary" | awk '/LC_BUILD_VERSION/ {build=1} build && /minos/ {print $2; build=0}')
   test "$minimum" = 13.0
 done
 codesign --verify --deep --strict --all-architectures --verbose=2 "$app"
