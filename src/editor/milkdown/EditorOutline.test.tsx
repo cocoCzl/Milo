@@ -4,6 +4,41 @@ import { describe, expect, it, vi } from 'vitest'
 import { EditorOutline } from './EditorOutline'
 
 describe('EditorOutline', () => {
+  it('preserves manual browsing on unrelated updates and leaves an already visible current item alone', () => {
+    const headings = [
+      { id: 'first', key: 'first', level: 1, pos: 1, text: 'First' },
+      { id: 'second', key: 'second', level: 2, pos: 8, text: 'Second' },
+    ]
+    const props = {
+      activePosition: 1,
+      closeLabel: 'Close outline',
+      drawer: false,
+      emptyLabel: 'Empty',
+      headings,
+      label: 'Outline',
+      onSelect: vi.fn(),
+    }
+    const { container, rerender } = render(<EditorOutline {...props} />)
+    const body = container.querySelector<HTMLElement>('.editor-outline__body')!
+    const scrollTo = vi.fn()
+    body.scrollTop = 200
+    Object.defineProperty(body, 'scrollTo', { value: scrollTo })
+    vi.spyOn(body, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 240, 120))
+    const rows = container.querySelectorAll<HTMLElement>('.editor-outline__item')
+    vi.spyOn(rows[0], 'getBoundingClientRect').mockReturnValue(new DOMRect(0, -200, 200, 28))
+    vi.spyOn(rows[1], 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 40, 200, 28))
+
+    // A heading-label update must not undo the user's manual scroll when the
+    // article's active position has not changed.
+    rerender(<EditorOutline {...props} headings={headings.map((heading) => ({ ...heading }))} />)
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(body.scrollTop).toBe(200)
+
+    rerender(<EditorOutline {...props} activePosition={8} />)
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(body.scrollTop).toBe(200)
+  })
+
   it('keeps an active heading visible by scrolling only the outline body', () => {
     const scrollTo = vi.fn()
     const { container, rerender } = render(
@@ -26,7 +61,7 @@ describe('EditorOutline', () => {
       configurable: true,
       value: () => new DOMRect(0, 0, 240, 120),
     })
-    Object.defineProperty(outline, 'scrollTop', { configurable: true, value: 0 })
+    Object.defineProperty(outline, 'scrollTop', { configurable: true, writable: true, value: 0 })
     Object.defineProperty(outline, 'scrollTo', { configurable: true, value: scrollTo })
     Object.defineProperty(second, 'getBoundingClientRect', {
       configurable: true,
@@ -48,7 +83,8 @@ describe('EditorOutline', () => {
       />,
     )
 
-    expect(scrollTo).toHaveBeenCalledWith({ behavior: 'auto', top: 62 })
+    expect(outline.scrollTop).toBe(62)
+    expect(scrollTo).not.toHaveBeenCalled()
   })
 
   it('uses a fixed header and a separate scroll body in drawer mode', () => {

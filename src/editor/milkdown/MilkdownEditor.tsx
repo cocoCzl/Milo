@@ -622,9 +622,7 @@ export function MilkdownEditor({
     if (!active || !isReady) return
     const stage = editorRootRef.current?.closest<HTMLElement>('.document-stage')
     if (!stage) return
-    let frame = 0
     const updateActiveHeading = () => {
-      frame = 0
       const pending = pendingNavigationRef.current
 
       if (pending) {
@@ -636,7 +634,10 @@ export function MilkdownEditor({
       setActiveHeadingPosition((previous) => (previous === current ? previous : current))
     }
     const onScroll = () => {
-      if (!frame) frame = requestAnimationFrame(updateActiveHeading)
+      // WKWebView may report this page hidden while the native window is
+      // interactive and suspend animation frames indefinitely. Scroll events
+      // already follow rendering cadence; do not gate navigation state on rAF.
+      updateActiveHeading()
     }
     const cancelPendingNavigation = () => {
       pendingNavigationRef.current = null
@@ -657,7 +658,6 @@ export function MilkdownEditor({
       // Its click lock is meaningful only for the currently visible tab; do
       // not let a previous tab's bottom-navigation choice survive a switch.
       pendingNavigationRef.current = null
-      if (frame) cancelAnimationFrame(frame)
     }
   }, [active, headingElementForPosition, headings, isReady])
 

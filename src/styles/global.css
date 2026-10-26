@@ -158,9 +158,6 @@ button:focus-visible,
   --document-context-height: 40px;
   --top-region-height: var(--application-bar-height);
   --editor-rail-width: 48px;
-  /* The layout reserves a slim gutter; the fixed outline itself can use the
-     otherwise empty right edge without making the reading column narrower. */
-  --outline-layout-width: 174px;
   --outline-width: 256px;
   --editor-column-gap: 18px;
   --workspace-width: 1600px;
@@ -414,10 +411,9 @@ button:focus-visible,
   color: var(--muted-ink);
   border: 1px solid transparent;
   border-radius: 8px;
-  transition:
-    background-color 130ms ease,
-    border-color 130ms ease,
-    box-shadow 130ms ease;
+  /* Theme changes must paint immediately: WKWebView can suspend transition
+     clocks while the interactive native page is reported hidden. */
+  transition: none;
   -webkit-app-region: no-drag;
 }
 
@@ -1180,7 +1176,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background: var(--surface-editor);
 }
 
-.app-shell--inline-outline .document-stage {
+.app-shell--inline-outline .document-stage,
+.outline-inline-layer {
   grid-template-columns:
     minmax(0, 1fr) minmax(
       0,
@@ -1194,6 +1191,16 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 
 .app-shell--focus-mode .document-stage {
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--reading-width)) minmax(0, 1fr);
+}
+
+/* Home has no Document Context or article/outline tracks. Keep its stage in
+   the sole explicit row; placing it in row 2 creates a large empty first row.
+   Symmetric padding centers the whole group in the available workspace. */
+.document-area.document-area--empty > .document-stage {
+  grid-area: 1 / 1;
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--space-6);
+  place-items: center;
 }
 
 .document-empty-state {
@@ -1825,8 +1832,29 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   column-gap: var(--space-6);
 }
 
-.document-editor-workspace__outline {
-  display: contents;
+/* The inline outline shares the stage's horizontal tracks in a separate,
+   non-scrolling grid item. Its row is the space below Document Context, so
+   neither article padding nor scroll position can push it below the window. */
+.app-shell--inline-outline:not(.app-shell--focus-mode)
+  .document-area:not(.document-area--empty)
+  > .document-stage {
+  grid-area: 2 / 1;
+}
+
+.outline-inline-layer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-area: 2 / 1;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-4) clamp(20px, 1.5vw, 24px);
+  pointer-events: none;
+}
+
+.outline-inline-layer[hidden] {
+  display: none;
 }
 
 /* A portal target for the compact outline. It belongs to the non-scrolling
@@ -1857,16 +1885,6 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   inset: 0;
   pointer-events: none;
   isolation: isolate;
-}
-
-.document-editor-workspace--inline .document-editor-workspace__outline {
-  position: sticky;
-  top: var(--space-4);
-  display: block;
-  grid-column: 2;
-  align-self: start;
-  width: var(--outline-width);
-  max-height: calc(100dvh - var(--top-region-height) - var(--space-4) - var(--space-4));
 }
 
 .close-confirmation {
@@ -2326,24 +2344,29 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   scrollbar-color: var(--outline-scrollbar-thumb) transparent;
 }
 
-.document-editor-workspace--inline .editor-outline {
+.outline-inline-layer .editor-outline {
   display: flex;
-  width: 100%;
-  max-height: calc(100dvh - var(--top-region-height) - var(--space-4) - var(--space-4));
+  grid-column: 2;
+  justify-self: end;
+  align-self: start;
+  width: var(--outline-width);
+  max-height: 100%;
+  pointer-events: auto;
   overflow: hidden;
   background: transparent;
   border: 0;
+  border-left: 1px solid var(--context-line);
   box-shadow: none;
 }
 
-.document-editor-workspace--inline .editor-outline .editor-outline__header {
+.outline-inline-layer .editor-outline .editor-outline__header {
   color: var(--text-secondary);
   border-bottom: 0;
   font-weight: var(--font-weight-medium);
   letter-spacing: 0;
 }
 
-.document-editor-workspace--inline .editor-outline p {
+.outline-inline-layer .editor-outline p {
   color: var(--text-secondary);
 }
 
@@ -2378,9 +2401,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   display: flex;
   gap: 7px;
   align-items: center;
-  height: var(--document-context-height);
-  min-height: var(--document-context-height);
-  padding: 0 var(--space-3);
+  min-height: 2.5em;
+  padding: 4px var(--space-3);
   color: var(--ink);
   border-bottom: 1px solid var(--context-line);
   font-size: var(--ui-font-md);
@@ -2419,8 +2441,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   background-clip: padding-box;
 }
 
-.document-editor-workspace--inline .editor-outline__body {
-  padding: var(--space-2) 7px var(--space-4);
+.outline-inline-layer .editor-outline__body {
+  padding: 4px 7px var(--space-4);
 }
 
 .editor-outline--drawer .editor-outline__header {
@@ -2428,11 +2450,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 .editor-outline--drawer .editor-outline__body {
-  padding: var(--space-2) 7px var(--space-4);
-}
-
-.editor-outline--drawer .editor-outline__item {
-  color: var(--text-secondary);
+  padding: 4px 7px var(--space-4);
 }
 
 .editor-outline__close {
@@ -2463,7 +2481,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 
 .editor-outline ol {
   display: grid;
-  gap: 2px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2477,9 +2495,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   position: relative;
   display: block;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 9px;
-  overflow: hidden;
+  min-height: 2.333333em;
+  padding: 4px 9px;
   color: inherit;
   cursor: pointer;
   background: transparent;
@@ -2501,6 +2518,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .editor-outline__item:focus-visible {
   color: var(--ink);
   background: var(--hover-fill);
+}
+
+.editor-outline__item:focus-visible {
+  outline-offset: -2px;
 }
 
 .editor-outline__item--active {
@@ -2527,32 +2548,29 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 
 .editor-outline__item--level-2 {
-  padding-left: 20px;
+  padding-left: 19px;
   color: var(--ink);
   font-weight: 520;
 }
 
 .editor-outline__item--level-3 {
-  padding-left: 30px;
+  padding-left: 29px;
   color: var(--muted-ink);
 }
 
 .editor-outline__item--level-4 {
-  padding-left: 38px;
+  padding-left: 37px;
   color: var(--muted-ink);
-  font-size: var(--ui-font-sm);
 }
 
 .editor-outline__item--level-5 {
-  padding-left: 46px;
-  color: var(--subtle-ink);
-  font-size: var(--ui-font-sm);
+  padding-left: 43px;
+  color: var(--muted-ink);
 }
 
 .editor-outline__item--level-6 {
-  padding-left: 54px;
-  color: var(--subtle-ink);
-  font-size: var(--ui-font-sm);
+  padding-left: 43px;
+  color: var(--muted-ink);
 }
 
 .editor-outline__item--active.editor-outline__item--level-1,

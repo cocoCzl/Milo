@@ -99,6 +99,7 @@ export function App() {
   const outlineToggleRef = useRef<HTMLButtonElement>(null)
   const focusOutlineTriggerRef = useRef<HTMLButtonElement>(null)
   const [outlineDrawerMount, setOutlineDrawerMount] = useState<HTMLElement | null>(null)
+  const [outlineInlineMount, setOutlineInlineMount] = useState<HTMLElement | null>(null)
   const [preferencesDialogMount, setPreferencesDialogMount] = useState<HTMLElement | null>(null)
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
@@ -815,10 +816,18 @@ export function App() {
                   )
                 }}
                 outlineDrawerMount={outlineDrawerMount}
+                outlineInlineMount={outlineInlineMount}
                 contextualOverlayMount={contextualOverlayMount}
               />
             ))}
           </section>
+          {/* Share the stage's grid tracks, but not its scrolling coordinate
+              space. The available grid row bounds the outline at every size. */}
+          <div
+            ref={setOutlineInlineMount}
+            className="outline-inline-layer"
+            hidden={focusMode || outlineLayout !== 'inline' || !activeTab}
+          />
           {/* Keep the drawer portal in the non-scrolling document-area layer.
               WKWebView can expose a root-grid overlay in the AX tree without
               reliably painting it above the document-stage compositor. */}

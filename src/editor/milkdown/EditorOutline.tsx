@@ -41,20 +41,17 @@ export function EditorOutline({
     const outlineRect = scrollBody.getBoundingClientRect()
     const itemRect = activeItem.getBoundingClientRect()
     if (itemRect.top < outlineRect.top || itemRect.bottom > outlineRect.bottom) {
-      // Do not call Element#scrollIntoView here. The drawer is portalled into
-      // the document-stage, which is also scrollable; browsers may then scroll
-      // both the outline and the article. Moving only this inner scroll body
+      // Do not call Element#scrollIntoView here: it can reveal multiple
+      // ancestors, including the page. Moving only this inner scroll body
       // keeps the active item visible without changing document position.
       const offset =
         itemRect.top < outlineRect.top
           ? itemRect.top - outlineRect.top
           : itemRect.bottom - outlineRect.bottom
       const top = Math.max(0, scrollBody.scrollTop + offset)
-      if (typeof scrollBody.scrollTo === 'function') {
-        scrollBody.scrollTo({ top, behavior: 'auto' })
-      } else {
-        scrollBody.scrollTop = top
-      }
+      // Match document navigation: dictionary-form scrollTo can no-op in
+      // WKWebView after a navigation button takes focus.
+      scrollBody.scrollTop = top
     }
   }, [activePosition])
 

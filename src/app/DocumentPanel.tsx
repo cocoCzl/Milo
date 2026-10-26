@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { MilkdownEditor } from '../editor/milkdown/MilkdownEditor'
 import type { DocumentTab } from '../hooks/documentSessionModel'
 import type { InterfaceCopy } from './interfaceCopy'
@@ -20,6 +19,7 @@ type DocumentPanelProps = {
   onSaveAs: () => void
   onCloseOutline: () => void
   outlineDrawerMount: HTMLElement | null
+  outlineInlineMount: HTMLElement | null
   contextualOverlayMount: HTMLElement | null
   outlineLayout: 'inline' | 'drawer'
   outlineOpen: boolean
@@ -41,6 +41,7 @@ export function DocumentPanel({
   onSaveAs,
   onCloseOutline,
   outlineDrawerMount,
+  outlineInlineMount,
   contextualOverlayMount,
   outlineLayout,
   outlineOpen,
@@ -81,6 +82,7 @@ export function DocumentPanel({
           onCompositionChange={onCompositionChange}
           onPasteImage={onPasteImage}
           outlineDrawerMount={outlineDrawerMount}
+          outlineInlineMount={outlineInlineMount}
           contextualOverlayMount={contextualOverlayMount}
           outlineLayout={outlineLayout}
           outlineOpen={active && outlineOpen}
@@ -145,6 +147,7 @@ type DocumentEditorWorkspaceProps = {
     image: import('../file-system/nativeMarkdownFile').PastedImage,
   ) => Promise<string | null>
   outlineDrawerMount: HTMLElement | null
+  outlineInlineMount: HTMLElement | null
   contextualOverlayMount: HTMLElement | null
   outlineLayout: 'inline' | 'drawer'
   outlineOpen: boolean
@@ -164,14 +167,18 @@ function DocumentEditorWorkspace({
   onCompositionChange,
   onPasteImage,
   outlineDrawerMount,
+  outlineInlineMount,
   contextualOverlayMount,
   outlineLayout,
   outlineOpen,
   placeholder,
   presentationMode,
 }: DocumentEditorWorkspaceProps) {
-  const [inlineOutlineMount, setInlineOutlineMount] = useState<HTMLElement | null>(null)
-  const outlineMount = outlineLayout === 'inline' ? inlineOutlineMount : outlineDrawerMount
+  const outlineMount = active
+    ? outlineLayout === 'inline'
+      ? outlineInlineMount
+      : outlineDrawerMount
+    : null
 
   return (
     <div className={`document-editor-workspace document-editor-workspace--${outlineLayout}`}>
@@ -194,7 +201,6 @@ function DocumentEditorWorkspace({
         placeholder={placeholder}
         presentationMode={presentationMode}
       />
-      <div ref={setInlineOutlineMount} className="document-editor-workspace__outline" />
     </div>
   )
 }

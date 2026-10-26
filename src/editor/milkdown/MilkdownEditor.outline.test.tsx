@@ -195,6 +195,37 @@ describe('MilkdownEditor outline', () => {
     outlineMount.remove()
   })
 
+  it('updates the current chapter even when WKWebView suspends animation frames', async () => {
+    const outlineMount = document.body.appendChild(document.createElement('aside'))
+    const { container } = render(
+      <section className="document-stage">
+        <MilkdownEditor initialMarkdown={longOutlineMarkdown()} outlineMount={outlineMount} />
+      </section>,
+    )
+    await waitFor(() =>
+      expect(within(outlineMount).getByRole('button', { name: '20. Chapter 20' })).toBeVisible(),
+    )
+    const stalledFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 123)
+    try {
+      const stage = container.querySelector<HTMLElement>('.document-stage')!
+      setStageGeometry(stage, container, vi.fn(), 1700)
+      fireEvent.scroll(stage)
+      expect(within(outlineMount).getByRole('button', { name: '20. Chapter 20' })).toHaveAttribute(
+        'aria-current',
+        'location',
+      )
+      stage.scrollTop = 0
+      fireEvent.scroll(stage)
+      expect(within(outlineMount).getByRole('button', { name: '1. Chapter 1' })).toHaveAttribute(
+        'aria-current',
+        'location',
+      )
+    } finally {
+      stalledFrame.mockRestore()
+      outlineMount.remove()
+    }
+  })
+
   it('keeps a clicked heading active until its resulting scroll position is observed', async () => {
     const outlineMount = document.body.appendChild(document.createElement('aside'))
     const { container } = render(

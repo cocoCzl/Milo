@@ -351,10 +351,10 @@ describe('application shell foundation', () => {
     declarations('.editor-outline--drawer', { width: 'min(280px, calc(100vw - 24px))' })
     declarations('.editor-outline', { background: 'var(--surface-outline)' })
     declarations('.editor-outline__header', {
-      height: 'var(--document-context-height)',
+      'min-height': '2.5em',
       'border-bottom': '1px solid var(--context-line)',
     })
-    declarations('.editor-outline__item', { position: 'relative', 'min-height': '32px' })
+    declarations('.editor-outline__item', { position: 'relative', 'min-height': '2.333333em' })
     declarations('.editor-outline__item--active::before', {
       width: '2px',
       background: 'var(--accent)',
@@ -370,13 +370,13 @@ describe('application shell foundation', () => {
     })
   })
 
-  it('keeps all six outline levels compact and continuously indented', () => {
+  it('keeps all six outline levels compact with bounded deep indentation', () => {
     for (const [level, padding] of [
-      ['2', '20px'],
-      ['3', '30px'],
-      ['4', '38px'],
-      ['5', '46px'],
-      ['6', '54px'],
+      ['2', '19px'],
+      ['3', '29px'],
+      ['4', '37px'],
+      ['5', '43px'],
+      ['6', '43px'],
     ])
       declarations(`.editor-outline__item--level-${level}`, { 'padding-left': padding })
     declarations('.editor-outline__item span', {
@@ -386,16 +386,21 @@ describe('application shell foundation', () => {
   })
 
   it('blends only the inline outline into the page without weakening navigation feedback', () => {
-    const inline = '.document-editor-workspace--inline .editor-outline'
+    const inline = '.outline-inline-layer .editor-outline'
     declarations(inline, {
       background: 'transparent',
       border: '0',
       'box-shadow': 'none',
-      width: '100%',
-      'max-height': 'calc(100dvh - var(--top-region-height) - var(--space-4) - var(--space-4))',
+      width: 'var(--outline-width)',
+      'max-height': '100%',
+      'border-left': '1px solid var(--context-line)',
       overflow: 'hidden',
     })
-    absentDeclaration(inline, 'border-left')
+    declarations('.outline-inline-layer', {
+      'grid-area': '2 / 1',
+      'grid-template-rows': 'minmax(0, 1fr)',
+      'min-height': '0',
+    })
     absentDeclaration(inline, 'opacity')
     declarations(`${inline} .editor-outline__header`, {
       color: 'var(--text-secondary)',
