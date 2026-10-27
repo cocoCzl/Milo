@@ -21,6 +21,8 @@ const englishCopy = {
   warm: 'Warm',
   closeConfirmation: (title: string) => `Close “${title}”?`,
   closeDocument: (title: string) => `Close ${title}`,
+  closeRemainingDocuments: (count: number) =>
+    `${count} document${count === 1 ? '' : 's'} remaining to review.`,
   currentDocument: 'Current document',
   discardChanges: 'Discard changes',
   externalChange: 'External change',
@@ -183,6 +185,7 @@ const chineseCopy = {
   warm: '米色',
   closeConfirmation: (title: string) => `关闭“${title}”？`,
   closeDocument: (title: string) => `关闭 ${title}`,
+  closeRemainingDocuments: (count: number) => `还有 ${count} 篇文档需要处理。`,
   currentDocument: '当前文档',
   discardChanges: '放弃更改',
   externalChange: '外部更改',

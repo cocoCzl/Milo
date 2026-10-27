@@ -1,6 +1,19 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const nativeCloseMocks = vi.hoisted(() => ({
+  receive: null as ((kind: 'window' | 'quit') => void) | null,
+}))
+vi.mock('../hooks/nativeClose', async (original) => ({
+  ...(await original<typeof import('../hooks/nativeClose')>()),
+  listenForNativeClose: async (handler: (kind: 'window' | 'quit') => void) => {
+    nativeCloseMocks.receive = handler
+    return () => {
+      if (nativeCloseMocks.receive === handler) nativeCloseMocks.receive = null
+    }
+  },
+}))
+
 const preferenceMocks = vi.hoisted(() => ({
   load: vi.fn(),
   save: vi.fn(),
@@ -258,6 +271,26 @@ describe('App', () => {
     const editors = screen.getAllByRole('textbox', { hidden: true })
     expect(editors[0]).toHaveAttribute('data-markdown', 'A1')
     expect(editors[1]).toHaveAttribute('data-markdown', '')
+  })
+
+  it('shows progress through background drafts during native quit and cancels on the affected tab', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    act(() => editorMocks.markdownChanges.values().next().value?.('Background draft'))
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    act(() => [...editorMocks.markdownChanges.values()].at(-1)?.('Active draft'))
+    act(() => {
+      nativeCloseMocks.receive?.('quit')
+      nativeCloseMocks.receive?.('quit')
+    })
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveTextContent('2 documents remaining to review.')
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
+    expect(screen.getByRole('status')).toHaveTextContent('1 document remaining to review.')
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.getByRole('textbox')).toHaveAttribute('data-markdown', 'Active draft')
   })
 
   it('routes an editor composition to its document close guard without blocking a clean second tab', () => {

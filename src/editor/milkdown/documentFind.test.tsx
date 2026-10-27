@@ -57,7 +57,10 @@ describe('document find', () => {
       expect(container.querySelector('.milkdown-editor')).toHaveAttribute('aria-busy', 'false'),
     )
     const editor = container.querySelector<HTMLElement>('.ProseMirror')!
-    fireEvent.keyDown(window, { key: 'f', metaKey: true })
+    await waitFor(() => {
+      fireEvent.keyDown(window, { key: 'f', metaKey: true })
+      expect(getByRole('textbox', { name: 'Find in document' })).toBeInTheDocument()
+    })
     const input = getByRole('textbox', { name: 'Find in document' })
     fireEvent.change(input, { target: { value: 'hello' } })
     await waitFor(() => expect(container.querySelectorAll('.document-find-match')).toHaveLength(3))
@@ -97,7 +100,10 @@ describe('document find', () => {
       expect(container.querySelector('.milkdown-editor')).toHaveAttribute('aria-busy', 'false'),
     )
     const editor = container.querySelector('.ProseMirror')
-    fireEvent.keyDown(window, { key: 'f', metaKey: true })
+    await waitFor(() => {
+      fireEvent.keyDown(window, { key: 'f', metaKey: true })
+      expect(getByRole('textbox', { name: 'Find in document' })).toBeInTheDocument()
+    })
     fireEvent.change(getByRole('textbox', { name: 'Find in document' }), {
       target: { value: '正文' },
     })

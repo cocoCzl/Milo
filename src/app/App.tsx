@@ -986,6 +986,19 @@ export function App() {
             {copy.closeConfirmation(displayDocumentTitle(closingTab, copy))}
           </strong>
           <span>{closingTab.saveError ? copy.lastSaveFailed : copy.unsavedChanges}</span>
+          {session.closePending ? (
+            <small role="status">
+              {copy.closeRemainingDocuments(
+                session.tabs.filter(
+                  (tab) =>
+                    tab.document.isDirty ||
+                    tab.isComposing ||
+                    tab.saveError ||
+                    tab.activity === 'saving',
+                ).length,
+              )}
+            </small>
+          ) : null}
           <div className="close-confirmation__actions">
             <button
               type="button"
