@@ -1,3 +1,4 @@
+mod draft_recovery;
 mod file_system;
 #[cfg(target_os = "macos")]
 mod macos_safe_save;
@@ -8,11 +9,60 @@ use tauri::{
     Emitter, Manager,
 };
 
+#[derive(Default)]
+struct CloseCoordinator(std::sync::Mutex<CloseState>);
+#[derive(Default)]
+struct CloseState {
+    pending: Option<String>,
+    approved_exit: bool,
+}
+
+fn request_close(app: &tauri::AppHandle, kind: &str) {
+    let state = app.state::<CloseCoordinator>();
+    let mut state = state.0.lock().unwrap();
+    if state.pending.is_some() {
+        return;
+    }
+    state.pending = Some(kind.to_owned());
+    let _ = app.emit("milo://request-close", kind);
+}
+
+#[tauri::command]
+fn cancel_close(state: tauri::State<'_, CloseCoordinator>) {
+    state.0.lock().unwrap().pending = None;
+}
+
+#[tauri::command]
+fn complete_close(app: tauri::AppHandle, kind: String) -> Result<(), String> {
+    let coordinator = app.state::<CloseCoordinator>();
+    let mut state = coordinator.0.lock().unwrap();
+    if state.pending.as_deref() != Some(kind.as_str()) {
+        return Err("No matching close request.".into());
+    }
+    state.pending = None;
+    if kind == "quit" {
+        state.approved_exit = true;
+        drop(state);
+        app.exit(0);
+    } else if let Some(window) = app.get_webview_window("main") {
+        drop(state);
+        window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 struct LaunchMarkdownFile(Option<String>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .manage(CloseCoordinator::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                request_close(window.app_handle(), "window");
+            }
+        })
         .manage(LaunchMarkdownFile(launch_markdown_file()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -28,6 +78,10 @@ pub fn run() {
                 .item(&menu_item(app, "open-document", "Open…", "CmdOrCtrl+O")?)
                 .item(&menu_item(app, "save-document", "Save", "CmdOrCtrl+S")?)
                 .item(&menu_item(app, "save-as", "Save As…", "CmdOrCtrl+Shift+S")?)
+                .item(&PredefinedMenuItem::close_window(
+                    app,
+                    Some("Close Window"),
+                )?)
                 .separator()
                 .item(&menu_item(
                     app,
@@ -70,7 +124,13 @@ pub fn run() {
             let help = SubmenuBuilder::new(app, "Help")
                 .item(&PredefinedMenuItem::about(app, Some("About Milo"), None)?)
                 .build()?;
+            let application = SubmenuBuilder::new(app, "Milo")
+                .item(&PredefinedMenuItem::about(app, Some("About Milo"), None)?)
+                .separator()
+                .item(&PredefinedMenuItem::quit(app, Some("Quit Milo"))?)
+                .build()?;
             let menu = MenuBuilder::new(app)
+                .item(&application)
                 .item(&file)
                 .item(&edit)
                 .item(&view)
@@ -84,6 +144,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cancel_close,
+            complete_close,
+            draft_recovery::read_draft_recovery,
+            draft_recovery::write_draft_recovery,
             file_system::read_markdown_document,
             file_system::write_markdown_document,
             file_system::write_markdown_document_safe_v2,
@@ -98,6 +162,25 @@ pub fn run() {
         .expect("error while building Milo");
 
     app.run(|app, event| {
+        if let tauri::RunEvent::ExitRequested { ref api, .. } = event {
+            if !app
+                .state::<CloseCoordinator>()
+                .0
+                .lock()
+                .unwrap()
+                .approved_exit
+            {
+                api.prevent_exit();
+                request_close(app, "quit");
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = event {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
             for url in urls {

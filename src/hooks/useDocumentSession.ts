@@ -1,3 +1,4 @@
+import { queueDraft, readDrafts, flushDrafts } from '../file-system/draftRecovery'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { composeMarkdownDocument, inspectMarkdownDocument } from '../editor/markdown/documentSafety'
@@ -29,22 +30,32 @@ let documentId = 0
 
 function createUntitledDocument(): DocumentSession {
   documentId += 1
-  return createDocumentState(documentId)
+  return { ...createDocumentState(documentId), recoveryId: crypto.randomUUID() }
 }
 
 export function useDocumentSession(untitledTitle = 'Untitled') {
   const [tabs, setTabs] = useState<DocumentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<number | null>(null)
+  const [closePending, setClosePending] = useState(false)
   const [closingTabId, setClosingTabId] = useState<number | null>(null)
   const tabsRef = useRef(tabs)
   const activeTabIdRef = useRef(activeTabId)
   const selfWritesRef = useRef(new Map<number, { path: string; markdown: string }>())
+  const flushersRef = useRef(new Map<number, () => boolean>())
+  const savingRef = useRef(new Map<number, Promise<boolean>>())
+  const closeAllRef = useRef<(() => Promise<void>) | null>(null)
+  const closingRef = useRef<number | null>(null)
   const saveRef = useRef<() => Promise<boolean>>(async () => false)
   const untitledTitleRef = useRef(untitledTitle)
 
   tabsRef.current = tabs
   activeTabIdRef.current = activeTabId
   untitledTitleRef.current = untitledTitle
+
+  const registerFlush = useCallback((id: number, flush: (() => boolean) | null) => {
+    if (flush) flushersRef.current.set(id, flush)
+    else flushersRef.current.delete(id)
+  }, [])
 
   const replaceTab = useCallback((id: number, update: (tab: DocumentTab) => DocumentTab) => {
     const nextTabs = tabsRef.current.map((tab) => (tab.id === id ? update(tab) : tab))
@@ -107,7 +118,11 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         document: {
           ...current.document,
           markdown,
-          isDirty: true,
+          isDirty:
+            current.document.persistedMarkdown === null
+              ? markdown.length > 0
+              : composeMarkdownDocument(current.document.frontMatter, markdown) !==
+                current.document.persistedMarkdown,
           revision: current.document.revision + 1,
         },
         externalChange: null,
@@ -257,13 +272,14 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     [],
   )
 
-  const saveToPath = useCallback(
+  const performSaveToPath = useCallback(
     async (
       origin: DocumentOrigin,
       path: string,
       allowExternalOverwrite = false,
       expectedRevision?: number,
     ): Promise<boolean> => {
+      if (flushersRef.current.get(origin.tabId)?.() === false) return false
       const savedTab = getOriginTab(origin)
       if (
         !savedTab ||
@@ -386,6 +402,14 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
               : 'saved',
           saveError: null,
         }))
+        if (savedSnapshot.recoveryId) {
+          void queueDraft(savedSnapshot.recoveryId, null).catch((reason) =>
+            replaceTab(origin.tabId, (tab) => ({
+              ...tab,
+              error: readableError(reason, 'Could not clear recovery copy.'),
+            })),
+          )
+        }
         return true
       } catch (reason) {
         const externalConflict =
@@ -409,9 +433,29 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     [getOriginTab, replaceTab],
   )
 
+  // Serialize writes for each document, including preflight disk reads. A
+  // concurrent manual save waits and then snapshots the latest stable content.
+  const saveToPath = useCallback(
+    async (...args: Parameters<typeof performSaveToPath>) => {
+      const id = args[0].tabId
+      const previous = savingRef.current.get(id)
+      const operation = previous
+        ? previous.then(() => performSaveToPath(...args))
+        : performSaveToPath(...args)
+      savingRef.current.set(id, operation)
+      try {
+        return await operation
+      } finally {
+        if (savingRef.current.get(id) === operation) savingRef.current.delete(id)
+      }
+    },
+    [performSaveToPath],
+  )
+
   const saveAsDocument = useCallback(
     async (id = activeTabIdRef.current) => {
       const tab = getTab(id)
+      if (id !== null && flushersRef.current.get(id)?.() === false) return false
       if (!tab || tab.isComposing || tab.document.protectionReason) return false
       const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
       const path = await pickMarkdownSavePath(defaultPath)
@@ -574,6 +618,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         tab.activity,
         tab.isComposing,
         tab.externalChange,
+        tab.saveError,
       ].join(':'),
     )
     .join('|')
@@ -629,7 +674,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         tab.document.protectionReason ||
         tab.activity !== 'idle' ||
         tab.isComposing ||
-        tab.externalChange
+        tab.externalChange ||
+        tab.saveError
       )
         return []
       const origin = originForTab(tab)
@@ -661,6 +707,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     const index = currentTabs.findIndex((tab) => tab.id === id)
     if (index < 0) return
     selfWritesRef.current.delete(id)
+    flushersRef.current.delete(id)
+    const recoveryId = currentTabs[index].document.recoveryId
+    if (recoveryId) void queueDraft(recoveryId, null).catch(() => undefined)
     const nextTabs = currentTabs.filter((tab) => tab.id !== id)
     if (nextTabs.length === 0) {
       tabsRef.current = []
@@ -679,33 +728,142 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     setClosingTabId(null)
   }, [])
 
+  const needsCloseConfirmation = (tab: DocumentTab) =>
+    tab.document.isDirty ||
+    tab.isComposing ||
+    Boolean(tab.saveError) ||
+    tab.activity === 'saving' ||
+    savingRef.current.has(tab.id)
+
+  const continueCloseAll = useCallback(() => {
+    if (!closeAllRef.current) return
+    for (const tab of tabsRef.current) flushersRef.current.get(tab.id)?.()
+    const pending = tabsRef.current.find(needsCloseConfirmation)
+    if (pending) {
+      closingRef.current = pending.id
+      selectTab(pending.id)
+      setClosingTabId(pending.id)
+    } else {
+      const complete = closeAllRef.current
+      // Keep the coordinator locked while native completion/settings flush.
+      void flushDrafts()
+        .then(complete)
+        .then(() => {
+          closeAllRef.current = null
+        })
+        .catch((reason) => {
+          closeAllRef.current = null
+          const first = tabsRef.current[0]
+          if (first)
+            replaceTab(first.id, (tab) => ({
+              ...tab,
+              error: readableError(reason, 'Could not close safely.'),
+            }))
+        })
+    }
+  }, [replaceTab, selectTab])
+
+  const requestCloseAll = useCallback(
+    (complete: () => Promise<void>) => {
+      if (closeAllRef.current || closingRef.current !== null) return false
+      closeAllRef.current = complete
+      continueCloseAll()
+      return true
+    },
+    [continueCloseAll],
+  )
+
   const requestCloseTab = useCallback(
     (id: number) => {
+      if (closingRef.current !== null || closeAllRef.current) return
+      flushersRef.current.get(id)?.()
       const tab = getTab(id)
       if (!tab) return
-      if (tab.document.isDirty || tab.isComposing || tab.saveError) setClosingTabId(id)
-      else removeTab(id)
+      if (needsCloseConfirmation(tab)) {
+        closingRef.current = id
+        selectTab(id)
+        setClosingTabId(id)
+      } else removeTab(id)
     },
-    [getTab, removeTab],
+    [getTab, removeTab, selectTab],
+  )
+
+  const finishCloseTab = useCallback(
+    (id: number, discard: boolean) => {
+      if (!closeAllRef.current || discard) removeTab(id)
+      closingRef.current = null
+      setClosingTabId(null)
+      continueCloseAll()
+    },
+    [continueCloseAll, removeTab],
   )
 
   const discardAndCloseTab = useCallback(() => {
-    if (closingTabId !== null) removeTab(closingTabId)
-  }, [closingTabId, removeTab])
+    const id = closingRef.current
+    // Never race an in-flight write with a discard or removal.
+    if (id !== null && !savingRef.current.has(id)) finishCloseTab(id, true)
+  }, [finishCloseTab])
 
   const cancelCloseTab = useCallback(() => {
-    if (closingTabId !== null) {
-      activeTabIdRef.current = closingTabId
-      setActiveTabId(closingTabId)
-    }
+    const id = closingRef.current
+    if (id !== null) selectTab(id)
+    closeAllRef.current = null
+    setClosePending(false)
+    closingRef.current = null
     setClosingTabId(null)
-  }, [closingTabId])
+    window.setTimeout(
+      () =>
+        document
+          .querySelector<HTMLElement>(`#document-panel-${id} .ProseMirror`)
+          ?.focus({ preventScroll: true }),
+      0,
+    )
+  }, [selectTab])
 
   const saveAndCloseTab = useCallback(async () => {
-    if (closingTabId === null || !(await saveDocument(closingTabId))) return
-    const tab = getTab(closingTabId)
-    if (tab && !tab.isComposing && !tab.document.isDirty) removeTab(closingTabId)
-  }, [closingTabId, getTab, removeTab, saveDocument])
+    const id = closingRef.current
+    if (id === null) return
+    const pending = savingRef.current.get(id)
+    if (pending) await pending
+    if (closingRef.current !== id || !(await saveDocument(id))) return
+    const tab = getTab(id)
+    if (closingRef.current === id && tab && !tab.isComposing && !tab.document.isDirty)
+      finishCloseTab(id, false)
+  }, [finishCloseTab, getTab, saveDocument])
+
+  const recoverDrafts = useCallback(async () => {
+    const drafts = await readDrafts()
+    for (const draft of drafts) {
+      if (tabsRef.current.some((tab) => tab.document.recoveryId === draft.id)) continue
+      appendTab({
+        ...createUntitledDocument(),
+        markdown: draft.markdown,
+        isDirty: true,
+        recoveryId: draft.id,
+      })
+    }
+  }, [appendTab])
+
+  const draftSignature = tabs
+    .map((tab) => `${tab.id}:${tab.document.revision}:${tab.document.path}:${tab.isComposing}`)
+    .join('|')
+  useEffect(() => {
+    const timers = tabsRef.current.flatMap((tab) => {
+      const doc = tab.document
+      if (doc.path || !doc.recoveryId || !doc.isDirty || tab.isComposing) return []
+      return [
+        window.setTimeout(() => {
+          void queueDraft(doc.recoveryId!, doc.markdown).catch((reason) =>
+            replaceTab(tab.id, (current) => ({
+              ...current,
+              error: readableError(reason, 'Could not protect unsaved document.'),
+            })),
+          )
+        }, 600),
+      ]
+    })
+    return () => timers.forEach(window.clearTimeout)
+  }, [draftSignature, replaceTab])
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? emptyDocumentTab,
@@ -729,6 +887,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     activeTabId,
     cancelCloseTab,
     closingTabId,
+    closePending,
     createNewDocument,
     discardAndCloseTab,
     openDocument,
@@ -738,6 +897,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     reloadExternalChange,
     restoreStartupSession,
     requestCloseTab,
+    requestCloseAll,
+    registerFlush,
+    recoverDrafts,
     retainLocalChanges,
     retrySave: saveDocument,
     saveAndCloseTab,

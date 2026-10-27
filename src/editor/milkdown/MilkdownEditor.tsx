@@ -68,7 +68,7 @@ import {
 } from './headingNavigation'
 import { createCodeBlockNodeView } from './codeBlockNodeView'
 import { createImageNodeView } from './imageNodeView'
-import { createCompositionSaveBoundary, type EditorComposition } from './compositionSaveBoundary'
+import { createCompositionSaveBoundary, hasPendingComposition, type EditorComposition } from './compositionSaveBoundary'
 
 const tableDefaultCellMinWidth = 100
 const createTableNodeView: NodeViewConstructor = (node) =>
@@ -90,6 +90,7 @@ type MilkdownEditorProps = {
   editorId?: string
   documentPath?: string | null
   initialMarkdown: string
+  onRegisterFlush?: (flush: (() => boolean) | null) => void
   onMarkdownChange?: (markdown: string) => void
   onCompositionChange?: (state: EditorComposition) => void
   onPasteImage?: (image: PastedImage) => Promise<string | null>
@@ -177,6 +178,7 @@ export function MilkdownEditor({
   documentPath = null,
   initialMarkdown,
   onMarkdownChange,
+  onRegisterFlush,
   onCompositionChange,
   onPasteImage,
   placeholder,
@@ -195,6 +197,7 @@ export function MilkdownEditor({
   const copyRef = useRef(editorCopy)
   const documentPathRef = useRef(documentPath)
   const onMarkdownChangeRef = useRef(onMarkdownChange)
+  const onRegisterFlushRef = useRef(onRegisterFlush)
   const onCompositionChangeRef = useRef(onCompositionChange)
   const onPasteImageRef = useRef(onPasteImage)
   const presentationModeRef = useRef<PresentationMode>(presentationMode)
@@ -222,6 +225,7 @@ export function MilkdownEditor({
   if (!contextualStoreRef.current) contextualStoreRef.current = new ContextualEditorStore()
 
   onMarkdownChangeRef.current = onMarkdownChange
+  onRegisterFlushRef.current = onRegisterFlush
   onCompositionChangeRef.current = onCompositionChange
   onPasteImageRef.current = onPasteImage
   presentationModeRef.current = presentationMode
@@ -239,6 +243,30 @@ export function MilkdownEditor({
     }
 
     let disposed = false
+    let publishTimer: number | undefined
+    let serializedDoc: import('@milkdown/prose/model').Node | null = null
+    let serialized = ''
+    let originalDoc: import('@milkdown/prose/model').Node | null = null
+    let publishedDoc: import('@milkdown/prose/model').Node | null = null
+    const serialize = (view: import('@milkdown/prose/view').EditorView, ctx: import('@milkdown/ctx').Ctx) => {
+      if (serializedDoc !== view.state.doc) {
+        serialized = originalDoc?.eq(view.state.doc) ? initialMarkdownRef.current : ctx.get(serializerCtx)(view.state.doc)
+        serializedDoc = view.state.doc
+      }
+      return serialized
+    }
+    const publish = () => {
+      window.clearTimeout(publishTimer)
+      return editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx)
+        if (hasPendingComposition(view)) return false
+        if (publishedDoc !== view.state.doc) {
+          publishedDoc = view.state.doc
+          onMarkdownChangeRef.current?.(serialize(view, ctx))
+        }
+        return true
+      })
+    }
     const editor = Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, editorRoot)
@@ -247,12 +275,24 @@ export function MilkdownEditor({
           createContextualEditorPlugin(contextualStoreRef.current!),
           createSafariCompositionHardbreakPlugin(),
           createCompositionSaveBoundary(
-            (view) => ctx.get(serializerCtx)(view.state.doc),
+            (view) => serialize(view, ctx),
             (state) => {
               if (!disposed) onCompositionChangeRef.current?.(state)
             },
           ),
           new Plugin({
+            view: (view) => ({
+              update: (_view, previous) => {
+                if (previous.doc === view.state.doc) return
+                window.clearTimeout(publishTimer)
+                publishTimer = window.setTimeout(publish, 150)
+                const next = readHeadings(view.state)
+                setHeadings((current) =>
+                  current.length === next.length && current.every((h, i) =>
+                    h.id === next[i].id && h.pos === next[i].pos && h.level === next[i].level && h.text === next[i].text)
+                    ? current : next)
+              },
+            }),
             props: {
               handleKeyDown: (editorView, event) => {
                 if (
@@ -297,13 +337,6 @@ export function MilkdownEditor({
           ],
           ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
         ])
-        ctx.get(listenerCtx).markdownUpdated((updateCtx) => {
-          if (!disposed) {
-            const editorView = updateCtx.get(editorViewCtx)
-            onMarkdownChangeRef.current?.(updateCtx.get(serializerCtx)(editorView.state.doc))
-            if (editorView.state) setHeadings(readHeadings(editorView.state))
-          }
-        })
         ctx.get(listenerCtx).selectionUpdated((selectionCtx) => {
           if (disposed) {
             return
@@ -355,13 +388,18 @@ export function MilkdownEditor({
       proseMirror?.focus()
       editor.action((ctx) => {
         const editorState = ctx.get(editorViewCtx).state
+        originalDoc = editorState.doc
+        publishedDoc = editorState.doc
         setHeadings(readHeadings(editorState))
       })
+      onRegisterFlushRef.current?.(publish)
       setIsReady(true)
     })
 
     return () => {
       disposed = true
+      window.clearTimeout(publishTimer)
+      onRegisterFlushRef.current?.(null)
       contextualStoreRef.current?.clear()
       editorRef.current = null
       void editor.destroy()

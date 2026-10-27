@@ -3,50 +3,50 @@ import type { EditorView } from '@milkdown/prose/view'
 
 export type EditorComposition = { phase: 'composing' } | { phase: 'settled'; markdown: string }
 
-// compositionend precedes ProseMirror's DOM observer flush (and may precede
-// WKWebView's final input). Keep the save boundary closed until both DOM and
-// editor state have stopped changing across consecutive rendering frames.
+const pendingViews = new WeakSet<EditorView>()
+export const hasPendingComposition = (view: EditorView) => view.composing || pendingViews.has(view)
+
+// Timers keep working when WKWebView suspends animation frames. A timer is
+// only a sampling opportunity, never permission to save: both the immutable
+// document and DOM mutation generation must stay stable, with IME inactive.
 export function createCompositionSaveBoundary(
   serialize: (view: EditorView) => string,
   notify: (state: EditorComposition) => void,
 ) {
-  let composing = false
   let ending = false
-  let frame: number | null = null
-  let stableFrames = 0
+  let timer: number | undefined
+  let stableSamples = 0
+  let generation = 0
+  let previousGeneration = -1
   let previousDoc: EditorView['state']['doc'] | null = null
-  let previousDOM = ''
+  let observer: MutationObserver | undefined
   let destroyed = false
 
-  const cancelFrame = () => {
-    if (frame !== null) window.cancelAnimationFrame(frame)
-    frame = null
+  const cancel = () => window.clearTimeout(timer)
+  const changed = () => {
+    generation++
+    stableSamples = 0
   }
   const settle = (view: EditorView) => {
-    frame = null
     if (destroyed || !ending) return
-    const dom = view.dom.innerHTML
-    if (!view.composing && previousDoc === view.state.doc && previousDOM === dom) stableFrames++
-    else stableFrames = 0
+    if (observer?.takeRecords().length) changed()
+    if (!view.composing && previousDoc === view.state.doc && previousGeneration === generation)
+      stableSamples++
+    else stableSamples = 0
     previousDoc = view.state.doc
-    previousDOM = dom
-    if (stableFrames >= 2) {
+    previousGeneration = generation
+    if (stableSamples >= 2) {
       ending = false
-      composing = false
+      pendingViews.delete(view)
       notify({ phase: 'settled', markdown: serialize(view) })
-    } else {
-      frame = window.requestAnimationFrame(() => settle(view))
-    }
+    } else timer = window.setTimeout(() => settle(view), 20)
   }
-  const changed = () => {
-    stableFrames = 0
-  }
-  const start = () => {
-    cancelFrame()
+  const start = (view: EditorView) => {
+    cancel()
     ending = false
-    stableFrames = 0
-    if (!composing) {
-      composing = true
+    changed()
+    if (!pendingViews.has(view)) {
+      pendingViews.add(view)
       notify({ phase: 'composing' })
     }
     return false
@@ -58,11 +58,11 @@ export function createCompositionSaveBoundary(
         compositionstart: start,
         compositionupdate: start,
         compositionend: (view) => {
-          if (composing) {
+          if (pendingViews.has(view)) {
             ending = true
             changed()
-            cancelFrame()
-            frame = window.requestAnimationFrame(() => settle(view))
+            cancel()
+            timer = window.setTimeout(() => settle(view), 20)
           }
           return false
         },
@@ -73,14 +73,17 @@ export function createCompositionSaveBoundary(
       },
     },
     view: (view) => {
-      const observer = new MutationObserver(changed)
+      observer = new MutationObserver(changed)
       observer.observe(view.dom, { childList: true, subtree: true, characterData: true })
       return {
-        update: changed,
+        update: (_view, previous) => {
+          if (previous.doc !== view.state.doc) changed()
+        },
         destroy: () => {
           destroyed = true
-          cancelFrame()
-          observer.disconnect()
+          cancel()
+          pendingViews.delete(view)
+          observer?.disconnect()
         },
       }
     },

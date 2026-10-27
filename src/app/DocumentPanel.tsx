@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { MilkdownEditor } from '../editor/milkdown/MilkdownEditor'
 import type { DocumentTab } from '../hooks/documentSessionModel'
 import type { InterfaceCopy } from './interfaceCopy'
@@ -8,6 +9,7 @@ type DocumentPanelProps = {
   active: boolean
   copy: InterfaceCopy
   onCompositionChange: (state: EditorComposition) => void
+  onRegisterFlush?: (id: number, flush: (() => boolean) | null) => void
   onMarkdownChange: (markdown: string) => void
   onPasteImage: (
     image: import('../file-system/nativeMarkdownFile').PastedImage,
@@ -32,6 +34,7 @@ export function DocumentPanel({
   active,
   copy,
   onMarkdownChange,
+  onRegisterFlush,
   onCompositionChange,
   onPasteImage,
   onOverwrite,
@@ -49,6 +52,7 @@ export function DocumentPanel({
   tab,
   title,
 }: DocumentPanelProps) {
+  const registerFlush = useCallback((flush: (() => boolean) | null) => onRegisterFlush?.(tab.id, flush), [onRegisterFlush, tab.id])
   const { document, error, saveError, externalChange, notice } = tab
   const actionableError = saveError ?? error
   const isProtected = document.protectionReason !== null
@@ -78,7 +82,9 @@ export function DocumentPanel({
           document={document}
           documentPath={document.path}
           onCloseOutline={onCloseOutline}
-          onMarkdownChange={onMarkdownChange}
+          onRegisterFlush={registerFlush}
+          onRegisterFlush={onRegisterFlush}
+        onMarkdownChange={onMarkdownChange}
           onCompositionChange={onCompositionChange}
           onPasteImage={onPasteImage}
           outlineDrawerMount={outlineDrawerMount}
@@ -134,6 +140,7 @@ export function DocumentPanel({
 }
 
 type DocumentEditorWorkspaceProps = {
+  onRegisterFlush?: (flush: (() => boolean) | null) => void
   active: boolean
   ariaLabel: string
   copy: InterfaceCopy['editor']
@@ -156,6 +163,7 @@ type DocumentEditorWorkspaceProps = {
 }
 
 function DocumentEditorWorkspace({
+  onRegisterFlush,
   active,
   ariaLabel,
   copy,
@@ -191,6 +199,7 @@ function DocumentEditorWorkspace({
         editorId={editorId}
         initialMarkdown={document.markdown}
         onCloseOutline={onCloseOutline}
+        onRegisterFlush={onRegisterFlush}
         onMarkdownChange={onMarkdownChange}
         onCompositionChange={onCompositionChange}
         onPasteImage={onPasteImage}

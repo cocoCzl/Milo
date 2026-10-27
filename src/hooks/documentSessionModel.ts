@@ -36,6 +36,7 @@ export const emptyDocumentTab: DocumentTab = {
 }
 
 export type DocumentSession = {
+  recoveryId?: string
   id: number
   path: string | null
   title: string

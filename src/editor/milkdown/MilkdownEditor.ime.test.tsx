@@ -9,6 +9,33 @@ import { proseMirrorDocJSON } from './editorTestFixtures'
 afterEach(cleanup)
 
 describe('MilkdownEditor ime', () => {
+  it('settles with suspended animation frames without serializing the entire DOM', async () => {
+    const onCompositionChange = vi.fn()
+    const { container } = render(
+      <MilkdownEditor initialMarkdown="开始" onCompositionChange={onCompositionChange} />,
+    )
+    const editor = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(el).toBeInTheDocument()
+      return el!
+    })
+    const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
+    try {
+      fireEvent.compositionStart(editor)
+      fireEvent.compositionEnd(editor)
+      editor.querySelector('p')!.textContent = '开始中文'
+      fireEvent.input(editor, { inputType: 'insertFromComposition' })
+      await waitFor(() =>
+        expect(onCompositionChange).toHaveBeenLastCalledWith({
+          phase: 'settled',
+          markdown: '开始中文\n',
+        }),
+      )
+    } finally {
+      frame.mockRestore()
+    }
+  })
+
   it('announces composition synchronously and settles after a final input that follows compositionend', async () => {
     const onCompositionChange = vi.fn()
     const onMarkdownChange = vi.fn()
@@ -59,7 +86,7 @@ describe('MilkdownEditor ime', () => {
     await waitFor(() =>
       expect(onCompositionChange).toHaveBeenLastCalledWith({
         phase: 'settled',
-        markdown: 'Confirmed\n',
+        markdown: 'Confirmed',
       }),
     )
   })

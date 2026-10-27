@@ -468,7 +468,7 @@ fn encode_markdown(markdown: &str, line_ending: LineEnding, has_bom: bool) -> Ve
     bytes
 }
 
-fn write_atomically(destination: &Path, contents: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomically(destination: &Path, contents: &[u8]) -> Result<(), String> {
     let parent = destination
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())

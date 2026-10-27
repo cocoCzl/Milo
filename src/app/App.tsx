@@ -1,3 +1,4 @@
+import { listenForNativeClose, completeNativeClose, cancelNativeClose } from '../hooks/nativeClose'
 import {
   FileText,
   Focus,
@@ -54,6 +55,7 @@ const SIDEBAR_RESPONSIVE_QUERY = '(max-width: 900px)'
 export function App() {
   const {
     isLoading,
+    flushSettings,
     setAppearance,
     setDocumentFontStyle,
     setDocumentZoom,
@@ -70,6 +72,31 @@ export function App() {
   const copy = useMemo(() => interfaceCopy(locale), [locale])
   const session = useDocumentSession(copy.untitled)
   const { openDocumentAtPath, restoreStartupSession } = session
+  const closeSessionRef = useRef(session)
+  const flushSettingsRef = useRef(flushSettings)
+  closeSessionRef.current = session
+  flushSettingsRef.current = flushSettings
+  useEffect(() => {
+    let disposed = false
+    let stop: (() => void) | undefined
+    void listenForNativeClose((kind) => {
+      if (disposed) return
+      const accepted = closeSessionRef.current.requestCloseAll(async () => {
+        await flushSettingsRef.current()
+        await completeNativeClose(kind)
+      })
+      if (!accepted) void cancelNativeClose()
+    })
+      .then((unlisten) => {
+        if (disposed) unlisten()
+        else stop = unlisten
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      stop?.()
+    }
+  }, [])
   const colorScheme = useEffectiveColorScheme(settings.appearance)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [folderTree, setFolderTree] = useState<MarkdownTreeNode | null>(null)
@@ -103,6 +130,13 @@ export function App() {
   const [preferencesDialogMount, setPreferencesDialogMount] = useState<HTMLElement | null>(null)
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
+  const [recoveryError, setRecoveryError] = useState<string | null>(null)
+  const draftsRecoveredRef = useRef(false)
+  useEffect(() => {
+    if (!startupSessionRestored || draftsRecoveredRef.current) return
+    draftsRecoveredRef.current = true
+    void session.recoverDrafts().catch((reason) => setRecoveryError(String(reason)))
+  }, [session, startupSessionRestored])
   const activeTabId = session.activeTabId
   const activeTab =
     activeTabId === null ? null : (session.tabs.find((tab) => tab.id === activeTabId) ?? null)
@@ -550,7 +584,7 @@ export function App() {
       lang={locale}
       style={appStyle}
     >
-      <header className="application-bar window-bar">
+      <header inert={session.closePending} className="application-bar window-bar">
         <div className="application-bar__tabs">
           <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
             {session.tabs.map((tab) => (
@@ -773,6 +807,7 @@ export function App() {
               <DocumentPanel
                 key={tab.id}
                 tab={tab}
+                onRegisterFlush={session.registerFlush}
                 copy={copy}
                 title={displayDocumentTitle(tab, copy)}
                 active={tab.id === session.activeTabId}
@@ -888,6 +923,11 @@ export function App() {
         returnFocusRef={preferencesReturnFocusRef}
         theme={colorScheme}
       />
+      {recoveryError ? (
+        <div className="document-error" role="alert">
+          {recoveryError}
+        </div>
+      ) : null}
       {closingTab ? (
         <section
           className="close-confirmation"
@@ -899,13 +939,27 @@ export function App() {
           </strong>
           <span>{closingTab.saveError ? copy.lastSaveFailed : copy.unsavedChanges}</span>
           <div className="close-confirmation__actions">
-            <button type="button" onClick={session.discardAndCloseTab}>
+            <button
+              type="button"
+              disabled={closingTab.activity === 'saving'}
+              onClick={session.discardAndCloseTab}
+            >
               {copy.discardChanges}
             </button>
-            <button type="button" onClick={() => void session.saveAndCloseTab()}>
+            <button
+              type="button"
+              disabled={closingTab.isComposing || closingTab.activity === 'saving'}
+              onClick={() => void session.saveAndCloseTab()}
+            >
               {copy.saveAndClose}
             </button>
-            <button type="button" onClick={session.cancelCloseTab}>
+            <button
+              type="button"
+              onClick={() => {
+                session.cancelCloseTab()
+                void cancelNativeClose().catch(() => undefined)
+              }}
+            >
               {copy.keepEditing}
             </button>
           </div>

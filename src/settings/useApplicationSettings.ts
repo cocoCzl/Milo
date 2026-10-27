@@ -146,6 +146,7 @@ export function useApplicationSettings() {
   )
 
   return {
+    flushSettings: () => pendingSaveRef.current,
     setAppearance,
     setDocumentZoom,
     setDocumentFontStyle,

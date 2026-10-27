@@ -87,6 +87,70 @@ describe('useDocumentSession', () => {
     return session
   }
 
+  it('coordinates all tabs, flushes delayed edits, rejects repeated requests and cancels safely', async () => {
+    const session = renderHook(() => useDocumentSession())
+    act(() => session.result.current.createNewDocument())
+    const first = session.result.current.activeTabId!
+    act(() =>
+      session.result.current.registerFlush(first, () => {
+        const tab = session.result.current.tabs.find((tab) => tab.id === first)!
+        session.result.current.updateMarkdown(
+          { tabId: first, documentId: tab.document.id, path: null },
+          '刚确认的中文',
+        )
+        return true
+      }),
+    )
+    act(() => session.result.current.createNewDocument())
+    const complete = vi.fn(async () => undefined)
+    act(() => {
+      expect(session.result.current.requestCloseAll(complete)).toBe(true)
+      expect(session.result.current.requestCloseAll(complete)).toBe(false)
+    })
+    expect(session.result.current.closingTabId).toBe(first)
+    expect(session.result.current.document.markdown).toBe('刚确认的中文')
+    expect(complete).not.toHaveBeenCalled()
+    act(() => session.result.current.cancelCloseTab())
+    expect(session.result.current.activeTabId).toBe(first)
+    expect(session.result.current.tabs).toHaveLength(2)
+    act(() => session.result.current.requestCloseAll(complete))
+    act(() => session.result.current.discardAndCloseTab())
+    await waitFor(() => expect(complete).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not complete native close after a failed write and allows retry', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, 'latest'))
+    const complete = vi.fn(async () => undefined)
+    act(() => session.result.current.requestCloseAll(complete))
+    mocks.writeMarkdownFile.mockRejectedValueOnce(new Error('disk full'))
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    expect(complete).not.toHaveBeenCalled()
+    expect(session.result.current.document.markdown).toBe('latest')
+    expect(session.result.current.saveError).toContain('disk full')
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    await waitFor(() => expect(complete).toHaveBeenCalledTimes(1))
+    expect(session.result.current.tabs).toHaveLength(1)
+  })
+
+  it('flushes the current editor before explicit save without waiting for a listener', async () => {
+    const session = await openSavedDocument()
+    act(() =>
+      session.result.current.registerFlush(session.result.current.activeTabId!, () => {
+        updateActive(session, '最后一次修改')
+        return true
+      }),
+    )
+    await act(async () => {
+      await session.result.current.saveDocument()
+    })
+    expect(fileOnDisk).toBe('最后一次修改')
+  })
+
   it('keeps a document open when watcher registration is denied', async () => {
     mocks.watchMarkdownFile.mockRejectedValueOnce(new Error('forbidden path: /tmp/milo-note.md'))
     const session = renderHook(() => useDocumentSession())
