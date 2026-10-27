@@ -113,7 +113,9 @@ describe('useDocumentSession', () => {
     act(() => session.result.current.cancelCloseTab())
     expect(session.result.current.activeTabId).toBe(first)
     expect(session.result.current.tabs).toHaveLength(2)
-    act(() => session.result.current.requestCloseAll(complete))
+    act(() => {
+      session.result.current.requestCloseAll(complete)
+    })
     act(() => session.result.current.discardAndCloseTab())
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1))
   })
@@ -122,7 +124,9 @@ describe('useDocumentSession', () => {
     const session = await openSavedDocument()
     act(() => updateActive(session, 'latest'))
     const complete = vi.fn(async () => undefined)
-    act(() => session.result.current.requestCloseAll(complete))
+    act(() => {
+      session.result.current.requestCloseAll(complete)
+    })
     mocks.writeMarkdownFile.mockRejectedValueOnce(new Error('disk full'))
     await act(async () => {
       await session.result.current.saveAndCloseTab()
@@ -759,10 +763,13 @@ describe('useDocumentSession', () => {
       await act(async () => vi.advanceTimersByTimeAsync(delay))
       act(() => session.result.current.updateComposition(origin, { phase: 'composing' }))
       act(() => session.result.current.updateMarkdown(origin, '# Confirmed pending edit ni hao'))
+      mocks.pickMarkdownSavePath.mockResolvedValueOnce(null)
+      let pendingSave!: Promise<boolean>
+      let pendingSaveAs!: Promise<boolean>
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000)
-        await expect(session.result.current.saveDocument()).resolves.toBe(false)
-        await expect(session.result.current.saveAsDocument()).resolves.toBe(false)
+        pendingSave = session.result.current.saveDocument()
+        pendingSaveAs = session.result.current.saveAsDocument()
       })
       expect(fileOnDisk).toBe('# Before\n')
       expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
@@ -777,7 +784,11 @@ describe('useDocumentSession', () => {
           markdown: '# Confirmed pending edit 你好',
         }),
       )
-      await act(async () => vi.advanceTimersByTimeAsync(1000))
+      await act(async () => {
+        await expect(pendingSave).resolves.toBe(true)
+        await expect(pendingSaveAs).resolves.toBe(false)
+        await vi.advanceTimersByTimeAsync(1000)
+      })
       expect(fileOnDisk).toBe('# Confirmed pending edit 你好')
       expect(session.result.current.document.isDirty).toBe(false)
     },

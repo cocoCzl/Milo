@@ -2,6 +2,8 @@ mod draft_recovery;
 mod file_system;
 #[cfg(target_os = "macos")]
 mod macos_safe_save;
+#[cfg(target_os = "macos")]
+mod macos_termination;
 mod settings;
 
 use tauri::{
@@ -15,6 +17,7 @@ struct CloseCoordinator(std::sync::Mutex<CloseState>);
 struct CloseState {
     pending: Option<String>,
     approved_exit: bool,
+    frontend_ready: bool,
 }
 
 fn request_close(app: &tauri::AppHandle, kind: &str) {
@@ -24,7 +27,24 @@ fn request_close(app: &tauri::AppHandle, kind: &str) {
         return;
     }
     state.pending = Some(kind.to_owned());
-    let _ = app.emit("milo://request-close", kind);
+    if state.frontend_ready {
+        let _ = app.emit("milo://request-close", kind);
+    }
+    drop(state);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[tauri::command]
+fn close_coordinator_ready(app: tauri::AppHandle) {
+    let coordinator = app.state::<CloseCoordinator>();
+    let mut state = coordinator.0.lock().unwrap();
+    state.frontend_ready = true;
+    if let Some(kind) = &state.pending {
+        let _ = app.emit("milo://request-close", kind);
+    }
 }
 
 #[tauri::command]
@@ -68,6 +88,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            macos_termination::install(app.handle()).map_err(std::io::Error::other)?;
             let file = SubmenuBuilder::new(app, "File")
                 .item(&menu_item(
                     app,
@@ -91,6 +113,13 @@ pub fn run() {
                 )?)
                 .build()?;
             let edit = SubmenuBuilder::new(app, "Edit")
+                .item(&menu_item(
+                    app,
+                    "find-document",
+                    "Find in Document…",
+                    "CmdOrCtrl+F",
+                )?)
+                .separator()
                 .item(&PredefinedMenuItem::undo(app, None)?)
                 .item(&PredefinedMenuItem::redo(app, None)?)
                 .separator()
@@ -144,6 +173,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            close_coordinator_ready,
             cancel_close,
             complete_close,
             draft_recovery::read_draft_recovery,
@@ -185,6 +215,10 @@ pub fn run() {
         if let tauri::RunEvent::Opened { urls } = event {
             for url in urls {
                 if let Some(path) = markdown_path_from_file_url(&url) {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                     let _ = app.emit("milo://open-file", path);
                 }
             }

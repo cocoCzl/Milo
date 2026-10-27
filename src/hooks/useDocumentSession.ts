@@ -42,6 +42,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const tabsRef = useRef(tabs)
   const activeTabIdRef = useRef(activeTabId)
   const selfWritesRef = useRef(new Map<number, { path: string; markdown: string }>())
+  const stableWaitersRef = useRef(new Map<number, Set<(stable: boolean) => void>>())
   const flushersRef = useRef(new Map<number, () => boolean>())
   const savingRef = useRef(new Map<number, Promise<boolean>>())
   const closeAllRef = useRef<(() => Promise<void>) | null>(null)
@@ -86,6 +87,28 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     },
     [getTab],
   )
+
+  const waitUntilStable = useCallback(
+    (id: number): Promise<boolean> => {
+      const tab = getTab(id)
+      if (!tab) return Promise.resolve(false)
+      const flushed = flushersRef.current.get(id)?.()
+      if (!getTab(id)?.isComposing && flushed !== false) return Promise.resolve(true)
+      return new Promise((resolve) => {
+        const waiters = stableWaitersRef.current.get(id) ?? new Set()
+        waiters.add(resolve)
+        stableWaitersRef.current.set(id, waiters)
+      })
+    },
+    [getTab],
+  )
+  useEffect(() => {
+    const waiters = stableWaitersRef.current
+    return () => {
+      for (const group of waiters.values()) for (const resolve of group) resolve(false)
+      waiters.clear()
+    }
+  }, [])
 
   const selectTab = useCallback(
     (id: number) => {
@@ -155,6 +178,11 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
               }
             : tab.document,
       }))
+      if (state.phase === 'settled') {
+        const waiters = stableWaitersRef.current.get(origin.tabId)
+        stableWaitersRef.current.delete(origin.tabId)
+        waiters?.forEach((resolve) => resolve(true))
+      }
     },
     [getOriginTab, replaceTab, updateMarkdown],
   )
@@ -200,7 +228,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         return false
       }
     },
-    [appendTab, replaceTab],
+    [appendTab],
   )
 
   const openDocument = useCallback(async () => {
@@ -479,25 +507,26 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const saveAsDocument = useCallback(
     async (id = activeTabIdRef.current) => {
+      if (id === null || !(await waitUntilStable(id))) return false
       const tab = getTab(id)
-      if (id !== null && flushersRef.current.get(id)?.() === false) return false
       if (!tab || tab.isComposing || tab.document.protectionReason) return false
       const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
       const path = await pickMarkdownSavePath(defaultPath)
       return path ? saveToPath(originForTab(tab), path) : false
     },
-    [getTab, originForTab, saveToPath],
+    [getTab, originForTab, saveToPath, waitUntilStable],
   )
 
   const saveDocument = useCallback(
     async (id = activeTabIdRef.current) => {
+      if (id === null || !(await waitUntilStable(id))) return false
       const tab = getTab(id)
       if (!tab || tab.document.protectionReason) return false
       return tab.document.path
         ? saveToPath(originForTab(tab), tab.document.path)
         : saveAsDocument(id)
     },
-    [getTab, originForTab, saveAsDocument, saveToPath],
+    [getTab, originForTab, saveAsDocument, saveToPath, waitUntilStable],
   )
 
   const pasteImage = useCallback(
@@ -746,6 +775,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     const currentTabs = tabsRef.current
     const index = currentTabs.findIndex((tab) => tab.id === id)
     if (index < 0) return
+    stableWaitersRef.current.get(id)?.forEach((resolve) => resolve(false))
+    stableWaitersRef.current.delete(id)
     selfWritesRef.current.delete(id)
     flushersRef.current.delete(id)
     const recoveryId = currentTabs[index].document.recoveryId
@@ -790,9 +821,11 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         .then(complete)
         .then(() => {
           closeAllRef.current = null
+          setClosePending(false)
         })
         .catch((reason) => {
           closeAllRef.current = null
+          setClosePending(false)
           const first = tabsRef.current[0]
           if (first)
             replaceTab(first.id, (tab) => ({
@@ -807,6 +840,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     (complete: () => Promise<void>) => {
       if (closeAllRef.current || closingRef.current !== null) return false
       closeAllRef.current = complete
+      setClosePending(true)
       continueCloseAll()
       return true
     },
@@ -862,7 +896,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const saveAndCloseTab = useCallback(async () => {
     const id = closingRef.current
-    if (id === null) return
+    if (id === null || getTab(id)?.isComposing) return
     const pending = savingRef.current.get(id)
     if (pending) await pending
     if (closingRef.current !== id || !(await saveDocument(id))) return
