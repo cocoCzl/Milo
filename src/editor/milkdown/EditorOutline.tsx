@@ -1,4 +1,4 @@
-import { ListTree, X } from 'lucide-react'
+import { ChevronRight, ListTree, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 export type EditorHeading = {
@@ -9,7 +9,13 @@ export type EditorHeading = {
   text: string
 }
 
+export type OutlinePreferences = { depth: number; collapsed: ReadonlySet<string> }
 type EditorOutlineProps = {
+  preferences?: OutlinePreferences
+  onPreferencesChange?: (preferences: OutlinePreferences) => void
+  depthLabel?: string
+  collapseLabel?: string
+  expandLabel?: string
   emptyLabel: string
   activePosition: number | null
   closeLabel: string
@@ -21,6 +27,11 @@ type EditorOutlineProps = {
 }
 
 export function EditorOutline({
+  preferences = { depth: 6, collapsed: new Set() },
+  onPreferencesChange,
+  depthLabel = 'Heading levels',
+  collapseLabel = 'Collapse section',
+  expandLabel = 'Expand section',
   activePosition,
   closeLabel,
   drawer,
@@ -30,6 +41,23 @@ export function EditorOutline({
   onClose,
   onSelect,
 }: EditorOutlineProps) {
+  const ancestors: string[] = []
+  const parents = new Map<string, string[]>()
+  const levels = new Map(headings.map((heading) => [heading.key, heading.level]))
+  const branches = new Set<string>()
+  for (const heading of headings) {
+    while (ancestors.length && levels.get(ancestors.at(-1)!)! >= heading.level) ancestors.pop()
+    parents.set(heading.key, [...ancestors])
+    if (ancestors.length) branches.add(ancestors.at(-1)!)
+    ancestors.push(heading.key)
+  }
+  const activeKey = headings.find((heading) => heading.pos === activePosition)?.key
+  const activeParents = new Set(activeKey ? parents.get(activeKey) : [])
+  const visible = headings.filter(
+    (heading) =>
+      heading.level <= preferences.depth &&
+      !parents.get(heading.key)?.some((key) => preferences.collapsed.has(key)),
+  )
   const scrollBodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -64,7 +92,22 @@ export function EditorOutline({
       <div className="editor-outline__header">
         <ListTree aria-hidden="true" />
         <span>{label}</span>
-        {drawer ? (
+        {onPreferencesChange ? (
+          <select
+            aria-label={depthLabel}
+            value={preferences.depth}
+            onChange={(event) =>
+              onPreferencesChange({ ...preferences, depth: Number(event.target.value) })
+            }
+          >
+            {[1, 2, 3, 4, 5, 6].map((depth) => (
+              <option key={depth} value={depth}>
+                H1–H{depth}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {onClose ? (
           <button
             aria-label={closeLabel}
             className="editor-outline__close"
@@ -78,8 +121,27 @@ export function EditorOutline({
       <div ref={scrollBodyRef} className="editor-outline__body">
         {headings.length > 0 ? (
           <ol>
-            {headings.map((heading) => (
-              <li key={heading.key}>
+            {visible.map((heading) => (
+              <li
+                key={heading.key}
+                className={activeParents.has(heading.key) ? 'editor-outline__ancestor' : undefined}
+              >
+                {branches.has(heading.key) && onPreferencesChange ? (
+                  <button
+                    className="editor-outline__fold"
+                    type="button"
+                    aria-label={`${preferences.collapsed.has(heading.key) ? expandLabel : collapseLabel}: ${heading.text}`}
+                    aria-expanded={!preferences.collapsed.has(heading.key)}
+                    onClick={() => {
+                      const collapsed = new Set(preferences.collapsed)
+                      if (collapsed.has(heading.key)) collapsed.delete(heading.key)
+                      else collapsed.add(heading.key)
+                      onPreferencesChange({ ...preferences, collapsed })
+                    }}
+                  >
+                    <ChevronRight size={12} />
+                  </button>
+                ) : null}
                 <button
                   aria-current={heading.pos === activePosition ? 'location' : undefined}
                   className={`editor-outline__item editor-outline__item--level-${Math.min(Math.max(heading.level, 1), 6)}${heading.pos === activePosition ? ' editor-outline__item--active' : ''}`}

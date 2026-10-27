@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`retains supported semantics after a small edit, while recording normalization differences 1`] = `
+"# 1. 中文标题
+
+Opening words edited.
+
+* First
+  * Nested **bold** and *emphasis*
+* Second
+
+> Outer quote
+>
+> > Nested quote
+
+| Left | Empty | Right |
+| :--- | ----- | ----: |
+| one  |       | three |
+|      | two   |       |
+
+[Link](https://example.com "Title") and ![Local image](assets/example.png).
+
+\`\`\`typescript
+const hello = '中文'
+\`\`\`
+
+Hard break\\
+next line.
+"
+`;

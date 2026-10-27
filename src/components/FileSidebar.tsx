@@ -18,6 +18,9 @@ type FileSidebarProps = {
     currentFolder: string
     empty: string
     emptyDirectory: string
+    showExcluded: string
+    loadMore: string
+    retry: string
     loadingFolder: string
     folderWidth: string
     emptyRecent: string
@@ -168,15 +171,14 @@ export function FileSidebar({
                   checked={showExcluded}
                   onChange={(event) => setShowExcluded(event.target.checked)}
                 />
-                {copy.currentFolder === '当前文件夹'
-                  ? '显示依赖和构建目录'
-                  : 'Show dependency and build folders'}
+                {copy.showExcluded}
               </label>
               {tree.children.length === 0 && !showExcluded ? (
                 <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>
               ) : null}
               <DirectoryListing
                 key={`${folder}:${showExcluded}`}
+                copy={copy}
                 node={tree}
                 activeFile={activeFile}
                 depth={0}
@@ -282,6 +284,7 @@ function fileName(path: string) {
 }
 
 type TreeProps = {
+  copy: Pick<FileSidebarProps['copy'], 'loadMore' | 'retry'>
   activeFile: string | null
   depth: number
   node: MarkdownTreeNode
@@ -290,6 +293,7 @@ type TreeProps = {
 }
 
 function DirectoryListing({
+  copy,
   node,
   activeFile,
   depth,
@@ -338,6 +342,7 @@ function DirectoryListing({
     <>
       {page.children.map((child) => (
         <TreeBranch
+          copy={copy}
           key={child.path}
           node={child}
           activeFile={activeFile}
@@ -351,20 +356,20 @@ function DirectoryListing({
         <p role="alert">
           {error}
           <button type="button" onClick={() => void more()}>
-            ↻
+            {copy.retry}
           </button>
         </p>
       ) : null}
       {page.nextOffset != null ? (
         <button type="button" onClick={() => void more()} disabled={loading}>
-          {showExcluded ? 'Load more…' : '更多 / More…'}
+          {copy.loadMore}
         </button>
       ) : null}
     </>
   )
 }
 
-function TreeBranch({ activeFile, node, depth, onOpenFile, showExcluded }: TreeProps) {
+function TreeBranch({ copy, activeFile, node, depth, onOpenFile, showExcluded }: TreeProps) {
   const [expanded, setExpanded] = useState(Boolean(activeFile?.startsWith(`${node.path}/`)))
   useEffect(() => {
     if (activeFile?.startsWith(`${node.path}/`)) setExpanded(true)
@@ -396,6 +401,7 @@ function TreeBranch({ activeFile, node, depth, onOpenFile, showExcluded }: TreeP
       </summary>
       {expanded ? (
         <DirectoryListing
+          copy={copy}
           node={node}
           activeFile={activeFile}
           depth={depth + 1}

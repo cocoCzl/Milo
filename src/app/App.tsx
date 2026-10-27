@@ -116,11 +116,14 @@ export function App() {
     let stop: (() => void) | undefined
     void listenForNativeClose((kind) => {
       if (disposed) return
-      const accepted = closeSessionRef.current.requestCloseAll(async () => {
-        await flushSettingsRef.current()
-        await completeNativeClose(kind)
-      })
-      if (!accepted) void cancelNativeClose()
+      const accepted = closeSessionRef.current.requestCloseAll(
+        async () => {
+          await flushSettingsRef.current()
+          await completeNativeClose(kind)
+        },
+        () => void cancelNativeClose().catch(() => undefined),
+      )
+      if (!accepted) void cancelNativeClose().catch(() => undefined)
     })
       .then((unlisten) => {
         if (disposed) unlisten()
@@ -172,6 +175,10 @@ export function App() {
     draftsRecoveredRef.current = true
     void session.recoverDrafts().catch((reason) => setRecoveryError(String(reason)))
   }, [session, startupSessionRestored])
+  useEffect(() => {
+    if (session.closingTabId !== null)
+      document.querySelector<HTMLElement>('.close-confirmation button:last-child')?.focus()
+  }, [session.closingTabId])
   const activeTabId = session.activeTabId
   const activeTab =
     activeTabId === null ? null : (session.tabs.find((tab) => tab.id === activeTabId) ?? null)
@@ -181,11 +188,12 @@ export function App() {
   const activeDocumentIsProtected = session.document.protectionReason !== null
   const sidebarAvailable = !sidebarResponsiveHidden
   const sidebarVisible = settings.sidebarVisible && sidebarAvailable
-  const activeOutlineOpen = activeTabId !== null && (outlineOpen[activeTabId] ?? false)
+  const activeOutlineOpen =
+    activeTabId !== null && (outlineOpen[activeTabId] ?? (outlineLayout === 'inline' && !focusMode))
 
   const tabIdsSignature = session.tabs.map((tab) => tab.id).join(',')
   useEffect(() => {
-    const openTabIds = new Set(session.tabs.map((tab) => tab.id))
+    const openTabIds = new Set(tabIdsSignature.split(',').filter(Boolean).map(Number))
     setPresentationModes((current) => pruneTabState(current, openTabIds))
     setDocumentViewStates((current) => pruneTabState(current, openTabIds))
     setOutlineOpen((current) => pruneTabState(current, openTabIds))
@@ -269,11 +277,6 @@ export function App() {
     observer.observe(documentStage)
     return () => observer.disconnect()
   }, [])
-
-  useEffect(() => {
-    if (outlineLayout !== 'inline') return
-    setOutlineOpen((current) => (Object.keys(current).length === 0 ? current : {}))
-  }, [outlineLayout])
 
   useEffect(() => {
     const stage = documentStageRef.current
@@ -538,6 +541,9 @@ export function App() {
       case 'zoom-reset':
         setDocumentZoom(100)
         break
+      case 'find-document':
+        window.dispatchEvent(new Event('milo:find'))
+        break
       case 'format-bold':
         document.execCommand('bold')
         break
@@ -617,7 +623,7 @@ export function App() {
 
   return (
     <main
-      className={`app-shell${sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' ? ' app-shell--inline-outline' : ''}${preferencesOpen ? ' app-shell--dialog-open' : ''}`}
+      className={`app-shell${sidebarVisible && !focusMode ? ' app-shell--with-sidebar' : ''}${focusMode ? ' app-shell--focus-mode' : ''}${outlineLayout === 'inline' && activeOutlineOpen ? ' app-shell--inline-outline' : ''}${preferencesOpen ? ' app-shell--dialog-open' : ''}`}
       aria-label={copy.appLabel}
       data-appearance={settings.appearance}
       data-theme={colorScheme}
@@ -628,7 +634,10 @@ export function App() {
       lang={locale}
       style={appStyle}
     >
-      <header inert={session.closePending} className="application-bar window-bar">
+      <header
+        inert={session.closePending || Boolean(closingTab)}
+        className="application-bar window-bar"
+      >
         <div className="application-bar__tabs">
           <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
             {session.tabs.map((tab) => (
@@ -641,6 +650,7 @@ export function App() {
                   role="tab"
                   aria-selected={tab.id === session.activeTabId}
                   aria-controls={`document-panel-${tab.id}`}
+                  title={tab.document.path ?? copy.untitled}
                   onClick={() => selectTab(tab.id)}
                 >
                   <FileText
@@ -674,6 +684,19 @@ export function App() {
           </IconButton>
         </div>
         <div className="window-bar__actions">
+          {activeTabId !== null && activeTab ? (
+            <DocumentContext
+              copy={copy}
+              document={activeTab.document}
+              folder={settings.currentFolder}
+              onSave={saveActiveDocument}
+              saveDisabled={
+                activeTab.activity !== 'idle' || activeTab.document.protectionReason !== null
+              }
+              tab={activeTab}
+            />
+          ) : null}
+
           <div className="application-bar__group application-bar__group--primary">
             <ModeSwitch
               disabled={!hasActiveDocument || activeDocumentIsProtected}
@@ -711,21 +734,19 @@ export function App() {
                 <PanelLeftOpen aria-hidden="true" size={16} strokeWidth={1.7} />
               )}
             </IconButton>
-            {activeTabId !== null &&
-            !focusMode &&
-            outlineLayout === 'drawer' &&
-            !activeDocumentIsProtected ? (
+            {activeTabId !== null && !focusMode && !activeDocumentIsProtected ? (
               <OutlineToggle
                 buttonRef={outlineToggleRef}
-                expanded={outlineOpen[activeTabId] ?? false}
+                expanded={activeOutlineOpen}
                 label={copy.editor.outline}
-                tooltipLabel={
-                  outlineOpen[activeTabId] ? copy.editor.closeOutline : copy.openOutline
-                }
+                tooltipLabel={activeOutlineOpen ? copy.editor.closeOutline : copy.openOutline}
                 onClick={() =>
                   setOutlineOpen((current) => ({
                     ...current,
-                    [activeTabId]: !current[activeTabId],
+                    [activeTabId]: !(
+                      current[activeTabId] ??
+                      (!focusMode && outlineLayout === 'inline')
+                    ),
                   }))
                 }
               />
@@ -760,7 +781,7 @@ export function App() {
           </div>
         </div>
       </header>
-      <section inert={session.closePending} className="app-workspace">
+      <section inert={session.closePending || Boolean(closingTab)} className="app-workspace">
         {sidebarVisible ? (
           <FileSidebar
             copy={copy.sidebar}
@@ -795,6 +816,11 @@ export function App() {
           aria-busy={!startupSessionRestored}
           aria-label={copy.currentDocument}
         >
+          {focusMode ? (
+            <button className="focus-mode-exit" type="button" onClick={exitFocusMode}>
+              {copy.exitFocusMode} · Esc
+            </button>
+          ) : null}
           {focusMode && activeTabId !== null && !activeDocumentIsProtected ? (
             <Tooltip content={copy.openOutline} disabled={activeOutlineOpen}>
               <button
@@ -807,25 +833,16 @@ export function App() {
                 onClick={() =>
                   setOutlineOpen((current) => ({
                     ...current,
-                    [activeTabId]: !current[activeTabId],
+                    [activeTabId]: !(
+                      current[activeTabId] ??
+                      (!focusMode && outlineLayout === 'inline')
+                    ),
                   }))
                 }
               >
                 <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
               </button>
             </Tooltip>
-          ) : null}
-          {activeTabId !== null && activeTab ? (
-            <DocumentContext
-              copy={copy}
-              document={activeTab.document}
-              folder={settings.currentFolder}
-              onSave={saveActiveDocument}
-              saveDisabled={
-                activeTab.activity !== 'idle' || activeTab.document.protectionReason !== null
-              }
-              tab={activeTab}
-            />
           ) : null}
           <section className="document-stage" ref={documentStageRef}>
             {!activeTab && startupSessionRestored ? (
@@ -855,10 +872,8 @@ export function App() {
                 copy={copy}
                 title={displayDocumentTitle(tab, copy)}
                 active={tab.id === session.activeTabId}
-                outlineLayout={focusMode ? 'drawer' : outlineLayout}
-                outlineOpen={
-                  (focusMode || outlineLayout === 'drawer') && (outlineOpen[tab.id] ?? false)
-                }
+                outlineLayout={focusMode || !activeOutlineOpen ? 'drawer' : outlineLayout}
+                outlineOpen={tab.id === activeTabId && activeOutlineOpen}
                 presentationMode={presentationModes[tab.id] ?? 'edit'}
                 onCloseOutline={closePanelOutline}
                 outlineDrawerMount={outlineDrawerMount}
@@ -872,7 +887,7 @@ export function App() {
           <div
             ref={setOutlineInlineMount}
             className="outline-inline-layer"
-            hidden={focusMode || outlineLayout !== 'inline' || !activeTab}
+            hidden={focusMode || outlineLayout !== 'inline' || !activeTab || !activeOutlineOpen}
           />
           {/* Keep the drawer portal in the non-scrolling document-area layer.
               WKWebView can expose a root-grid overlay in the AX tree without
@@ -948,6 +963,23 @@ export function App() {
         <section
           className="close-confirmation"
           role="alertdialog"
+          aria-modal="true"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              session.cancelCloseTab()
+              void cancelNativeClose().catch(() => undefined)
+            }
+            if (event.key === 'Tab') {
+              const buttons = [
+                ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+              ]
+              const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+              event.preventDefault()
+              buttons[
+                (index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length
+              ]?.focus()
+            }
+          }}
           aria-labelledby="close-confirmation-title"
         >
           <strong id="close-confirmation-title">

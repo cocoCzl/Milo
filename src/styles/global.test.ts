@@ -130,16 +130,16 @@ describe('editor typography baseline', () => {
       '--editor-heading-space-before': 'var(--editor-font-size)',
     })
     for (const [tag, size, weight, after] of [
-      ['h1', '1.9091', '700', '0.9545'],
-      ['h2', '1.5152', '680', '0.7576'],
-      ['h3', '1.2424', '660', '0.6212'],
+      ['h1', '1.8', '680', '0.65em'],
+      ['h2', '1.45', '650', '0.65em'],
+      ['h3', '1.2', '620', '0.6em'],
       ['h4', '1.0909', '640', '0.5455'],
       ['h5', '1.0303', '620', '0.5152'],
     ]) {
       declarations(`.milkdown .ProseMirror ${tag}`, {
         'font-size': `calc(var(--editor-font-size) * ${size})`,
         'font-weight': weight,
-        'margin-bottom': `calc(var(--editor-font-size) * ${after})`,
+        'margin-bottom': after.endsWith('em') ? after : `calc(var(--editor-font-size) * ${after})`,
       })
     }
     declarations('.milkdown .ProseMirror h6', {
@@ -179,10 +179,10 @@ describe('application shell foundation', () => {
   it('separates application, context, and editor surfaces with the compact navigation range', () => {
     declarations('.app-shell', {
       '--application-bar-height': '48px',
-      '--document-context-height': '40px',
+      '--document-context-height': '0px',
     })
     declarations('.document-area', {
-      'grid-template-rows': 'var(--document-context-height) minmax(0, 1fr)',
+      'grid-template-rows': 'minmax(0, 1fr)',
     })
     declarations('.document-stage', { overflow: 'auto', background: 'var(--surface-editor)' })
     declarations('.file-sidebar', {
@@ -397,7 +397,7 @@ describe('application shell foundation', () => {
       overflow: 'hidden',
     })
     declarations('.outline-inline-layer', {
-      'grid-area': '2 / 1',
+      'grid-area': '1 / 1',
       'grid-template-rows': 'minmax(0, 1fr)',
       'min-height': '0',
     })

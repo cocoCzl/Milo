@@ -7,6 +7,13 @@ export type EditorCopy = BlockMenuCopy &
   EditorContextMenuCopy &
   EditorLinkPopoverCopy &
   SelectionToolbarCopy & {
+    find: string
+    findPrevious: string
+    findNext: string
+    closeFind: string
+    outlineDepth: string
+    collapseSection: string
+    expandSection: string
     addColumnLeft: string
     addColumnRight: string
     addRowAbove: string
@@ -31,6 +38,13 @@ export type EditorCopy = BlockMenuCopy &
   }
 
 export const defaultEditorCopy: EditorCopy = {
+  find: 'Find in document',
+  findPrevious: 'Previous match',
+  findNext: 'Next match',
+  closeFind: 'Close find',
+  outlineDepth: 'Heading levels',
+  collapseSection: 'Collapse section',
+  expandSection: 'Expand section',
   apply: 'Apply',
   blockquote: 'Quote',
   bold: 'Bold',

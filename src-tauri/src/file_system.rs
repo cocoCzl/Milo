@@ -703,6 +703,34 @@ mod tests {
     }
 
     #[test]
+    fn pages_a_large_directory_without_reading_descendants() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-paging-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(directory.join("target/deep")).unwrap();
+        for index in 0..450 {
+            fs::write(directory.join(format!("{index:04}.md")), "# Note").unwrap();
+        }
+        let excluded = vec!["target".to_owned()];
+        let first = read_markdown_directory(&directory, &excluded, 0).unwrap();
+        assert_eq!(first.children.len(), 200);
+        assert_eq!(first.next_offset, Some(200));
+        let second =
+            read_markdown_directory(&directory, &excluded, first.next_offset.unwrap()).unwrap();
+        assert_eq!(second.children[0].name, "0200.md");
+        let third =
+            read_markdown_directory(&directory, &excluded, second.next_offset.unwrap()).unwrap();
+        assert_eq!(third.children.len(), 50);
+        assert_eq!(third.next_offset, None);
+        assert!(read_markdown_directory(&directory.join("missing"), &excluded, 0).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn creates_collision_safe_image_asset_names() {
         let directory = std::env::temp_dir().join(format!(
             "milo-image-assets-test-{}",

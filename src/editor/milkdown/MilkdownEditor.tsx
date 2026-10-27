@@ -1,3 +1,5 @@
+import { createDocumentFind, moveFindMatch, setFindQuery, type FindState } from './documentFind'
+import { DocumentFindBar } from './DocumentFindBar'
 import {
   defaultValueCtx,
   Editor,
@@ -208,7 +210,20 @@ export function MilkdownEditor({
   const presentationModeRef = useRef<PresentationMode>(presentationMode)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<EditorMenu | null>(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQueryState] = useState('')
+  const [findResult, setFindResult] = useState<Pick<FindState, 'matches' | 'current'>>({
+    matches: [],
+    current: -1,
+  })
   const [isReady, setIsReady] = useState(false)
+  const [outlinePreferences, setOutlinePreferences] = useState(() => {
+    const stored = Number(localStorage.getItem('milo-outline-depth') ?? 3)
+    return {
+      depth: stored >= 1 && stored <= 6 ? stored : 3,
+      collapsed: new Set<string>() as ReadonlySet<string>,
+    }
+  })
   const [headings, setHeadings] = useState<EditorHeading[]>([])
   const [linkEditorOpen, setLinkEditorOpen] = useState(false)
   const [linkMode, setLinkMode] = useState<LinkPopoverMode>('create-from-selection')
@@ -238,7 +253,10 @@ export function MilkdownEditor({
   copyRef.current = editorCopy
   documentPathRef.current = documentPath
 
-  headingsByPositionRef.current = new Map(headings.map((heading) => [heading.pos, heading]))
+  headingsByPositionRef.current = useMemo(
+    () => new Map(headings.map((heading) => [heading.pos, heading])),
+    [headings],
+  )
 
   useEffect(() => {
     const editorRoot = editorRootRef.current
@@ -266,6 +284,7 @@ export function MilkdownEditor({
       return serialized
     }
     const publish = () => {
+      if (disposed) return false
       window.clearTimeout(publishTimer)
       return editor.action((ctx) => {
         const view = ctx.get(editorViewCtx)
@@ -282,6 +301,14 @@ export function MilkdownEditor({
         ctx.set(rootCtx, editorRoot)
         ctx.set(defaultValueCtx, initialMarkdownRef.current)
         ctx.update(prosePluginsCtx, (plugins) => [
+          createDocumentFind((state) => {
+            if (!disposed)
+              setFindResult((current) =>
+                current.matches === state.matches && current.current === state.current
+                  ? current
+                  : state,
+              )
+          }),
           createContextualEditorPlugin(contextualStoreRef.current!),
           createSafariCompositionHardbreakPlugin(),
           createCompositionSaveBoundary(
@@ -293,7 +320,7 @@ export function MilkdownEditor({
           new Plugin({
             view: (view) => ({
               update: (_view, previous) => {
-                if (previous.doc === view.state.doc) return
+                if (disposed || previous.doc === view.state.doc) return
                 window.clearTimeout(publishTimer)
                 publishTimer = window.setTimeout(publish, 150)
                 const next = readHeadings(view.state)
@@ -363,6 +390,7 @@ export function MilkdownEditor({
           const editorView = selectionCtx.get(editorViewCtx)
           if (!editorView.state) return
           queueMicrotask(() => {
+            if (disposed) return
             const currentView = selectionCtx.get(editorViewCtx)
             if (!disposed && currentView.state) {
               if (!currentView.state.selection.empty) setBlockMenuTarget(null)
@@ -403,6 +431,7 @@ export function MilkdownEditor({
       const proseMirror = editorRoot.querySelector<HTMLElement>('.ProseMirror')
 
       proseMirror?.setAttribute('aria-label', ariaLabelRef.current)
+      proseMirror?.setAttribute('tabindex', '0')
       proseMirror?.focus()
       editor.action((ctx) => {
         const editorState = ctx.get(editorViewCtx).state
@@ -473,6 +502,52 @@ export function MilkdownEditor({
       document.removeEventListener('pointerdown', closeOnOutsidePress)
     }
   }, [contextMenu])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    setFindQueryState('')
+    editorRef.current?.action((ctx) => {
+      const view = ctx.get(editorViewCtx)
+      setFindQuery(view, '')
+      focusEditorViewPreservingSelection(view)
+    })
+  }, [])
+  useEffect(() => {
+    if (!active) {
+      setFindOpen(false)
+      setFindQueryState('')
+      if (isReady) editorRef.current?.action((ctx) => setFindQuery(ctx.get(editorViewCtx), ''))
+      return
+    }
+    const open = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== 'f' ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return
+      event.preventDefault()
+      if (isReady) {
+        setFindOpen(true)
+        editorRootRef.current?.querySelector<HTMLInputElement>('.document-find input')?.select()
+      }
+    }
+    const openFromMenu = () => {
+      if (isReady) setFindOpen(true)
+    }
+    window.addEventListener('milo:find', openFromMenu)
+    window.addEventListener('keydown', open)
+    return () => {
+      window.removeEventListener('keydown', open)
+      window.removeEventListener('milo:find', openFromMenu)
+    }
+  }, [active, isReady])
+
+  useEffect(() => {
+    if (active && findOpen && findResult.matches.length)
+      editorRef.current?.action((ctx) => moveFindMatch(ctx.get(editorViewCtx), 0))
+  }, [active, findOpen, findResult.matches])
 
   const insertImage = useCallback((src: string) => {
     editorRef.current?.action((ctx) => {
@@ -1166,6 +1241,22 @@ export function MilkdownEditor({
         if (!event.defaultPrevented) pasteImage(event)
       }}
     >
+      {findOpen && active ? (
+        <DocumentFindBar
+          copy={editorCopy}
+          query={findQuery}
+          count={findResult.matches.length}
+          current={findResult.current}
+          onQuery={(query) => {
+            setFindQueryState(query)
+            editorRef.current?.action((ctx) => setFindQuery(ctx.get(editorViewCtx), query))
+          }}
+          onMove={(direction) =>
+            editorRef.current?.action((ctx) => moveFindMatch(ctx.get(editorViewCtx), direction))
+          }
+          onClose={closeFind}
+        />
+      ) : null}
       {contextualOverlayMount && active && presentationMode === 'edit'
         ? createPortal(
             <>
@@ -1229,6 +1320,14 @@ export function MilkdownEditor({
                 <div aria-hidden="true" className="outline-backdrop" onMouseDown={onCloseOutline} />
               ) : null}
               <EditorOutline
+                preferences={outlinePreferences}
+                depthLabel={editorCopy.outlineDepth}
+                collapseLabel={editorCopy.collapseSection}
+                expandLabel={editorCopy.expandSection}
+                onPreferencesChange={(preferences) => {
+                  setOutlinePreferences(preferences)
+                  localStorage.setItem('milo-outline-depth', String(preferences.depth))
+                }}
                 activePosition={activeHeadingPosition}
                 closeLabel={editorCopy.closeOutline}
                 drawer={outlineLayout === 'drawer'}

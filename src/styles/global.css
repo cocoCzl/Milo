@@ -155,7 +155,7 @@ button:focus-visible,
   --editor-heading-space-before: var(--editor-font-size);
   --reading-width: 860px;
   --application-bar-height: 48px;
-  --document-context-height: 40px;
+  --document-context-height: 0px;
   --top-region-height: var(--application-bar-height);
   --editor-rail-width: 48px;
   --outline-width: 256px;
@@ -1038,7 +1038,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .document-area {
   position: relative;
   display: grid;
-  grid-template-rows: var(--document-context-height) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: var(--surface-editor);
@@ -1312,7 +1312,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   grid-column: 1;
   width: 100%;
   margin: 0;
-  padding-top: clamp(70px, 13vh, 140px);
+  padding-top: clamp(38px, 6vh, 64px);
 }
 
 @media (max-width: 1150px) {
@@ -1370,8 +1370,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   gap: 10px;
   align-items: center;
   min-width: 0;
-  min-height: 66px;
-  padding: 12px 15px 11px;
+  min-height: 44px;
+  padding: 8px 15px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
 }
 
@@ -1838,14 +1838,14 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .app-shell--inline-outline:not(.app-shell--focus-mode)
   .document-area:not(.document-area--empty)
   > .document-stage {
-  grid-area: 2 / 1;
+  grid-area: 1 / 1;
 }
 
 .outline-inline-layer {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-area: 2 / 1;
+  grid-area: 1 / 1;
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -2714,27 +2714,30 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 .milkdown .ProseMirror h6 {
   color: var(--ink);
   font-family: var(--editor-heading-font-family);
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
   line-height: var(--editor-heading-line-height);
   margin-top: var(--editor-heading-space-before);
 }
 
 .milkdown .ProseMirror h1 {
-  font-size: calc(var(--editor-font-size) * 1.9091);
-  font-weight: 700;
-  margin-bottom: calc(var(--editor-font-size) * 0.9545);
+  font-size: calc(var(--editor-font-size) * 1.8);
+  font-weight: 680;
+  margin-top: 1.5em;
+  margin-bottom: 0.65em;
 }
 
 .milkdown .ProseMirror h2 {
-  font-size: calc(var(--editor-font-size) * 1.5152);
-  font-weight: 680;
-  margin-bottom: calc(var(--editor-font-size) * 0.7576);
+  font-size: calc(var(--editor-font-size) * 1.45);
+  font-weight: 650;
+  margin-top: 1.7em;
+  margin-bottom: 0.65em;
 }
 
 .milkdown .ProseMirror h3 {
-  font-size: calc(var(--editor-font-size) * 1.2424);
-  font-weight: 660;
-  margin-bottom: calc(var(--editor-font-size) * 0.6212);
+  font-size: calc(var(--editor-font-size) * 1.2);
+  font-weight: 620;
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
 }
 
 .milkdown .ProseMirror h4 {
@@ -3653,5 +3656,168 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   .preferences-dialog,
   .milo-tooltip {
     animation: none !important;
+  }
+}
+
+/* Compact writing chrome. Native titlebar remains owned by Tauri/macOS. */
+.window-bar__actions .document-context {
+  min-height: 0;
+  width: auto;
+  max-width: 210px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  font-size: var(--ui-font-xs);
+}
+.window-bar__actions .document-context__identity {
+  display: none;
+}
+.document-context--saved .document-context__status {
+  opacity: 0.65;
+}
+.window-bar__actions {
+  flex-shrink: 0;
+}
+.application-bar__tabs {
+  min-width: 0;
+}
+.file-sidebar__brand-mark {
+  flex-basis: 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+.file-sidebar__recent summary {
+  cursor: pointer;
+}
+.file-sidebar__filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  font-size: var(--ui-font-xs);
+  color: var(--text-secondary);
+}
+.focus-mode-exit {
+  position: fixed;
+  z-index: var(--overlay-sticky-chrome);
+  top: 16px;
+  left: 16px;
+  padding: 7px 10px;
+  color: var(--text-secondary);
+  background: var(--surface-editor);
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  font-size: var(--ui-font-xs);
+  cursor: pointer;
+}
+.editor-outline__header select {
+  margin-left: auto;
+  max-width: 90px;
+  font: inherit;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+.editor-outline li {
+  position: relative;
+}
+.editor-outline__fold {
+  position: absolute;
+  z-index: 1;
+  top: 5px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: var(--surface-outline);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.editor-outline__fold[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.editor-outline__item {
+  padding-right: 25px;
+}
+.editor-outline__ancestor > .editor-outline__item {
+  font-weight: 650;
+}
+.document-find {
+  position: fixed;
+  z-index: var(--overlay-floating-editor);
+  top: 54px;
+  right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100vw - 32px);
+  padding: 7px;
+  background: var(--surface-editor);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  box-shadow: var(--shadow-md);
+  font-size: var(--ui-font-sm);
+}
+.app-shell--focus-mode .document-find {
+  top: 56px;
+}
+.document-find input {
+  width: 180px;
+  min-width: 70px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  outline-offset: 2px;
+  font: inherit;
+}
+.document-find output {
+  min-width: 42px;
+  white-space: nowrap;
+  text-align: center;
+}
+.document-find button {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.document-find button:hover {
+  background: var(--bg-hover);
+}
+.document-find button:disabled {
+  opacity: 0.35;
+}
+.document-find-match {
+  background: color-mix(in srgb, #e7b933 32%, transparent);
+}
+.document-find-match--current {
+  background: color-mix(in srgb, #e7a629 65%, transparent);
+  outline: 1px solid var(--accent);
+}
+@media (max-width: 900px) {
+  .window-bar__actions .document-context {
+    max-width: 96px;
+    padding: 0;
+  }
+  .window-bar__actions .document-context__save {
+    display: none;
+  }
+  .document-context__status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

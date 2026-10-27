@@ -663,7 +663,7 @@ describe('App', () => {
         expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
           'app-shell--inline-outline',
         )
-        expect(container.querySelector('.outline-toggle')).not.toBeInTheDocument()
+        expect(container.querySelector('.outline-toggle')).toBeInTheDocument()
       })
 
       Object.defineProperty(stage, 'clientWidth', { configurable: true, value: 1000 })

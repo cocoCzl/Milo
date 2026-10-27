@@ -32,7 +32,11 @@ export function DocumentContext({
           : documentStatus(tab, copy)
 
   return (
-    <div className={`document-context document-context--${tone}`} aria-live="polite">
+    <div
+      className={`document-context document-context--${tone}`}
+      title={document.path ?? title}
+      aria-live="polite"
+    >
       <div className="document-context__identity">
         <span className="document-context__icon" aria-hidden="true">
           <FileText size={15} strokeWidth={1.7} />
