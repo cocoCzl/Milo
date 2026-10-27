@@ -83,7 +83,7 @@ export const DocumentPanel = memo(function DocumentPanel({
       hidden={!active}
     >
       {tab.activity === 'opening' ? (
-        <div role="status">{copy.sidebar.loadingFolder}</div>
+        <div role="status">{copy.loadingDocument}</div>
       ) : !visitedRef.current ? null : isProtected ? (
         <section className="protected-document" aria-label={copy.protectedDocument}>
           <div className="protected-document__notice" role="alert">

@@ -1,4 +1,4 @@
-import { listenForNativeClose, completeNativeClose, cancelNativeClose } from '../hooks/nativeClose'
+import { listenForNativeClose, createNativeCloseHandler } from '../hooks/nativeClose'
 import {
   FileText,
   Focus,
@@ -111,19 +111,19 @@ export function App() {
   const flushSettingsRef = useRef(flushSettings)
   closeSessionRef.current = session
   flushSettingsRef.current = flushSettings
+  const nativeClose = useMemo(
+    () =>
+      createNativeCloseHandler(
+        (complete, failed) => closeSessionRef.current.requestCloseAll(complete, failed),
+        () => flushSettingsRef.current(),
+      ),
+    [],
+  )
   useEffect(() => {
     let disposed = false
     let stop: (() => void) | undefined
     void listenForNativeClose((kind) => {
-      if (disposed) return
-      const accepted = closeSessionRef.current.requestCloseAll(
-        async () => {
-          await flushSettingsRef.current()
-          await completeNativeClose(kind)
-        },
-        () => void cancelNativeClose().catch(() => undefined),
-      )
-      if (!accepted) void cancelNativeClose().catch(() => undefined)
+      if (!disposed) nativeClose.request(kind)
     })
       .then((unlisten) => {
         if (disposed) unlisten()
@@ -134,7 +134,7 @@ export function App() {
       disposed = true
       stop?.()
     }
-  }, [])
+  }, [nativeClose])
   const colorScheme = useEffectiveColorScheme(settings.appearance)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [folderTree, setFolderTree] = useState<MarkdownTreeNode | null>(null)
@@ -967,7 +967,7 @@ export function App() {
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               session.cancelCloseTab()
-              void cancelNativeClose().catch(() => undefined)
+              void nativeClose.cancel().catch(() => undefined)
             }
             if (event.key === 'Tab') {
               const buttons = [
@@ -1005,7 +1005,7 @@ export function App() {
               type="button"
               onClick={() => {
                 session.cancelCloseTab()
-                void cancelNativeClose().catch(() => undefined)
+                void nativeClose.cancel().catch(() => undefined)
               }}
             >
               {copy.keepEditing}
