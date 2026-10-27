@@ -120,6 +120,22 @@ describe('useDocumentSession', () => {
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1))
   })
 
+  it('unlocks native coordination after completion failure and allows another request', async () => {
+    const session = renderHook(() => useDocumentSession())
+    const failed = vi.fn()
+    const complete = vi.fn().mockRejectedValue(new Error('settings write failed'))
+    act(() => {
+      session.result.current.requestCloseAll(complete, failed)
+    })
+    await waitFor(() => expect(failed).toHaveBeenCalledOnce())
+    expect(session.result.current.closePending).toBe(false)
+    const retry = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      expect(session.result.current.requestCloseAll(retry)).toBe(true)
+    })
+    await waitFor(() => expect(retry).toHaveBeenCalledOnce())
+  })
+
   it('does not complete native close after a failed write and allows retry', async () => {
     const session = await openSavedDocument()
     act(() => updateActive(session, 'latest'))
@@ -1221,6 +1237,84 @@ describe('useDocumentSession', () => {
     expect(session.result.current.document.path).toBe('/tmp/README.md')
     expect(session.result.current.document.title).toBe('README.md')
     expect(session.result.current.tabs.some((tab) => tab.document.path === null)).toBe(false)
+  })
+
+  it('publishes the active restored document before blocked background reads and never resurrects closed placeholders', async () => {
+    let finish!: (file: {
+      path: string
+      markdown: string
+      lineEnding: 'lf'
+      hasBom: boolean
+    }) => void
+    mocks.recoverAndReadMarkdownFile.mockImplementation((requestedPath: string) =>
+      requestedPath === '/tmp/background.md'
+        ? new Promise((resolve) => {
+            finish = resolve
+          })
+        : Promise.resolve({
+            path: requestedPath,
+            markdown: '# Active',
+            lineEnding: 'lf',
+            hasBom: false,
+          }),
+    )
+    const session = renderHook(() => useDocumentSession())
+    let restoring!: Promise<boolean>
+    act(() => {
+      restoring = session.result.current.restoreStartupSession({
+        activeDocumentPath: '/tmp/active.md',
+        openDocumentPaths: ['/tmp/background.md', '/tmp/active.md'],
+      })
+    })
+    await waitFor(() => expect(session.result.current.document.markdown).toBe('# Active'))
+    await waitFor(() => expect(finish).toBeTypeOf('function'))
+    const background = session.result.current.tabs.find(
+      (tab) => tab.document.path === '/tmp/background.md',
+    )!
+    act(() => session.result.current.requestCloseTab(background.id))
+    act(() => session.result.current.createNewDocument())
+    const userTab = session.result.current.activeTabId
+    await act(async () => {
+      finish({
+        path: '/tmp/background.md',
+        markdown: '# Too late',
+        lineEnding: 'lf',
+        hasBom: false,
+      })
+      await restoring
+    })
+    expect(session.result.current.activeTabId).toBe(userTab)
+    expect(session.result.current.tabs.some((tab) => tab.id === background.id)).toBe(false)
+  })
+
+  it('keeps existing watcher registrations when another tab opens or closes', async () => {
+    const session = await openSavedDocument()
+    const first = session.result.current.activeTabId!
+    mocks.recoverAndReadMarkdownFile.mockResolvedValueOnce({
+      path: '/tmp/second.md',
+      markdown: '# Second',
+      lineEnding: 'lf',
+      hasBom: false,
+    })
+    await act(async () => {
+      await session.result.current.openDocumentAtPath('/tmp/second.md')
+    })
+    await waitFor(() => expect(mocks.watchMarkdownFile).toHaveBeenCalledTimes(2))
+    act(() => session.result.current.requestCloseTab(session.result.current.activeTabId!))
+    expect(session.result.current.activeTabId).toBe(first)
+    expect(mocks.watchMarkdownFile).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports missing recent paths without creating an unrelated empty document', async () => {
+    const session = renderHook(() => useDocumentSession())
+    mocks.recoverAndReadMarkdownFile.mockRejectedValueOnce(new Error('Not found'))
+    await act(async () => {
+      await expect(session.result.current.openDocumentAtPath('/tmp/deleted.md')).resolves.toBe(
+        false,
+      )
+    })
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.openError).toContain('/tmp/deleted.md')
   })
 
   it('restores saved files and safely skips unavailable session paths', async () => {

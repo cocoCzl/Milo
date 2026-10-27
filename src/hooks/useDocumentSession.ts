@@ -45,7 +45,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const stableWaitersRef = useRef(new Map<number, Set<(stable: boolean) => void>>())
   const flushersRef = useRef(new Map<number, () => boolean>())
   const savingRef = useRef(new Map<number, Promise<boolean>>())
-  const closeAllRef = useRef<(() => Promise<void>) | null>(null)
+  const closeAllRef = useRef<{ complete: () => Promise<void>; failed?: () => void } | null>(null)
   const closingRef = useRef<number | null>(null)
   const saveRef = useRef<() => Promise<boolean>>(async () => false)
   const untitledTitleRef = useRef(untitledTitle)
@@ -815,7 +815,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       selectTab(pending.id)
       setClosingTabId(pending.id)
     } else {
-      const complete = closeAllRef.current
+      const { complete, failed } = closeAllRef.current
       // Keep the coordinator locked while native completion/settings flush.
       void flushDrafts()
         .then(complete)
@@ -824,6 +824,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           setClosePending(false)
         })
         .catch((reason) => {
+          failed?.()
           closeAllRef.current = null
           setClosePending(false)
           const first = tabsRef.current[0]
@@ -837,9 +838,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   }, [replaceTab, selectTab])
 
   const requestCloseAll = useCallback(
-    (complete: () => Promise<void>) => {
+    (complete: () => Promise<void>, failed?: () => void) => {
       if (closeAllRef.current || closingRef.current !== null) return false
-      closeAllRef.current = complete
+      closeAllRef.current = { complete, failed }
       setClosePending(true)
       continueCloseAll()
       return true
@@ -906,7 +907,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   }, [finishCloseTab, getTab, saveDocument])
 
   const recoverDrafts = useCallback(async () => {
-    const drafts = await readDrafts()
+    const { drafts, errors } = await readDrafts()
     for (const draft of drafts) {
       if (tabsRef.current.some((tab) => tab.document.recoveryId === draft.id)) continue
       appendTab({
@@ -916,6 +917,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         recoveryId: draft.id,
       })
     }
+    if (errors.length) throw new Error(errors.join('\n'))
   }, [appendTab])
 
   const draftSignature = tabs
