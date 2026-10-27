@@ -24,9 +24,11 @@ Milo 0.3.0 是首个公开测试版，可通过 [GitHub Pre-release](https://git
 - 远程图片必须由用户明确加载；外部链接仅在 Command-click 时交给系统浏览器。
 - macOS 菜单、快捷键、无障碍标签、减少动态效果支持，以及专注的写作界面。
 
+当前开发分支还包含原生窗口关闭／退出保护、未命名文档恢复、标签及目录懒加载、紧凑顶栏、可折叠大纲与层级选择，以及编辑／阅读模式下的 **Cmd+F 文内查找**。这些改动尚未发布，下载链接中的 0.3.0 不包含它们。[验证记录](docs/OPTIMIZATION_2026-10.md)列出本轮实测及尚未完成的原生输入法与性能验收。
+
 ## 隐私与数据
 
-Milo 只把文档内容保存到本地 Markdown 文件。应用偏好、最近路径和会话元数据以小型 JSON 设置保存在文档文件夹之外；Markdown 正文不会被复制到数据库或云端。
+已保存的 Markdown 文件仍是正式文档数据源。应用偏好、最近路径和会话元数据保存在文档文件夹之外。当前开发源码还会在内容稳定 600 ms 后，为有修改的未命名文档写入独立的本地恢复 JSON；首次保存成功或明确丢弃后清理。恢复副本可能落后于最后一次编辑，首次快照前崩溃或磁盘故障不在恢复保证内。不使用数据库或云端副本。
 
 远程图片不会在打开文档时自动请求。Milo 不包含内置浏览器、账号系统、分析服务或后端 API。
 
@@ -37,7 +39,7 @@ Milo 只把文档内容保存到本地 Markdown 文件。应用偏好、最近�
 - 编辑器：Milkdown、ProseMirror、Remark 与 GFM
 - 原生服务：Tauri 对话框、文件监听、JSON 应用设置与系统菜单
 
-Mermaid、KaTeX、Shiki、源码模式、导出和搜索会在后续阶段再引入，避免影响 MVP 的启动速度。
+Mermaid、KaTeX、Shiki、源码模式、导出以及全局搜索／替换会在后续阶段再引入，避免影响 MVP 的启动速度。
 
 ## 下载与安装
 
@@ -69,9 +71,18 @@ npm run tauri -- dev
 ## 质量检查
 
 ```sh
+npm run format:check
+npm run typecheck
 npm run test
-npm run lint
+npm run lint -- --max-warnings=0
 npm run build
+npx playwright install --with-deps chromium
+# 在另一终端运行 npm run dev -- --host 127.0.0.1 后：
+npm run test:browser
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+npm run tauri -- build --debug
 ```
 
 ## 构建 universal macOS 产物

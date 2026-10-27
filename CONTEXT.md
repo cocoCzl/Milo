@@ -13,7 +13,7 @@ The default behavior of writing an existing document directly to its Markdown fi
 _Avoid_: private draft, background backup
 
 **Current Folder**:
-The single directory whose recursive Markdown file tree is displayed in the sidebar of the main window. Individually opened documents may exist outside it without becoming part of that tree.
+The single directory whose Markdown file tree is displayed in the sidebar of the main window, loading one level on expansion with 200-entry pages. Dependency and build folders are excluded by default and can be explicitly shown. Individually opened documents may exist outside it without becoming part of that tree.
 _Avoid_: workspace, vault, project
 
 **Command Surface**:
@@ -79,7 +79,7 @@ The release attachment has been browser-downloaded with quarantine retained and 
 _Avoid_: Apple-certified beta, notarized beta, silent signing fallback
 
 **Repository Quality Gate**:
-Every pull request and master-branch change must pass formatting, TypeScript checking, linting, frontend/Rust tests, Clippy and a macOS build check. A matching version tag additionally builds and verifies the ad-hoc Universal DMG and SHA-256 file, then attaches only those files to a draft GitHub Pre-release. Public publication requires explicit maintainer authorization, granted for 0.3.0 with the documented beta limitations. The final documentation/publication handoff runs only documentation checks by explicit maintainer instruction.
+Every pull request and master-branch change must pass formatting, TypeScript checking, linting, frontend/Rust tests, Clippy and a macOS build check. A matching version tag additionally builds and verifies the ad-hoc Universal DMG and SHA-256 file, then attaches only those files to a draft GitHub Pre-release. Public publication requires explicit maintainer authorization, granted for 0.3.0 with the documented beta limitations. The historical 0.3.0 publication handoff used documentation-only checks by explicit maintainer instruction; that exception does not apply to subsequent source changes. Browser layout and interaction checks use the lockfile-pinned development Playwright dependency in CI.
 _Avoid_: unverified master branch, release-only testing
 
 **Application Settings**:
@@ -131,7 +131,7 @@ On a 16 GB Apple Silicon Mac, the MVP reaches an editable empty document within 
 _Avoid_: subjective lightweight claim, eager extension loading
 
 **Save Feedback**:
-A quiet, transient indicator near a document-tab title for a pending or in-progress save, which fades after success. A save failure instead remains visible and actionable; no permanent status bar is used.
+A quiet, transient indicator near a document-tab title for a pending or in-progress save, which fades after success. The top bar retains a subdued Saved state and full-path tooltip, without a second document information row. A save failure instead remains visible and actionable; no permanent status bar is used.
 _Avoid_: always-visible save status, silent write failure
 
 **Sidebar Layout**:
@@ -139,7 +139,7 @@ The adjustable File Tree sidebar, initially about 240 px wide, remains separate 
 _Avoid_: fixed-width navigator, permanent inspector, cramped three-column layout
 
 **Document Outline**:
-A read-only navigation rail generated from the current document's Markdown headings. It updates as headings change and moves the editing selection to a heading when chosen, without storing private navigation metadata in the document.
+A read-only navigation rail generated from the current document's Markdown headings, with section folding, a persisted maximum depth (initially 3), and an independently hideable inline rail. It updates as headings change and moves the editing selection to a heading when chosen, without storing private navigation metadata in the document.
 _Avoid_: manually maintained table of contents, document database
 
 **MVP Command Access**:
@@ -159,11 +159,11 @@ An image remaining in an `assets/` directory after its Markdown reference is rem
 _Avoid_: automatically cleaned attachment, deleted paste image
 
 **Startup Session**:
-The available document tabs, active tab, and Current Folder restored after a normal exit. Missing session paths are skipped. When no document can be restored, Milo shows the no-document surface and creates an Unsaved Document only after an explicit New Document action.
+The available document tabs, active tab, and Current Folder restored after a normal exit. Metadata appears first; the active document is read first, with at most two subsequent background reads. Unvisited tabs defer editor construction; visited editors stay mounted to retain undo and plugin state. Missing session paths are skipped. When no document can be restored, Milo shows the no-document surface and creates an Unsaved Document only after an explicit New Document action.
 _Avoid_: fake Untitled document, persistent workspace database
 
 **Unsaved Document**:
-A newly created document that has not yet received a Markdown file path. It is protected by normal close confirmation but has no promised recovery after an unexpected exit.
+A newly created document that has not yet received a Markdown file path. Stable dirty content is copied after 600 ms to independent local app-data recovery JSON files. These copies may lag the last edit, never capture active composition, and are removed after successful first save or explicit discard. They are not a substitute for saving a Markdown file; crashes before the snapshot and disk failure remain outside the recovery guarantee.
 _Avoid_: draft, temporary note
 
 **External Change**:
@@ -173,3 +173,11 @@ _Avoid_: sync conflict, merge
 **Supported Markdown**:
 The CommonMark dialect with GitHub Flavored Markdown extensions for tables, task lists, and strikethrough. Content edited by Milo is serialized in this normalized dialect; unsupported syntax is preserved when reliable preservation is possible and otherwise must not be silently lost.
 _Avoid_: arbitrary Markdown, private document format
+
+## Writing optimization (unreleased)
+
+Native window close and application quit share a sequential all-tab coordinator. macOS window close hides the window after approval; quit exits the process. Repeated requests are coalesced, a cancelled request returns focus to the affected tab, and in-flight writes, failures and unsettled composition remain protected. Cocoa termination is intercepted on the existing application delegate because the predefined Quit action bypassed Tauri's ExitRequested in a disposable native test.
+
+**Document Find** searches the ProseMirror document model in Edit and Read, using decorations outside content/history. Command-F opens it, Enter/Shift-Enter navigate, and Escape restores editor focus/selection. Matching is literal and non-overlapping, ASCII case-insensitive and otherwise exact. Queries are cleared on tab switch. Global search and replacement remain deferred.
+
+Untouched saves reuse the original Markdown body; edited bodies use normalized CommonMark/GFM serialization. This is semantic round-tripping, not byte-preserving full-document editing. See [the optimization verification record](docs/OPTIMIZATION_2026-10.md) for format differences, measurements, native limits and the original performance budgets. Historical release IME acceptance and budget exceptions do not validate this branch.

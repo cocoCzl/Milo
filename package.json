@@ -12,7 +12,9 @@
     "tauri": "tauri",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test:browser": "node scripts/test-outline-browser.mjs",
+    "test:performance": "node scripts/test-performance-browser.mjs"
   },
   "dependencies": {
     "@milkdown/core": "^7.22.1",
@@ -53,6 +55,7 @@
     "eslint-plugin-react-refresh": "^0.4.18",
     "globals": "^15.15.0",
     "jsdom": "^26.0.0",
+    "playwright": "1.62.1",
     "postcss": "8.5.28",
     "prettier": "3.8.4",
     "typescript": "~5.7.3",

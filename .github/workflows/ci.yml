@@ -35,6 +35,19 @@ jobs:
       - run: npm run test
       - run: npm run lint -- --max-warnings=0
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Browser layout and interaction regressions
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/milo-vite.log 2>&1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          node --input-type=module -e 'for (let i=0;i<100;i++) { try { await fetch("http://127.0.0.1:1420"); process.exit(0) } catch {} await new Promise(r=>setTimeout(r,100)) } process.exit(1)'
+          npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-regression
+          path: /private/tmp/milo-outline-regression
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked

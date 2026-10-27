@@ -1,137 +1,15 @@
-// Run against `npm run dev`. Uses an existing Playwright installation; does not
-// add a production dependency. Only native IPC is stubbed, never editor/layout.
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-
-const { chromium } = await import(process.env.MILO_PLAYWRIGHT_MODULE || 'playwright')
-const output = process.env.MILO_OUTLINE_ARTIFACTS || '/private/tmp/milo-outline-regression'
-const url = process.env.MILO_TEST_URL || 'http://127.0.0.1:1420'
-const markdown = await readFile(
-  new URL('../tests/fixtures/outline-long.md', import.meta.url),
-  'utf8',
-)
-await mkdir(output, { recursive: true })
-const browser = await chromium.launch({ headless: true })
+import { writeFile } from 'node:fs/promises'
+import { open, settle, browser, errors, output } from './browserHarness.mjs'
 const results = []
-const errors = []
-
-async function settle(page) {
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-  )
-}
-
-async function open({
-  width = 1440,
-  height = 900,
-  theme = 'light',
-  uiZoom = 100,
-  docZoom = 100,
-  sidebar = false,
-  content = markdown,
-  home = false,
-} = {}) {
-  const page = await browser.newPage({ viewport: { width, height } })
-  page.on('pageerror', (error) => errors.push(error.message))
-  await page.addInitScript(
-    ({ content, theme, uiZoom, docZoom, sidebar, home }) => {
-      const callbacks = new Map()
-      const listeners = new Map()
-      const files = new Map([
-        ['/test/outline-long.md', content],
-        ['/test/short.md', '# 短文档\n\n短文档正文。'],
-      ])
-      let id = 0
-      const test = {
-        writes: [],
-        command: (payload) => emit('milo://command', payload),
-        open: (payload) => emit('milo://open-file', payload),
-      }
-      function emit(event, payload) {
-        for (const [eventId, listener] of listeners) {
-          if (listener.event === event)
-            callbacks.get(listener.handler)?.({ event, id: eventId, payload })
-        }
-      }
-      window.__miloOutlineTest = test
-      window.isTauri = true
-      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-        unregisterListener(_event, eventId) {
-          listeners.delete(eventId)
-        },
-      }
-      window.__TAURI_INTERNALS__ = {
-        metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-        transformCallback(fn) {
-          callbacks.set(++id, fn)
-          return id
-        },
-        unregisterCallback(callbackId) {
-          callbacks.delete(callbackId)
-        },
-        async invoke(cmd, args = {}) {
-          if (cmd === 'load_application_settings')
-            return {
-              settingsVersion: 5,
-              appearance: theme,
-              locale: 'zh-CN',
-              documentZoom: docZoom,
-              interfaceZoom: uiZoom,
-              documentFontStyle: 'sans',
-              readingWidth: 'standard',
-              lineHeight: 'standard',
-              currentFolder: null,
-              recentFiles: [],
-              recentFolders: [],
-              sidebarVisible: sidebar,
-              sidebarWidth: 224,
-              startupSession: {
-                activeDocumentPath: home ? null : '/test/outline-long.md',
-                openDocumentPaths: home ? [] : ['/test/outline-long.md'],
-              },
-            }
-          if (cmd === 'save_application_settings') return args.settings
-          if (cmd === 'read_markdown_document')
-            return {
-              path: args.path,
-              markdown: files.get(args.path),
-              hasBom: false,
-              lineEnding: 'lf',
-            }
-          if (cmd.startsWith('write_markdown_document')) {
-            files.set(args.request.path, args.request.markdown)
-            test.writes.push(args.request)
-            return args.request
-          }
-          if (cmd === 'plugin:event|listen') {
-            listeners.set(++id, args)
-            return id
-          }
-          if (
-            cmd === 'plugin:event|unlisten' ||
-            cmd === 'plugin:resources|close' ||
-            cmd === 'recover_markdown_document_safe_v2'
-          )
-            return null
-          if (cmd === 'plugin:fs|watch') return ++id
-          if (cmd === 'initial_launch_markdown_file') return null
-          throw new Error(`Unexpected test IPC: ${cmd}`)
-        },
-      }
-    },
-    { content, theme, uiZoom, docZoom, sidebar, home },
-  )
-  await page.goto(url)
-  await page.locator(home ? '.document-empty-state' : '.ProseMirror[contenteditable]').waitFor()
-  await settle(page)
-  return page
-}
 
 async function showOutline(page) {
   await settle(page)
   if (!(await page.locator('.editor-outline').count()))
     await page.getByRole('button', { name: '打开大纲', exact: true }).click()
   await page.locator('.editor-outline__body').waitFor()
+  const depth = page.getByRole('combobox', { name: '展示标题层级' })
+  if (await depth.count()) await depth.selectOption('6')
   await settle(page)
 }
 
@@ -221,7 +99,8 @@ try {
   const homes = []
   for (const [width, height] of [
     [1440, 900],
-    [1280, 720],
+    [1920, 1080],
+    [1280, 800],
     [1024, 600],
     [800, 600],
   ]) {
@@ -250,7 +129,8 @@ try {
   const cases = []
   for (const [width, height] of [
     [1440, 900],
-    [1280, 720],
+    [1920, 1080],
+    [1280, 800],
     [1024, 600],
     [800, 600],
   ]) {
@@ -270,6 +150,7 @@ try {
     await wheel(page, 100000)
     await wheel(page, 1000)
     const bottom = await metrics(page)
+    await writeFile(`${output}/${name}-metrics.json`, JSON.stringify({ top, bottom }, null, 2))
     contained(bottom)
     assert.equal(bottom.stageScrollTop, 0, 'outline wheel moved article')
     assert.equal(bottom.header.top, top.header.top, 'header moved with list')
@@ -321,7 +202,14 @@ try {
   await showOutline(page)
   // Real keyboard traversal reaches every item without scrolling the article.
   await page.locator('.editor-outline__item').first().focus()
-  const count = await page.locator('.editor-outline__item').count()
+  const count = await page.locator('.editor-outline__body').evaluate((body) => {
+    const buttons = [...body.querySelectorAll('button')]
+    return (
+      buttons.indexOf([...body.querySelectorAll('.editor-outline__item')].at(-1)) -
+      buttons.indexOf(body.querySelector('.editor-outline__item')) +
+      1
+    )
+  })
   for (let i = 1; i < count; i++) await page.keyboard.press('Tab')
   assert.equal(
     await page
@@ -485,6 +373,68 @@ try {
       )
     await page.close()
   }
+  const find = await open({ content: '# 章节\n\n中文 Hello hello\n\n```js\nhello 中文\n```\n' })
+  assert.equal(await find.locator('.ProseMirror').count(), 1)
+  await find.keyboard.press('Meta+f')
+  await find.getByRole('textbox', { name: '文内查找' }).fill('hello')
+  await find.waitForFunction(() => document.querySelectorAll('.document-find-match').length === 3)
+  await find.keyboard.press('Enter')
+  assert.equal(await find.locator('.document-find output').textContent(), '2 / 3')
+  await find.keyboard.press('Shift+Enter')
+  assert.equal(await find.locator('.document-find output').textContent(), '1 / 3')
+  await find.keyboard.press('Escape')
+  assert.equal(await find.locator('.document-find-match').count(), 0)
+  assert.deepEqual(await find.evaluate(() => window.__miloOutlineTest.writes), [])
+  await find.getByRole('button', { name: '阅读', exact: true }).click()
+  await find.keyboard.press('Meta+f')
+  await find.getByRole('textbox', { name: '文内查找' }).fill('中文')
+  await find.waitForFunction(() => document.querySelectorAll('.document-find-match').length === 2)
+  await find.keyboard.press('Escape')
+  assert.deepEqual(await find.evaluate(() => window.__miloOutlineTest.writes), [])
+  await find.close()
+
+  const lazy = await open({ tabs: 5 })
+  assert.equal(
+    await lazy.locator('.ProseMirror').count(),
+    1,
+    'background editors initialized eagerly',
+  )
+  await lazy.locator('.document-panel:not([hidden]) .ProseMirror p').first().click()
+  await lazy.keyboard.type('lazy-undo-check')
+  await lazy.waitForFunction(() =>
+    window.__miloOutlineTest.writes.some((w) => w.markdown.includes('lazy-undo-check')),
+  )
+  const scroll = await lazy.locator('.document-stage').evaluate((stage) => {
+    stage.scrollTop = 1500
+    return stage.scrollTop
+  })
+  await lazy.evaluate(() => {
+    window.__miloOutlineTest.firstEditor = document.querySelector(
+      '.document-panel:not([hidden]) .ProseMirror',
+    )
+  })
+  await lazy.getByRole('tab', { name: 'tab-2.md', exact: true }).click()
+  await lazy.locator('.document-panel:not([hidden]) .milkdown-editor[aria-busy="false"]').waitFor()
+  assert.equal(await lazy.locator('.ProseMirror').count(), 2)
+  await lazy.getByRole('tab', { name: 'outline-long.md', exact: true }).click()
+  assert.equal(await lazy.locator('.document-stage').evaluate((stage) => stage.scrollTop), scroll)
+  assert(
+    await lazy.evaluate(
+      () =>
+        document.querySelector('.document-panel:not([hidden]) .ProseMirror') ===
+        window.__miloOutlineTest.firstEditor,
+    ),
+  )
+  await lazy.locator('.document-panel:not([hidden]) .ProseMirror').focus()
+  await lazy.keyboard.press('Meta+z')
+  await lazy.waitForFunction(
+    () =>
+      !document
+        .querySelector('.document-panel:not([hidden]) .ProseMirror')
+        .textContent.includes('lazy-undo-check'),
+  )
+  await lazy.close()
+
   const closed = await open()
   await closed.locator('.document-tab__close').click()
   await closed.locator('.document-empty-state').waitFor()

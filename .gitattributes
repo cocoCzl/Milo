@@ -1,0 +1,2 @@
+# This fixture intentionally exercises Markdown two-space hard breaks.
+src/editor/markdown/__fixtures__/roundtrip.md whitespace=-blank-at-eol

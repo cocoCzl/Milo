@@ -24,9 +24,11 @@ Milo 0.3.0 is the first public beta, available as a [GitHub Pre-release](https:/
 - Remote images load only after an explicit action; external links open only with command-click.
 - macOS menus, keyboard shortcuts, accessibility labels, reduced-motion support, and a restrained writing surface.
 
+The development branch also includes protected native window close/quit, local unnamed-document recovery, lazy tab and folder loading, a compact top bar, collapsible Outline levels and **Cmd+F document find** in Edit and Read. These changes are unreleased; the linked 0.3.0 binary does not include them. See the [verification record](docs/OPTIMIZATION_2026-10.md), including remaining native IME and performance acceptance gaps.
+
 ## Privacy and data model
 
-Milo stores document content only in your local Markdown files. Application preferences, recent paths, and session metadata are small JSON settings stored outside your document folders; Markdown bodies are never copied into a database or cloud service.
+Saved Markdown files remain the authoritative documents. Application preferences, recent paths and session metadata live outside document folders. In the current development source, unnamed dirty documents also get independent local recovery JSON copies of stable content (after 600 ms); these are removed after successful first save or explicit discard. Snapshots can lag edits and cannot guarantee recovery before the first snapshot or after disk failure. No database or cloud copy is used.
 
 Remote image URLs are never requested until you choose to load a particular image. Milo does not ship an embedded browser, account system, analytics service, or backend API.
 
@@ -37,7 +39,7 @@ Remote image URLs are never requested until you choose to load a particular imag
 - Editor: Milkdown, ProseMirror, Remark, and GFM
 - Native services: Tauri dialogs, file watching, JSON application settings, and system menus
 
-Mermaid, KaTeX, Shiki, Source Mode, export, and search are deliberately deferred so they cannot slow the MVP startup path.
+Mermaid, KaTeX, Shiki, Source Mode, export, and global search/replacement are deliberately deferred so they cannot slow the MVP startup path.
 
 ## Download and install
 
@@ -69,9 +71,18 @@ The command starts Vite and the native Milo window. No account, server, database
 ## Quality checks
 
 ```sh
+npm run format:check
+npm run typecheck
 npm run test
-npm run lint
+npm run lint -- --max-warnings=0
 npm run build
+npx playwright install --with-deps chromium
+# Start `npm run dev -- --host 127.0.0.1` in another terminal:
+npm run test:browser
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+npm run tauri -- build --debug
 ```
 
 ## Build a universal macOS artifact
