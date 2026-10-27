@@ -118,9 +118,7 @@ describe('FileSidebar', () => {
       />,
     )
 
-    expect(container.querySelector('.file-sidebar__brand')).toHaveTextContent(
-      'MiloWrite a clearer tomorrow',
-    )
+    expect(container.querySelector('.file-sidebar__brand')).toHaveTextContent('Milo')
     expect(screen.getByRole('region', { name: 'Recent files and folders' })).toBeVisible()
     const workspace = screen.getByRole('region', { name: 'Folder' })
     expect(workspace).toHaveTextContent('current')
@@ -230,6 +228,8 @@ describe('FileSidebar', () => {
     )
     expect(onChooseFolder).toHaveBeenCalledOnce()
     const recent = screen.getByRole('region', { name: 'Recent files and folders' })
+    const details = recent.querySelector('details')!
+    if (!details.open) fireEvent.click(recent.querySelector('summary')!)
     fireEvent.click(within(recent).getByRole('button', { name: 'one.md' }))
     fireEvent.click(within(recent).getByRole('button', { name: 'archive' }))
     expect(onOpenFile).toHaveBeenCalledWith('/notes/current/one.md')

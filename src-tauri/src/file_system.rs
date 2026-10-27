@@ -53,6 +53,7 @@ pub struct MarkdownTreeNode {
     pub name: String,
     pub is_directory: bool,
     pub children: Vec<MarkdownTreeNode>,
+    pub next_offset: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -71,13 +72,33 @@ pub struct ImageAsset {
 }
 
 #[tauri::command]
-pub fn browse_markdown_folder(path: String) -> Result<MarkdownTreeNode, String> {
-    let root = PathBuf::from(path);
-    if !root.is_dir() {
-        return Err("Milo can only browse an available folder.".to_owned());
-    }
-    read_markdown_tree(&root)
+pub async fn browse_markdown_folder(
+    path: String,
+    excluded_names: Option<Vec<String>>,
+    offset: Option<usize>,
+) -> Result<MarkdownTreeNode, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = PathBuf::from(path);
+        let excluded = excluded_names
+            .unwrap_or_else(|| DEFAULT_EXCLUDED.iter().map(|s| (*s).to_owned()).collect());
+        read_markdown_directory(&root, &excluded, offset.unwrap_or(0))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
+
+const DEFAULT_EXCLUDED: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    ".cache",
+    ".venv",
+    "vendor",
+];
+const DIRECTORY_PAGE_SIZE: usize = 200;
 
 #[tauri::command]
 pub fn write_image_asset(app: AppHandle, request: ImageAssetRequest) -> Result<ImageAsset, String> {
@@ -353,7 +374,11 @@ fn markdown_path(path: String) -> Result<PathBuf, String> {
     }
 }
 
-fn read_markdown_tree(path: &Path) -> Result<MarkdownTreeNode, String> {
+fn read_markdown_directory(
+    path: &Path,
+    excluded: &[String],
+    offset: usize,
+) -> Result<MarkdownTreeNode, String> {
     let mut children = Vec::new();
     let entries =
         fs::read_dir(path).map_err(|error| format!("Could not read this folder: {error}"))?;
@@ -365,16 +390,26 @@ fn read_markdown_tree(path: &Path) -> Result<MarkdownTreeNode, String> {
             .file_type()
             .map_err(|error| format!("Could not inspect a folder entry: {error}"))?;
         if file_type.is_dir() {
-            let directory = read_markdown_tree(&entry_path)?;
-            if !directory.children.is_empty() {
-                children.push(directory);
+            if excluded
+                .iter()
+                .any(|name| entry.file_name() == std::ffi::OsStr::new(name))
+            {
+                continue;
             }
+            children.push(MarkdownTreeNode {
+                path: entry_path.to_string_lossy().into_owned(),
+                name: entry.file_name().to_string_lossy().into_owned(),
+                is_directory: true,
+                children: Vec::new(),
+                next_offset: None,
+            });
         } else if file_type.is_file() && is_markdown_path(&entry_path) {
             children.push(MarkdownTreeNode {
                 path: entry_path.to_string_lossy().into_owned(),
                 name: entry.file_name().to_string_lossy().into_owned(),
                 is_directory: false,
                 children: Vec::new(),
+                next_offset: None,
             });
         }
     }
@@ -384,7 +419,14 @@ fn read_markdown_tree(path: &Path) -> Result<MarkdownTreeNode, String> {
             .cmp(&left.is_directory)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
+    let total = children.len();
+    let children = children
+        .into_iter()
+        .skip(offset)
+        .take(DIRECTORY_PAGE_SIZE)
+        .collect();
     Ok(MarkdownTreeNode {
+        next_offset: (offset + DIRECTORY_PAGE_SIZE < total).then_some(offset + DIRECTORY_PAGE_SIZE),
         path: path.to_string_lossy().into_owned(),
         name: path
             .file_name()
@@ -538,7 +580,7 @@ fn create_temporary_file(parent: &Path, file_name: &str) -> Result<(PathBuf, Fil
 mod tests {
     use super::{
         create_image_asset_file, decode_markdown, encode_markdown, image_extension,
-        read_markdown_tree, write_atomically, write_image_asset_impl, ImageAssetRequest,
+        read_markdown_directory, write_atomically, write_image_asset_impl, ImageAssetRequest,
         LineEnding,
     };
     use std::{
@@ -628,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn recursively_lists_directories_and_markdown_files_only() {
+    fn lazily_lists_one_directory_and_excludes_generated_directories() {
         let directory = std::env::temp_dir().join(format!(
             "milo-folder-tree-test-{}",
             SystemTime::now()
@@ -638,23 +680,25 @@ mod tests {
         ));
         fs::create_dir_all(directory.join("nested")).unwrap();
         fs::create_dir_all(directory.join("assets")).unwrap();
+        fs::create_dir_all(directory.join("target/deep")).unwrap();
         fs::write(directory.join("note.md"), "# Note").unwrap();
         fs::write(directory.join("nested/plan.markdown"), "# Plan").unwrap();
         fs::write(directory.join("assets/image.png"), "not an image").unwrap();
         fs::write(directory.join("readme.txt"), "not markdown").unwrap();
 
-        let tree = read_markdown_tree(&directory).unwrap();
+        let tree = read_markdown_directory(&directory, &["target".into()], 0).unwrap();
 
-        assert_eq!(tree.children.len(), 2);
+        assert_eq!(tree.children.len(), 3);
         assert!(tree.children.iter().any(|child| child.name == "note.md"));
         let nested = tree
             .children
             .iter()
             .find(|child| child.name == "nested")
             .unwrap();
-        assert_eq!(nested.children.len(), 1);
+        assert!(nested.children.is_empty());
+        let nested = read_markdown_directory(&directory.join("nested"), &[], 0).unwrap();
         assert_eq!(nested.children[0].name, "plan.markdown");
-        assert!(!tree.children.iter().any(|child| child.name == "assets"));
+        assert!(tree.children.iter().any(|child| child.name == "assets"));
         fs::remove_dir_all(directory).unwrap();
     }
 

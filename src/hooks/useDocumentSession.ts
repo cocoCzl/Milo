@@ -34,6 +34,7 @@ function createUntitledDocument(): DocumentSession {
 }
 
 export function useDocumentSession(untitledTitle = 'Untitled') {
+  const [openError, setOpenError] = useState<string | null>(null)
   const [tabs, setTabs] = useState<DocumentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<number | null>(null)
   const [closePending, setClosePending] = useState(false)
@@ -160,6 +161,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const openDocumentAtPath = useCallback(
     async (path: string) => {
+      setOpenError(null)
       const existingTab = tabsRef.current.find((tab) => tab.document.path === path)
       if (existingTab) {
         activeTabIdRef.current = existingTab.id
@@ -194,12 +196,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         })
         return true
       } catch (reason) {
-        const failedDocument = createUntitledDocument()
-        appendTab(failedDocument)
-        replaceTab(failedDocument.id, (tab) => ({
-          ...tab,
-          error: readableError(reason, 'Could not open this Markdown file.'),
-        }))
+        setOpenError(`${path}: ${readableError(reason, 'Could not open this Markdown file.')}`)
         return false
       }
     },
@@ -216,60 +213,88 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const uniquePaths = [
         ...new Set([...startupSession.openDocumentPaths, ...(launchPath ? [launchPath] : [])]),
       ]
-      const restoredDocuments = await Promise.all(
-        uniquePaths.map(async (path) => {
-          try {
-            const file = await recoverAndReadMarkdownFile(path)
-            const inspected = inspectMarkdownDocument(file.markdown)
-            documentId += 1
-            return {
-              requestedPath: path,
-              tab: createTab({
-                id: documentId,
-                path: file.path,
-                title: titleFromPath(file.path),
-                markdown: inspected.body,
-                lineEnding: file.lineEnding,
-                hasBom: file.hasBom,
-                frontMatter: inspected.frontMatter,
-                isDirty: false,
-                protectionReason: inspected.protectionReason,
-                persistedMarkdown: file.markdown,
-                editorVersion: 0,
-                revision: 0,
-              }),
-            }
-          } catch (reason) {
-            if (path !== launchPath) return null
-            const failedDocument = createUntitledDocument()
-            return {
-              requestedPath: path,
-              tab: {
-                ...createTab(failedDocument),
-                error: readableError(reason, 'Could not open this Markdown file.'),
-              },
+      const activePath = launchPath ?? startupSession.activeDocumentPath ?? uniquePaths[0]
+      const placeholders = uniquePaths
+        .filter((path) => !tabsRef.current.some((tab) => tab.document.path === path))
+        .map((path) => {
+          documentId++
+          return {
+            ...createTab({ ...createDocumentState(documentId), path, title: titleFromPath(path) }),
+            activity: 'opening' as const,
+          }
+        })
+      const hadUserTabs = tabsRef.current.length > 0
+      tabsRef.current = [...tabsRef.current, ...placeholders]
+      setTabs(tabsRef.current)
+      if (!hadUserTabs) {
+        const active =
+          placeholders.find((tab) => tab.document.path === activePath) ?? placeholders[0]
+        if (active) {
+          activeTabIdRef.current = active.id
+          setActiveTabId(active.id)
+        }
+      }
+      const load = async (placeholder: DocumentTab) => {
+        const path = placeholder.document.path!
+        try {
+          const file = await recoverAndReadMarkdownFile(path)
+          // Closed placeholders stay closed, and another open operation wins.
+          const current = getTab(placeholder.id)
+          if (!current || current.activity !== 'opening') return
+          const inspected = inspectMarkdownDocument(file.markdown)
+          replaceTab(placeholder.id, (tab) => ({
+            ...tab,
+            activity: 'idle',
+            document: {
+              ...tab.document,
+              path: file.path,
+              title: titleFromPath(file.path),
+              markdown: inspected.body,
+              lineEnding: file.lineEnding,
+              hasBom: file.hasBom,
+              frontMatter: inspected.frontMatter,
+              persistedMarkdown: file.markdown,
+              protectionReason: inspected.protectionReason,
+            },
+          }))
+        } catch (reason) {
+          const current = getTab(placeholder.id)
+          if (!current) return
+          if (path === launchPath) {
+            replaceTab(placeholder.id, (tab) => ({
+              ...tab,
+              activity: 'idle',
+              error: readableError(reason, 'Could not open this Markdown file.'),
+              document: { ...tab.document, path: null },
+            }))
+          } else {
+            const remaining = tabsRef.current.filter((tab) => tab.id !== placeholder.id)
+            tabsRef.current = remaining
+            setTabs(remaining)
+            if (activeTabIdRef.current === placeholder.id) {
+              const next = remaining[0]?.id ?? null
+              activeTabIdRef.current = next
+              setActiveTabId(next)
             }
           }
-        }),
+        }
+      }
+      const prioritized = [...placeholders].sort(
+        (a, b) => Number(b.document.path === activePath) - Number(a.document.path === activePath),
       )
-      const restoredEntries = restoredDocuments.filter(
-        (entry): entry is NonNullable<typeof entry> => entry !== null,
-      )
-      const tabsToRestore = restoredEntries.map((entry) => entry.tab)
-
-      if (tabsToRestore.length === 0) return false
-
-      const activeTab =
-        restoredEntries.find((entry) => entry.requestedPath === launchPath)?.tab ??
-        tabsToRestore.find((tab) => tab.document.path === startupSession.activeDocumentPath) ??
-        tabsToRestore[0]
-      tabsRef.current = tabsToRestore
-      activeTabIdRef.current = activeTab.id
-      setTabs(tabsToRestore)
-      setActiveTabId(activeTab.id)
-      return true
+      // Publish the activity-priority document before reading background files.
+      if (prioritized[0]) await load(prioritized.shift()!)
+      const worker = async () => {
+        while (prioritized.length) {
+          const next = prioritized.shift()!
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+          if (getTab(next.id)) await load(next)
+        }
+      }
+      await Promise.all([worker(), worker()])
+      return tabsRef.current.length > 0
     },
-    [],
+    [getTab, replaceTab],
   )
 
   const performSaveToPath = useCallback(
@@ -606,7 +631,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     [getTab, replaceTab],
   )
 
-  const watchSignature = tabs.map((tab) => `${tab.id}:${tab.document.path ?? ''}`).join('|')
+  const watchSignature = tabs
+    .map((tab) => `${tab.id}:${tab.document.path ?? ''}:${tab.activity === 'opening'}`)
+    .join('|')
   const autoSaveSignature = tabs
     .map((tab) =>
       [
@@ -624,29 +651,38 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     .join('|')
   const savedFeedbackSignature = tabs.map((tab) => `${tab.id}:${tab.saveFeedback}`).join('|')
 
+  const watchersRef = useRef(
+    new Map<number, { path: string; stopped: boolean; stop?: () => Promise<void> }>(),
+  )
   useEffect(() => {
-    let stopped = false
-    const stopWatching = new Map<number, () => Promise<void>>()
-    tabsRef.current.forEach((tab) => {
+    const watchers = watchersRef.current
+    for (const [id, watcher] of watchers) {
+      if (getTab(id)?.document.path === watcher.path) continue
+      watcher.stopped = true
+      void watcher.stop?.()
+      watchers.delete(id)
+    }
+    for (const tab of tabsRef.current) {
       const path = tab.document.path
-      if (!path) return
+      if (!path || tab.activity === 'opening' || watchers.has(tab.id)) continue
+      const watcher: { path: string; stopped: boolean; stop?: () => Promise<void> } = {
+        path,
+        stopped: false,
+      }
+      watchers.set(tab.id, watcher)
       void watchMarkdownFile(path, () => {
-        if (!stopped) void handleWatchedChange(tab.id, path)
+        if (!watcher.stopped) void handleWatchedChange(tab.id, path)
       })
         .then((stop) => {
-          if (stopped) {
+          if (watcher.stopped) {
             void stop()
-          } else {
-            stopWatching.set(tab.id, stop)
-            replaceTab(tab.id, (current) => ({
-              ...current,
-              watchError: null,
-              watchState: 'active',
-            }))
+            return
           }
+          watcher.stop = stop
+          replaceTab(tab.id, (current) => ({ ...current, watchError: null, watchState: 'active' }))
         })
         .catch((reason) => {
-          if (!stopped)
+          if (!watcher.stopped)
             replaceTab(tab.id, (current) => ({
               ...current,
               watchError: readableError(
@@ -656,14 +692,18 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
               watchState: 'unavailable',
             }))
         })
-    })
-    return () => {
-      stopped = true
-      stopWatching.forEach((stop) => {
-        void stop()
-      })
     }
-  }, [handleWatchedChange, replaceTab, watchSignature])
+  }, [getTab, handleWatchedChange, replaceTab, watchSignature])
+  useEffect(() => {
+    const watchers = watchersRef.current
+    return () => {
+      for (const watcher of watchers.values()) {
+        watcher.stopped = true
+        void watcher.stop?.()
+      }
+      watchers.clear()
+    }
+  }, [])
 
   useEffect(() => {
     const timers = tabsRef.current.flatMap((tab) => {
@@ -890,6 +930,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     closePending,
     createNewDocument,
     discardAndCloseTab,
+    openError,
     openDocument,
     openDocumentAtPath,
     overwriteExternalChange,

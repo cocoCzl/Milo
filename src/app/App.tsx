@@ -71,6 +71,41 @@ export function App() {
   const locale = resolveLocale(settings.locale)
   const copy = useMemo(() => interfaceCopy(locale), [locale])
   const session = useDocumentSession(copy.untitled)
+  const {
+    updateMarkdown,
+    updateComposition,
+    registerFlush,
+    pasteImage,
+    reloadExternalChange,
+    retainLocalChanges,
+    overwriteExternalChange,
+    saveAsDocument,
+    retrySave,
+  } = session
+  const panelActions = useMemo(
+    () => ({
+      updateMarkdown,
+      updateComposition,
+      registerFlush,
+      pasteImage,
+      reloadExternalChange,
+      retainLocalChanges,
+      overwriteExternalChange,
+      saveAsDocument,
+      retrySave,
+    }),
+    [
+      updateMarkdown,
+      updateComposition,
+      registerFlush,
+      pasteImage,
+      reloadExternalChange,
+      retainLocalChanges,
+      overwriteExternalChange,
+      saveAsDocument,
+      retrySave,
+    ],
+  )
   const { openDocumentAtPath, restoreStartupSession } = session
   const closeSessionRef = useRef(session)
   const flushSettingsRef = useRef(flushSettings)
@@ -148,12 +183,21 @@ export function App() {
   const sidebarVisible = settings.sidebarVisible && sidebarAvailable
   const activeOutlineOpen = activeTabId !== null && (outlineOpen[activeTabId] ?? false)
 
+  const tabIdsSignature = session.tabs.map((tab) => tab.id).join(',')
   useEffect(() => {
     const openTabIds = new Set(session.tabs.map((tab) => tab.id))
     setPresentationModes((current) => pruneTabState(current, openTabIds))
     setDocumentViewStates((current) => pruneTabState(current, openTabIds))
     setOutlineOpen((current) => pruneTabState(current, openTabIds))
-  }, [session.tabs])
+  }, [tabIdsSignature])
+
+  const closePanelOutline = useCallback(
+    (id: number) => {
+      setOutlineOpen((current) => ({ ...current, [id]: false }))
+      queueMicrotask(() => (focusMode ? focusOutlineTriggerRef : outlineToggleRef).current?.focus())
+    },
+    [focusMode],
+  )
 
   const closeActiveOutline = useCallback(() => {
     if (activeTabId === null) return
@@ -716,7 +760,7 @@ export function App() {
           </div>
         </div>
       </header>
-      <section className="app-workspace">
+      <section inert={session.closePending} className="app-workspace">
         {sidebarVisible ? (
           <FileSidebar
             copy={copy.sidebar}
@@ -807,7 +851,7 @@ export function App() {
               <DocumentPanel
                 key={tab.id}
                 tab={tab}
-                onRegisterFlush={session.registerFlush}
+                actions={panelActions}
                 copy={copy}
                 title={displayDocumentTitle(tab, copy)}
                 active={tab.id === session.activeTabId}
@@ -816,40 +860,7 @@ export function App() {
                   (focusMode || outlineLayout === 'drawer') && (outlineOpen[tab.id] ?? false)
                 }
                 presentationMode={presentationModes[tab.id] ?? 'edit'}
-                onMarkdownChange={(markdown) =>
-                  session.updateMarkdown(
-                    {
-                      tabId: tab.id,
-                      documentId: tab.document.id,
-                      path: tab.document.path,
-                    },
-                    markdown,
-                  )
-                }
-                onCompositionChange={(state) =>
-                  session.updateComposition(
-                    { tabId: tab.id, documentId: tab.document.id, path: tab.document.path },
-                    state,
-                  )
-                }
-                onPasteImage={(image) =>
-                  session.pasteImage(image, {
-                    tabId: tab.id,
-                    documentId: tab.document.id,
-                    path: tab.document.path,
-                  })
-                }
-                onReload={() => void session.reloadExternalChange(tab.id)}
-                onRetain={() => session.retainLocalChanges(tab.id)}
-                onOverwrite={() => void session.overwriteExternalChange(tab.id)}
-                onSaveAs={() => void session.saveAsDocument(tab.id)}
-                onRetry={() => void session.retrySave(tab.id)}
-                onCloseOutline={() => {
-                  setOutlineOpen((current) => ({ ...current, [tab.id]: false }))
-                  queueMicrotask(() =>
-                    (focusMode ? focusOutlineTriggerRef : outlineToggleRef).current?.focus(),
-                  )
-                }}
+                onCloseOutline={closePanelOutline}
                 outlineDrawerMount={outlineDrawerMount}
                 outlineInlineMount={outlineInlineMount}
                 contextualOverlayMount={contextualOverlayMount}
@@ -923,6 +934,11 @@ export function App() {
         returnFocusRef={preferencesReturnFocusRef}
         theme={colorScheme}
       />
+      {session.openError ? (
+        <div className="document-error" role="alert">
+          {session.openError}
+        </div>
+      ) : null}
       {recoveryError ? (
         <div className="document-error" role="alert">
           {recoveryError}

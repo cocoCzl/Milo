@@ -15,6 +15,7 @@ export type MarkdownTreeNode = {
   name: string
   isDirectory: boolean
   children: MarkdownTreeNode[]
+  nextOffset?: number | null
 }
 
 export type PastedImage = {
@@ -103,8 +104,16 @@ export async function pickMarkdownFolder(): Promise<string | null> {
   return typeof selection === 'string' ? selection : null
 }
 
-export async function browseMarkdownFolder(path: string): Promise<MarkdownTreeNode> {
-  return invoke<MarkdownTreeNode>('browse_markdown_folder', { path })
+export async function browseMarkdownFolder(
+  path: string,
+  showExcluded = false,
+  offset = 0,
+): Promise<MarkdownTreeNode> {
+  return invoke<MarkdownTreeNode>('browse_markdown_folder', {
+    path,
+    excludedNames: showExcluded ? [] : null,
+    offset,
+  })
 }
 
 export async function writeImageAsset(

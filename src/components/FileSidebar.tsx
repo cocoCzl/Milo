@@ -1,11 +1,13 @@
 import { ChevronRight, FileText, Folder, FolderOpen, Settings2, X } from 'lucide-react'
 import {
   useRef,
+  useState,
+  useEffect,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 
-import type { MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
+import { browseMarkdownFolder, type MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from '../settings/applicationSettings'
 
 type FileSidebarProps = {
@@ -60,6 +62,7 @@ export function FileSidebar({
   tree,
   width,
 }: FileSidebarProps) {
+  const [showExcluded, setShowExcluded] = useState(false)
   const sidebarRef = useRef<HTMLElement>(null)
 
   const commitVisualWidth = (nextWidth: number) => {
@@ -119,7 +122,6 @@ export function FileSidebar({
         </span>
         <span className="file-sidebar__brand-copy">
           <strong>Milo</strong>
-          <span>Write a clearer tomorrow</span>
         </span>
       </header>
       <div className="file-sidebar__body">
@@ -160,19 +162,28 @@ export function FileSidebar({
             </div>
           ) : tree?.path === folder ? (
             <div className="file-sidebar__tree">
-              {tree.children.length > 0 ? (
-                tree.children.map((child) => (
-                  <TreeBranch
-                    activeFile={activeFile}
-                    key={child.path}
-                    node={child}
-                    depth={0}
-                    onOpenFile={onOpenFile}
-                  />
-                ))
-              ) : (
+              <label className="file-sidebar__filter">
+                <input
+                  type="checkbox"
+                  checked={showExcluded}
+                  onChange={(event) => setShowExcluded(event.target.checked)}
+                />
+                {copy.currentFolder === '当前文件夹'
+                  ? '显示依赖和构建目录'
+                  : 'Show dependency and build folders'}
+              </label>
+              {tree.children.length === 0 && !showExcluded ? (
                 <p className="file-sidebar__empty-note">{copy.emptyDirectory}</p>
-              )}
+              ) : null}
+              <DirectoryListing
+                key={`${folder}:${showExcluded}`}
+                node={tree}
+                activeFile={activeFile}
+                depth={0}
+                onOpenFile={onOpenFile}
+                showExcluded={showExcluded}
+                reload={showExcluded}
+              />
             </div>
           ) : (
             <p className="file-sidebar__empty-note" role="status">
@@ -184,62 +195,64 @@ export function FileSidebar({
           className="file-sidebar__section file-sidebar__recent"
           aria-label={copy.recentLabel}
         >
-          <header className="file-sidebar__section-header">
-            <span>{copy.recent}</span>
-            {recentFiles.length > 0 || recentFolders.length > 0 ? (
-              <button type="button" onClick={onClearRecent}>
-                {copy.clearRecent}
-              </button>
+          <details open={!folder}>
+            <summary className="file-sidebar__section-header">
+              <span>{copy.recent}</span>
+              {recentFiles.length > 0 || recentFolders.length > 0 ? (
+                <button type="button" onClick={onClearRecent}>
+                  {copy.clearRecent}
+                </button>
+              ) : null}
+            </summary>
+            {recentFiles.length === 0 && recentFolders.length === 0 ? (
+              <p className="file-sidebar__empty-note">{copy.emptyRecent}</p>
             ) : null}
-          </header>
-          {recentFiles.length === 0 && recentFolders.length === 0 ? (
-            <p className="file-sidebar__empty-note">{copy.emptyRecent}</p>
-          ) : null}
-          {recentFiles.map((path) => (
-            <div className="file-sidebar__recent-item" key={path}>
-              <button
-                aria-current={path === activeFile ? 'page' : undefined}
-                className="file-sidebar__recent-open"
-                title={path}
-                type="button"
-                onClick={() => onOpenFile(path)}
-              >
-                <FileText aria-hidden="true" size={14} strokeWidth={1.6} />
-                <span>{fileName(path)}</span>
-              </button>
-              <button
-                aria-label={copy.removeRecent(fileName(path))}
-                className="file-sidebar__recent-remove"
-                title={copy.removeRecent(fileName(path))}
-                type="button"
-                onClick={() => onRemoveRecentFile(path)}
-              >
-                <X aria-hidden="true" size={12} strokeWidth={1.8} />
-              </button>
-            </div>
-          ))}
-          {recentFolders.map((path) => (
-            <div className="file-sidebar__recent-item" key={path}>
-              <button
-                className="file-sidebar__recent-open"
-                title={path}
-                type="button"
-                onClick={() => onOpenFolder(path)}
-              >
-                <Folder aria-hidden="true" size={14} strokeWidth={1.6} />
-                <span>{fileName(path)}</span>
-              </button>
-              <button
-                aria-label={copy.removeRecent(fileName(path))}
-                className="file-sidebar__recent-remove"
-                title={copy.removeRecent(fileName(path))}
-                type="button"
-                onClick={() => onRemoveRecentFolder(path)}
-              >
-                <X aria-hidden="true" size={12} strokeWidth={1.8} />
-              </button>
-            </div>
-          ))}
+            {recentFiles.map((path) => (
+              <div className="file-sidebar__recent-item" key={path}>
+                <button
+                  aria-current={path === activeFile ? 'page' : undefined}
+                  className="file-sidebar__recent-open"
+                  title={path}
+                  type="button"
+                  onClick={() => onOpenFile(path)}
+                >
+                  <FileText aria-hidden="true" size={14} strokeWidth={1.6} />
+                  <span>{fileName(path)}</span>
+                </button>
+                <button
+                  aria-label={copy.removeRecent(fileName(path))}
+                  className="file-sidebar__recent-remove"
+                  title={copy.removeRecent(fileName(path))}
+                  type="button"
+                  onClick={() => onRemoveRecentFile(path)}
+                >
+                  <X aria-hidden="true" size={12} strokeWidth={1.8} />
+                </button>
+              </div>
+            ))}
+            {recentFolders.map((path) => (
+              <div className="file-sidebar__recent-item" key={path}>
+                <button
+                  className="file-sidebar__recent-open"
+                  title={path}
+                  type="button"
+                  onClick={() => onOpenFolder(path)}
+                >
+                  <Folder aria-hidden="true" size={14} strokeWidth={1.6} />
+                  <span>{fileName(path)}</span>
+                </button>
+                <button
+                  aria-label={copy.removeRecent(fileName(path))}
+                  className="file-sidebar__recent-remove"
+                  title={copy.removeRecent(fileName(path))}
+                  type="button"
+                  onClick={() => onRemoveRecentFolder(path)}
+                >
+                  <X aria-hidden="true" size={12} strokeWidth={1.8} />
+                </button>
+              </div>
+            ))}
+          </details>
         </section>
       </div>
       <footer className="file-sidebar__footer">
@@ -268,18 +281,95 @@ function fileName(path: string) {
   return path.split(/[\\/]/).at(-1) ?? path
 }
 
-function TreeBranch({
-  activeFile,
-  node,
-  depth,
-  onOpenFile,
-}: {
+type TreeProps = {
   activeFile: string | null
   depth: number
   node: MarkdownTreeNode
   onOpenFile: (path: string) => void
-}) {
-  if (!node.isDirectory) {
+  showExcluded: boolean
+}
+
+function DirectoryListing({
+  node,
+  activeFile,
+  depth,
+  onOpenFile,
+  showExcluded,
+  reload = false,
+}: TreeProps & { reload?: boolean }) {
+  const [page, setPage] = useState(node)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const live = useRef(true)
+  useEffect(() => {
+    live.current = true
+    if (reload) {
+      setLoading(true)
+      void browseMarkdownFolder(node.path, showExcluded)
+        .then((result) => {
+          if (live.current) setPage(result)
+        })
+        .catch((reason) => {
+          if (live.current) setError(String(reason))
+        })
+        .finally(() => {
+          if (live.current) setLoading(false)
+        })
+    }
+    return () => {
+      live.current = false
+    }
+  }, [node.path, reload, showExcluded])
+  const more = async () => {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await browseMarkdownFolder(node.path, showExcluded, page.nextOffset ?? 0)
+      if (live.current)
+        setPage((current) => ({ ...result, children: [...current.children, ...result.children] }))
+    } catch (reason) {
+      if (live.current) setError(String(reason))
+    } finally {
+      if (live.current) setLoading(false)
+    }
+  }
+  return (
+    <>
+      {page.children.map((child) => (
+        <TreeBranch
+          key={child.path}
+          node={child}
+          activeFile={activeFile}
+          depth={depth}
+          onOpenFile={onOpenFile}
+          showExcluded={showExcluded}
+        />
+      ))}
+      {loading ? <p role="status">…</p> : null}
+      {error ? (
+        <p role="alert">
+          {error}
+          <button type="button" onClick={() => void more()}>
+            ↻
+          </button>
+        </p>
+      ) : null}
+      {page.nextOffset != null ? (
+        <button type="button" onClick={() => void more()} disabled={loading}>
+          {showExcluded ? 'Load more…' : '更多 / More…'}
+        </button>
+      ) : null}
+    </>
+  )
+}
+
+function TreeBranch({ activeFile, node, depth, onOpenFile, showExcluded }: TreeProps) {
+  const [expanded, setExpanded] = useState(Boolean(activeFile?.startsWith(`${node.path}/`)))
+  useEffect(() => {
+    if (activeFile?.startsWith(`${node.path}/`)) setExpanded(true)
+  }, [activeFile, node.path])
+  if (!node.isDirectory)
     return (
       <button
         aria-current={node.path === activeFile ? 'page' : undefined}
@@ -293,24 +383,27 @@ function TreeBranch({
         <span>{node.name}</span>
       </button>
     )
-  }
-
   return (
-    <details className="file-sidebar__directory" open>
+    <details
+      className="file-sidebar__directory"
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
       <summary title={node.path} style={{ paddingLeft: 7 + depth * 14 }}>
         <ChevronRight aria-hidden="true" size={12} strokeWidth={1.8} />
         <Folder aria-hidden="true" size={14} strokeWidth={1.6} />
         <span>{node.name}</span>
       </summary>
-      {node.children.map((child) => (
-        <TreeBranch
+      {expanded ? (
+        <DirectoryListing
+          node={node}
           activeFile={activeFile}
-          key={child.path}
-          node={child}
           depth={depth + 1}
           onOpenFile={onOpenFile}
+          showExcluded={showExcluded}
+          reload={node.children.length === 0}
         />
-      ))}
+      ) : null}
     </details>
   )
 }
