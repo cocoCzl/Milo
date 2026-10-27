@@ -88,6 +88,8 @@ export function createImageNodeView(
       root.dataset.imageState = 'loading'
       const image = document.createElement('img')
       currentImage = image
+      image.loading = 'lazy'
+      image.decoding = 'async'
       image.alt = nextAlt
       if (nextTitle) image.title = nextTitle
       image.onload = () => {
@@ -115,8 +117,9 @@ export function createImageNodeView(
           isMarkdownDocumentPath(String(nextNode.attrs.src ?? ''))
         )
           return false
+        const unchanged = nextNode.sameMarkup(currentNode)
         currentNode = nextNode
-        render()
+        if (!unchanged) render()
         return true
       },
       // This atom has no contentDOM. Only mutations within its stable, inert

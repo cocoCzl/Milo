@@ -56,26 +56,34 @@ function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLEl
   return elementsById
 }
 
-export function headingElement(editorView: EditorView, heading: EditorHeading): HTMLElement | null {
-  const node = editorView.state.doc.nodeAt(heading.pos)
-  if (
-    node?.type.name !== 'heading' ||
-    node.textContent.trim() !== heading.text ||
-    Number(node.attrs.level) !== heading.level ||
-    node.attrs.id !== heading.id
-  ) {
-    return null
-  }
+export function headingElementResolver(editorView: EditorView) {
+  // Validate once for a navigation/scroll pass, rather than H times for H headings.
+  const elements = headingElementsById(editorView)
+  return (heading: EditorHeading): HTMLElement | null => {
+    const node = editorView.state.doc.nodeAt(heading.pos)
+    if (
+      node?.type.name !== 'heading' ||
+      node.textContent.trim() !== heading.text ||
+      Number(node.attrs.level) !== heading.level ||
+      node.attrs.id !== heading.id
+    ) {
+      return null
+    }
 
-  const element = headingElementsById(editorView).get(heading.id)
-  if (!element) return null
-  if (
-    element.tagName.toLowerCase() !== `h${heading.level}` ||
-    element.textContent?.trim() !== heading.text
-  ) {
-    return null
+    const element = elements.get(heading.id)
+    if (!element) return null
+    if (
+      element.tagName.toLowerCase() !== `h${heading.level}` ||
+      element.textContent?.trim() !== heading.text
+    ) {
+      return null
+    }
+    return element
   }
-  return element
+}
+
+export function headingElement(editorView: EditorView, heading: EditorHeading) {
+  return headingElementResolver(editorView)(heading)
 }
 
 export function headingAtSelection(
@@ -106,34 +114,47 @@ export function activeHeadingFromScroll(
   const bottomThreshold = Math.max(scrollBottomTolerance, Math.min(48, stage.clientHeight * 0.08))
   const isAtBottom = remainingScroll <= bottomThreshold
   const activationLine = stageRect.top + headingScrollOffset + headingActivationTolerance
-  let current = headings[0].pos
-  let lastVisible: number | null = null
-
-  for (const heading of headings) {
-    const element = getElement(heading.pos)
-    if (!element) continue
-    const rect = element.getBoundingClientRect()
-    if (rect.bottom > stageRect.top && rect.top < stageRect.bottom) lastVisible = heading.pos
-    if (!isAtBottom && rect.top <= activationLine) current = heading.pos
+  // Heading DOM order matches document order. Read live geometry so image
+  // loads, resizing, zoom and font changes require no position-cache repair.
+  const line = isAtBottom ? stageRect.bottom : activationLine
+  let low = 0
+  let high = headings.length
+  while (low < high) {
+    const mid = (low + high) >>> 1
+    const element = getElement(headings[mid].pos)
+    if (!element) return null // Stale model/DOM: wait for the next document update.
+    const top = element.getBoundingClientRect().top
+    if (isAtBottom ? top < line : top <= line) low = mid + 1
+    else high = mid
   }
+  const index = Math.max(0, low - 1)
+  if (!isAtBottom) return headings[index].pos
+  const rect = getElement(headings[index].pos)?.getBoundingClientRect()
+  return rect && rect.bottom > stageRect.top ? headings[index].pos : headings.at(-1)!.pos
+}
 
-  return isAtBottom ? (lastVisible ?? headings[headings.length - 1].pos) : current
+// ProseMirror structurally shares unchanged nodes. Cache relative headings by
+// subtree identity; editing an ordinary paragraph never traverses its text or
+// the contents of unchanged tables, quotes and lists.
+const subtreeHeadings = new WeakMap<EditorState['doc'], EditorHeading[]>()
+function headingsInNode(node: EditorState['doc']): EditorHeading[] {
+  const cached = subtreeHeadings.get(node)
+  if (cached) return cached
+  const result: EditorHeading[] = []
+  if (node.type.name === 'heading') {
+    const text = node.textContent.trim()
+    const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
+    if (text && id) result.push({ id, key: id, level: Number(node.attrs.level) || 1, pos: 0, text })
+  } else if (!node.isTextblock) {
+    node.forEach((child, offset) => {
+      for (const heading of headingsInNode(child))
+        result.push({ ...heading, pos: offset + (node.type.name === 'doc' ? 0 : 1) + heading.pos })
+    })
+  }
+  subtreeHeadings.set(node, result)
+  return result
 }
 
 export function readHeadings(state: EditorState): EditorHeading[] {
-  const headings: EditorHeading[] = []
-
-  state.doc.descendants((node, position) => {
-    if (node.type.name !== 'heading') return
-    const text = node.textContent.trim()
-    const id = typeof node.attrs.id === 'string' ? node.attrs.id : ''
-    // The Milkdown heading-id plugin fills this during editor initialization.
-    // If it has not completed yet, do not expose a navigable heading that
-    // could resolve to a different DOM node; the next document update supplies
-    // the stable id and publishes it to the outline.
-    if (text && id)
-      headings.push({ id, key: id, level: Number(node.attrs.level) || 1, pos: position, text })
-  })
-
-  return headings
+  return headingsInNode(state.doc)
 }

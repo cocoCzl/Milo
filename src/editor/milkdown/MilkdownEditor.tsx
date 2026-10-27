@@ -62,13 +62,18 @@ import {
   activeHeadingFromScroll,
   headingAtSelection,
   headingElement,
+  headingElementResolver,
   headingScrollTop,
   readHeadings,
   type PendingHeadingNavigation,
 } from './headingNavigation'
 import { createCodeBlockNodeView } from './codeBlockNodeView'
 import { createImageNodeView } from './imageNodeView'
-import { createCompositionSaveBoundary, hasPendingComposition, type EditorComposition } from './compositionSaveBoundary'
+import {
+  createCompositionSaveBoundary,
+  hasPendingComposition,
+  type EditorComposition,
+} from './compositionSaveBoundary'
 
 const tableDefaultCellMinWidth = 100
 const createTableNodeView: NodeViewConstructor = (node) =>
@@ -248,9 +253,14 @@ export function MilkdownEditor({
     let serialized = ''
     let originalDoc: import('@milkdown/prose/model').Node | null = null
     let publishedDoc: import('@milkdown/prose/model').Node | null = null
-    const serialize = (view: import('@milkdown/prose/view').EditorView, ctx: import('@milkdown/ctx').Ctx) => {
+    const serialize = (
+      view: import('@milkdown/prose/view').EditorView,
+      ctx: import('@milkdown/ctx').Ctx,
+    ) => {
       if (serializedDoc !== view.state.doc) {
-        serialized = originalDoc?.eq(view.state.doc) ? initialMarkdownRef.current : ctx.get(serializerCtx)(view.state.doc)
+        serialized = originalDoc?.eq(view.state.doc)
+          ? initialMarkdownRef.current
+          : ctx.get(serializerCtx)(view.state.doc)
         serializedDoc = view.state.doc
       }
       return serialized
@@ -288,9 +298,17 @@ export function MilkdownEditor({
                 publishTimer = window.setTimeout(publish, 150)
                 const next = readHeadings(view.state)
                 setHeadings((current) =>
-                  current.length === next.length && current.every((h, i) =>
-                    h.id === next[i].id && h.pos === next[i].pos && h.level === next[i].level && h.text === next[i].text)
-                    ? current : next)
+                  current.length === next.length &&
+                  current.every(
+                    (h, i) =>
+                      h.id === next[i].id &&
+                      h.pos === next[i].pos &&
+                      h.level === next[i].level &&
+                      h.text === next[i].text,
+                  )
+                    ? current
+                    : next,
+                )
               },
             }),
             props: {
@@ -587,15 +605,6 @@ export function MilkdownEditor({
     [],
   )
 
-  const headingElementForPosition = useCallback(
-    (pos: number): HTMLElement | null =>
-      editorRef.current?.action((ctx) => {
-        const heading = headingsByPositionRef.current.get(pos)
-        return heading ? headingElement(ctx.get(editorViewCtx), heading) : null
-      }) ?? null,
-    [],
-  )
-
   const navigateToHeading = useCallback(
     (requestedHeading: EditorHeading): boolean => {
       if (!active) return false
@@ -668,7 +677,18 @@ export function MilkdownEditor({
         return
       }
 
-      const current = activeHeadingFromScroll(headings, headingElementForPosition, stage)
+      const current =
+        editorRef.current?.action((ctx) => {
+          const resolve = headingElementResolver(ctx.get(editorViewCtx))
+          return activeHeadingFromScroll(
+            headings,
+            (pos) => {
+              const heading = headingsByPositionRef.current.get(pos)
+              return heading ? resolve(heading) : null
+            },
+            stage,
+          )
+        }) ?? null
       setActiveHeadingPosition((previous) => (previous === current ? previous : current))
     }
     const onScroll = () => {
@@ -697,7 +717,7 @@ export function MilkdownEditor({
       // not let a previous tab's bottom-navigation choice survive a switch.
       pendingNavigationRef.current = null
     }
-  }, [active, headingElementForPosition, headings, isReady])
+  }, [active, headings, isReady])
 
   const restoreSelection = useCallback(
     (editorView: EditorView, selection?: EditorSelectionSnapshot) => {
