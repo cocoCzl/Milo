@@ -1,3 +1,4 @@
+import { profileDocument } from '../../diagnostics/openProfile'
 import { prismConfig } from '@milkdown/plugin-prism'
 import { findChildren } from '@milkdown/prose'
 import { Plugin, PluginKey, type EditorState } from '@milkdown/prose/state'
@@ -58,9 +59,11 @@ function changedCodeBlock(previous: EditorState, next: EditorState) {
 }
 
 function decorations(doc: Node, name: string, instance: Refractor) {
-  const entries = findChildren((node) => node.type.name === name)(doc)
-  const ranges = entries.flatMap(({ node, pos }) => blockDecorations(node, pos, instance))
-  return DecorationSet.create(doc, ranges)
+  return profileDocument(doc, 'code-highlight', () => {
+    const entries = findChildren((node) => node.type.name === name)(doc)
+    const ranges = entries.flatMap(({ node, pos }) => blockDecorations(node, pos, instance))
+    return DecorationSet.create(doc, ranges)
+  })
 }
 
 const miloPrismPlugin = $prose((ctx) => {

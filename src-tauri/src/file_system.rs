@@ -143,9 +143,11 @@ fn write_image_asset_impl(request: ImageAssetRequest) -> Result<ImageAsset, Stri
 
 #[tauri::command]
 pub fn read_markdown_document(app: AppHandle, path: String) -> Result<MarkdownDocument, String> {
-    let path = markdown_path(path)?;
-    allow_document_directory(&app, &path)?;
-    read_markdown_document_impl(path)
+    crate::open_profile::measure(&app, &path, "read+scope+decode", || {
+        let path = markdown_path(path.clone())?;
+        allow_document_directory(&app, &path)?;
+        read_markdown_document_impl(path)
+    })
 }
 
 fn read_markdown_document_impl(path: PathBuf) -> Result<MarkdownDocument, String> {
@@ -276,7 +278,13 @@ fn write_markdown_document_safe_v2_impl(
 }
 
 #[tauri::command]
-pub fn recover_markdown_document_safe_v2(path: String) -> Result<String, String> {
+pub fn recover_markdown_document_safe_v2(app: AppHandle, path: String) -> Result<String, String> {
+    crate::open_profile::measure(&app, &path, "safe-save-recovery", || {
+        recover_markdown_impl(path.clone())
+    })
+}
+
+fn recover_markdown_impl(path: String) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
         let path = markdown_path(path)?;

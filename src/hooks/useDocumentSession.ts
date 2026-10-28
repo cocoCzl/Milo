@@ -1,3 +1,9 @@
+import {
+  startOpenProfile,
+  profileAsync,
+  profileMeasure,
+  stageOpenProfile,
+} from '../diagnostics/openProfile'
 import { queueDraft, readDrafts, flushDrafts } from '../file-system/draftRecovery'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -200,7 +206,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       }
 
       try {
-        const file = await recoverAndReadMarkdownFile(path)
+        const profile = startOpenProfile(path, 'running-open')
+        const file = await profileAsync(profile, 'recovery+read+IPC', () =>
+          recoverAndReadMarkdownFile(path),
+        )
         const duplicateTab = tabsRef.current.find((tab) => tab.document.path === file.path)
         if (duplicateTab) {
           activeTabIdRef.current = duplicateTab.id
@@ -208,7 +217,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           return true
         }
 
-        const inspected = inspectMarkdownDocument(file.markdown)
+        const inspected = profileMeasure(profile, 'safety-parse', () =>
+          inspectMarkdownDocument(file.markdown),
+        )
+        stageOpenProfile(file.path, profile, file.markdown)
         documentId += 1
         appendTab({
           id: documentId,
@@ -267,11 +279,20 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const load = async (placeholder: DocumentTab) => {
         const path = placeholder.document.path!
         try {
-          const file = await recoverAndReadMarkdownFile(path)
+          const profile = startOpenProfile(
+            path,
+            path === activePath ? 'restore-active' : 'restore-background',
+          )
+          const file = await profileAsync(profile, 'recovery+read+IPC', () =>
+            recoverAndReadMarkdownFile(path),
+          )
           // Closed placeholders stay closed, and another open operation wins.
           const current = getTab(placeholder.id)
           if (!current || current.activity !== 'opening') return
-          const inspected = inspectMarkdownDocument(file.markdown)
+          const inspected = profileMeasure(profile, 'safety-parse', () =>
+            inspectMarkdownDocument(file.markdown),
+          )
+          stageOpenProfile(file.path, profile, file.markdown)
           replaceTab(placeholder.id, (tab) => ({
             ...tab,
             activity: 'idle',

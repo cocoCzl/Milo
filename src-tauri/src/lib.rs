@@ -4,6 +4,7 @@ mod file_system;
 mod macos_safe_save;
 #[cfg(target_os = "macos")]
 mod macos_termination;
+mod open_profile;
 mod settings;
 
 use tauri::{
@@ -173,6 +174,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            open_profile::record_open_profile,
             close_coordinator_ready,
             cancel_close,
             complete_close,

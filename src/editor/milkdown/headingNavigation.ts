@@ -1,3 +1,4 @@
+import { profileDocument } from '../../diagnostics/openProfile'
 import type { EditorState } from '@milkdown/prose/state'
 import type { EditorView } from '@milkdown/prose/view'
 import type { EditorHeading } from './EditorOutline'
@@ -156,5 +157,5 @@ function headingsInNode(node: EditorState['doc']): EditorHeading[] {
 }
 
 export function readHeadings(state: EditorState): EditorHeading[] {
-  return headingsInNode(state.doc)
+  return profileDocument(state.doc, 'heading-index', () => headingsInNode(state.doc))
 }

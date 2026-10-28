@@ -1,3 +1,10 @@
+import {
+  takeOpenProfile,
+  createOpenProfilePlugin,
+  markProfile,
+  profileMeasure,
+  emitProfile,
+} from '../../diagnostics/openProfile'
 import { createDocumentFind, moveFindMatch, setFindQuery, type FindState } from './documentFind'
 import { DocumentFindBar } from './DocumentFindBar'
 import {
@@ -265,6 +272,8 @@ export function MilkdownEditor({
       return undefined
     }
 
+    const profile = takeOpenProfile(documentPathRef.current)
+    markProfile(profile, 'editor-effect-start')
     let disposed = false
     let publishTimer: number | undefined
     let serializedDoc: import('@milkdown/prose/model').Node | null = null
@@ -420,9 +429,11 @@ export function MilkdownEditor({
       .use(history)
       .use(listener)
 
+    if (profile) editor.use(createOpenProfilePlugin(profile))
     editorRef.current = editor
-
+    markProfile(profile, 'milkdown-create-start')
     void editor.create().then(() => {
+      markProfile(profile, 'milkdown-create-end')
       if (disposed) {
         void editor.destroy()
         return
@@ -441,6 +452,18 @@ export function MilkdownEditor({
       })
       onRegisterFlushRef.current?.(publish)
       setIsReady(true)
+      if (profile)
+        window.setTimeout(() => {
+          if (disposed) return
+          profileMeasure(profile, 'first-layout-forced', () => proseMirror?.getBoundingClientRect())
+          markProfile(profile, 'layout-and-editable')
+          window.setTimeout(() => {
+            if (!disposed) {
+              markProfile(profile, 'next-task')
+              emitProfile(profile, 'ready')
+            }
+          }, 0)
+        }, 0)
     })
 
     return () => {
