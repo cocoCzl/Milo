@@ -24,7 +24,7 @@ Milo 0.3.0 is the first public beta, available as a [GitHub Pre-release](https:/
 - Remote images load only after an explicit action; external links open only with command-click.
 - macOS menus, keyboard shortcuts, accessibility labels, reduced-motion support, and a restrained writing surface.
 
-The development branch also includes protected native window close/quit, local unnamed-document recovery, lazy tab and folder loading, a compact top bar, collapsible Outline levels and **Cmd+F document find** in Edit and Read. These changes are unreleased; the linked 0.3.0 binary does not include them. See the [verification record](docs/OPTIMIZATION_2026-10.md), including remaining native IME and performance acceptance gaps.
+The development branch also includes protected native window close/quit, local unnamed-document recovery, lazy tab and folder loading, a compact top bar, collapsible Outline levels and **Cmd+F document find** in Edit and Read. These changes are unreleased; the linked 0.3.0 binary does not include them. Remaining native IME and performance acceptance gaps are listed in [Known issues](docs/KNOWN_ISSUES.md).
 
 ## Privacy and data model
 

@@ -4,11 +4,15 @@ Milo 0.3.0 is the first public beta. Use disposable or backed-up documents when 
 
 ## Unreleased writing optimization
 
-The source branch adds coordinated native close/quit, stable-content saves, unnamed recovery, bounded Outline navigation, lazy tabs/folders, compact chrome and document find. See [the verification record](OPTIMIZATION_2026-10.md) for tests, raw timing samples and screenshot pairs. These changes do not alter the published 0.3.0 binary.
+The development source adds coordinated native close/quit, stable-content saves, unnamed recovery, bounded Outline navigation, lazy tabs/folders, compact chrome and document find. These changes do not alter the published 0.3.0 binary.
 
-This branch has **not** passed the native performance budgets. Browser development measurements show a substantial Outline scroll reduction and fewer initial editors, but no material 1 MB open improvement. A denser 1 MB heading/code/table stress sample exceeded the browser harness’s 60-second readiness limit; this remains a large-structure limitation. Edited Markdown still normalizes unrelated bullets/fences/table formatting/hard breaks; full-document byte preservation is not implemented.
+The isolated arm64 Tauri Release has passed disk/reopen checks for ordinary saves, independent unnamed recovery, quit cancellation/save/discard, and save failure retention. Actual Finder cold opens, opening with no visible window, duplicate-file handling, confirmed native pinyin followed by save/quit, and Chinese input in code blocks and empty table cells were checked. These are bounded observations, not complete platform acceptance.
 
-Final arm64 Release checks cover native find, sequential dirty-tab quit, cancellation/focus and save-before-window-hide. Final-source real Chinese IME confirmation followed by immediate save/quit, app-switch and minimize remains unverified; previous release results cannot be inherited. Intel and older macOS are untested. Visited editors intentionally remain mounted, so this round does not claim low memory after visiting ten large documents or a native resource-release budget pass. Native cold-start/1 MB latency and ownership-attributed total footprint are unmeasured.
+Still unverified: Dock reopening; candidate confirmation immediately followed by app switching or minimization; and saving/closing during unconfirmed composition. In one unconfirmed-composition attempt, Command-S was followed by an extra `s` in the marked pinyin. Available key-send records cannot distinguish an automation issue from an application issue; this remains an unresolved observation. Intel and older macOS are untested.
+
+Native performance budgets are **not signed off**. Browser development timings do not establish native Release performance. A dense 1 MB heading/code/table browser stress sample exceeded the harness's 60-second readiness limit. Release profiling locates much of structured-document open time in parsing; it does not measure earliest input readiness or establish a before/after improvement. Visited editors intentionally remain mounted to retain undo history. Native footprint samples vary by scenario and do not establish either a leak or a resource-release budget pass. The historical 0.3.0 budget exception does not apply to this source.
+
+Edited Markdown normalizes unrelated bullets, fences, table formatting and hard breaks; full-document byte preservation is not implemented.
 
 The sections below retain evidence for the published 0.3.0 beta. Its budget exception is historical and does not approve this optimization.
 

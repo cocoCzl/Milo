@@ -21,3 +21,7 @@ pnpm-debug.log*
 # Tauri-generated build files
 src-tauri/target/
 src-tauri/gen/
+
+# Local verification artifacts (keep test evidence outside the repository)
+/docs/verification/
+/docs/OPTIMIZATION_*.md

@@ -65,4 +65,4 @@ node scripts/check-release-version.mjs v0.3.0
 
 ## 写作优化后的验收（尚未发布）
 
-以上 0.3.0 性能豁免和仅文档收尾要求只适用于历史发布。后续源码改动须运行完整 CI、安装锁定版本的 Playwright 浏览器，并沿用原性能预算。[本轮验证记录](OPTIMIZATION_2026-10.md)明确区分浏览器与原生结果，不能继承旧版本的输入法验收。可用 `npm run tauri -- build --bundles app --config '{"identifier":"io.github.milo.validation"}'` 生成具有独立应用数据的正式 Tauri Release 测试应用；它是 arm64 验证包，不是 Universal DMG 发布包。本轮未创建 Release。
+以上 0.3.0 性能豁免和仅文档收尾要求只适用于历史发布。后续源码改动须运行完整 CI、安装锁定版本的 Playwright 浏览器，并沿用原性能预算。生成的验收产物保存在仓库之外，验收限制汇总于[已知问题](KNOWN_ISSUES.md)；浏览器结果不能代替原生验收，也不能继承旧版本的输入法结论。可用 `npm run tauri -- build --bundles app --config '{"identifier":"io.github.milo.validation"}'` 生成具有独立应用数据的正式 Tauri Release 测试应用；它是 arm64 验证包，不是 Universal DMG 发布包。本轮未创建 Release。
