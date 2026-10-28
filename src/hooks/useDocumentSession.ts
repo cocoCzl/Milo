@@ -48,6 +48,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const tabsRef = useRef(tabs)
   const activeTabIdRef = useRef(activeTabId)
   const selfWritesRef = useRef(new Map<number, { path: string; markdown: string }>())
+  const watchReadsRef = useRef(new Map<number, object>())
   const stableWaitersRef = useRef(new Map<number, Set<(stable: boolean) => void>>())
   const flushersRef = useRef(new Map<number, () => boolean>())
   const savingRef = useRef(new Map<number, Promise<boolean>>())
@@ -145,22 +146,25 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         !tab || Boolean(tab.document.protectionReason) || tab.document.markdown === markdown
       if (ignored) return
 
-      replaceTab(origin.tabId, (current) => ({
-        ...current,
-        document: {
-          ...current.document,
-          markdown,
-          isDirty:
-            current.document.persistedMarkdown === null
-              ? markdown.length > 0
-              : composeMarkdownDocument(current.document.frontMatter, markdown) !==
-                current.document.persistedMarkdown,
-          revision: current.document.revision + 1,
-        },
-        externalChange: null,
-        notice: null,
-        saveFeedback: current.document.path ? 'pending' : 'idle',
-      }))
+      replaceTab(origin.tabId, (current) => {
+        const isDirty =
+          current.document.persistedMarkdown === null
+            ? markdown.length > 0
+            : composeMarkdownDocument(current.document.frontMatter, markdown) !==
+              current.document.persistedMarkdown
+        return {
+          ...current,
+          document: {
+            ...current.document,
+            markdown,
+            isDirty,
+            revision: current.document.revision + 1,
+          },
+          externalChange: null,
+          notice: null,
+          saveFeedback: current.document.path && isDirty ? 'pending' : 'idle',
+        }
+      })
     },
     [getOriginTab, replaceTab],
   )
@@ -684,8 +688,11 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     async (id: number, path: string) => {
       const currentTab = getTab(id)
       if (!currentTab || currentTab.document.path !== path) return
+      const read = {}
+      watchReadsRef.current.set(id, read)
       try {
         const file = await recoverAndReadMarkdownFile(path)
+        if (watchReadsRef.current.get(id) !== read) return
         flushersRef.current.get(id)?.()
         const latestTab = getTab(id)
         if (!latestTab || latestTab.document.path !== file.path) return
@@ -719,6 +726,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           saveFeedback: 'idle',
         }))
       } catch (reason) {
+        if (watchReadsRef.current.get(id) !== read || getTab(id)?.document.path !== path) return
         replaceTab(id, (tab) => ({
           ...tab,
           watchError: readableError(reason, 'Could not read an external file change.'),
@@ -846,6 +854,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     stableWaitersRef.current.get(id)?.forEach((resolve) => resolve(false))
     stableWaitersRef.current.delete(id)
     selfWritesRef.current.delete(id)
+    watchReadsRef.current.delete(id)
     flushersRef.current.delete(id)
     const nextTabs = currentTabs.filter((tab) => tab.id !== id)
     if (nextTabs.length === 0) {

@@ -1,4 +1,4 @@
-// Opt-in local measurement only. Vite removes this path from ordinary builds.
+// Opt-in local measurement only. Ordinary builds retain helpers but record nothing.
 import { invoke } from '@tauri-apps/api/core'
 import type { MilkdownPlugin } from '@milkdown/ctx'
 import { createTimer } from '@milkdown/ctx'

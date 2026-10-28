@@ -191,6 +191,37 @@ describe('useDocumentSession', () => {
     expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
   })
 
+  it('ignores an older watcher read that finishes after a newer external version', async () => {
+    const session = await openSavedDocument()
+    type File = { path: string; markdown: string; lineEnding: 'lf'; hasBom: boolean }
+    const reads: ((file: File) => void)[] = []
+    mocks.recoverAndReadMarkdownFile.mockImplementation(
+      () => new Promise<File>((resolve) => reads.push(resolve)),
+    )
+    act(() => {
+      notifyChange?.()
+      notifyChange?.()
+    })
+    await act(async () => {
+      reads[1]({ path, markdown: '# Newer', lineEnding: 'lf', hasBom: false })
+    })
+    await act(async () => {
+      reads[0]({ path, markdown: '# Older', lineEnding: 'lf', hasBom: false })
+    })
+    expect(session.result.current.document.markdown).toBe('# Newer')
+    expect(session.result.current.document.persistedMarkdown).toBe('# Newer')
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('clears pending-save feedback when edits return to the persisted content', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Changed'))
+    act(() => updateActive(session, '# Before\n'))
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(session.result.current.tabs[0].saveFeedback).toBe('idle')
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
   it('retains an explicitly discarded draft if its recovery copy cannot be removed, then allows retry', async () => {
     const session = renderHook(() => useDocumentSession())
     act(() => session.result.current.createNewDocument())
@@ -1228,8 +1259,8 @@ describe('useDocumentSession', () => {
       session.result.current.requestCloseTab(firstTab.id)
     })
     expect(session.result.current.closingTabId).toBe(firstTab.id)
-    act(() => {
-      session.result.current.discardAndCloseTab()
+    await act(async () => {
+      await session.result.current.discardAndCloseTab()
     })
 
     expect(session.result.current.tabs.find((tab) => tab.id === firstTab.id)).toBeUndefined()

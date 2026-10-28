@@ -1006,7 +1006,7 @@ export function App() {
             <button
               type="button"
               disabled={closingTab.activity === 'saving'}
-              onClick={session.discardAndCloseTab}
+              onClick={() => void session.discardAndCloseTab()}
             >
               {copy.discardChanges}
             </button>
