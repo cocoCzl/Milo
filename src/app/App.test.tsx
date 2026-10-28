@@ -273,7 +273,7 @@ describe('App', () => {
     expect(editors[1]).toHaveAttribute('data-markdown', '')
   })
 
-  it('shows progress through background drafts during native quit and cancels on the affected tab', () => {
+  it('shows progress through background drafts during native quit and cancels on the affected tab', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     act(() => editorMocks.markdownChanges.values().next().value?.('Background draft'))
@@ -286,7 +286,9 @@ describe('App', () => {
     expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
     expect(screen.getByRole('status')).toHaveTextContent('2 documents remaining to review.')
     fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
-    expect(screen.getByRole('status')).toHaveTextContent('1 document remaining to review.')
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('1 document remaining to review.'),
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getAllByRole('tab')).toHaveLength(1)

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FileSidebar } from './FileSidebar'
@@ -64,6 +65,35 @@ describe('folder expansion and request lifetimes', () => {
       ['/root/sub', false, 200],
     ])
   })
+  it('ignores a retired StrictMode request after the newer listing has loaded more pages', async () => {
+    let finish!: (tree: MarkdownTreeNode) => void
+    mocks.browseMarkdownFolder
+      .mockImplementationOnce(
+        () =>
+          new Promise<MarkdownTreeNode>((resolve) => {
+            finish = resolve
+          }),
+      )
+      .mockResolvedValueOnce(folder('/root/sub', [file('/root/sub/first.md')], 200))
+      .mockResolvedValueOnce(folder('/root/sub', [file('/root/sub/last.md')]))
+    render(
+      <StrictMode>
+        <FileSidebar
+          {...props}
+          activeFile="/root/sub/first.md"
+          folder="/root"
+          tree={folder('/root', [folder('/root/sub')])}
+        />
+      </StrictMode>,
+    )
+    expect(await screen.findByRole('button', { name: 'first.md' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more…' }))
+    expect(await screen.findByRole('button', { name: 'last.md' })).toBeVisible()
+    await act(async () => finish(folder('/root/sub', [file('/root/sub/stale.md')])))
+    expect(screen.getByRole('button', { name: 'last.md' })).toBeVisible()
+    expect(screen.queryByText('stale.md')).not.toBeInTheDocument()
+  })
+
   it('ignores an old root result and applies the explicitly chosen exclusion rule', async () => {
     let finish!: (tree: MarkdownTreeNode) => void
     mocks.browseMarkdownFolder

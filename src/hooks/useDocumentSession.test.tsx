@@ -33,6 +33,13 @@ vi.mock('../file-system/nativeFileWatcher', () => ({
 
 import { useDocumentSession } from './useDocumentSession'
 
+const draftMocks = vi.hoisted(() => ({
+  queueDraft: vi.fn(),
+  flushDrafts: vi.fn(),
+  readDrafts: vi.fn(),
+}))
+vi.mock('../file-system/draftRecovery', () => draftMocks)
+
 const path = '/tmp/milo-note.md'
 
 describe('useDocumentSession', () => {
@@ -41,6 +48,9 @@ describe('useDocumentSession', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    draftMocks.queueDraft.mockResolvedValue(undefined)
+    draftMocks.flushDrafts.mockResolvedValue([])
+    draftMocks.readDrafts.mockResolvedValue({ drafts: [], errors: [] })
     fileOnDisk = '# Before\n'
     notifyChange = undefined
     mocks.pickMarkdownFile.mockResolvedValue(path)
@@ -116,7 +126,9 @@ describe('useDocumentSession', () => {
     act(() => {
       session.result.current.requestCloseAll(complete)
     })
-    act(() => session.result.current.discardAndCloseTab())
+    await act(async () => {
+      await session.result.current.discardAndCloseTab()
+    })
     await waitFor(() => expect(complete).toHaveBeenCalledTimes(1))
   })
 
@@ -169,6 +181,195 @@ describe('useDocumentSession', () => {
       await session.result.current.saveDocument()
     })
     expect(fileOnDisk).toBe('最后一次修改')
+  })
+
+  it('does not write an untouched document merely because Save is requested', async () => {
+    const session = await openSavedDocument()
+    await act(async () => {
+      expect(await session.result.current.saveDocument()).toBe(true)
+    })
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('retains an explicitly discarded draft if its recovery copy cannot be removed, then allows retry', async () => {
+    const session = renderHook(() => useDocumentSession())
+    act(() => session.result.current.createNewDocument())
+    act(() => updateActive(session, 'Keep until the recovery copy is actually removed'))
+    act(() => session.result.current.requestCloseTab(session.result.current.activeTabId!))
+    draftMocks.queueDraft.mockRejectedValueOnce(new Error('recovery directory is read-only'))
+    await act(async () => {
+      await session.result.current.discardAndCloseTab()
+    })
+    expect(session.result.current.tabs).toHaveLength(1)
+    expect(session.result.current.closingTabId).toBe(session.result.current.activeTabId)
+    expect(session.result.current.error).toContain('read-only')
+    await act(async () => {
+      await session.result.current.discardAndCloseTab()
+    })
+    expect(session.result.current.tabs).toHaveLength(0)
+  })
+
+  it('does not forget a successful first save until recovery cleanup succeeds', async () => {
+    const session = renderHook(() => useDocumentSession())
+    act(() => session.result.current.createNewDocument())
+    act(() => updateActive(session, 'first saved content'))
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce('/tmp/first-save.md')
+    draftMocks.queueDraft.mockRejectedValueOnce(new Error('cleanup denied'))
+    await act(async () => {
+      expect(await session.result.current.saveDocument()).toBe(false)
+    })
+    expect(session.result.current.document.path).toBe('/tmp/first-save.md')
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(session.result.current.document.recoveryId).toBeTruthy()
+    expect(session.result.current.error).toContain('cleanup denied')
+    await act(async () => {
+      expect(await session.result.current.saveDocument()).toBe(true)
+    })
+    expect(session.result.current.document.recoveryId).toBeUndefined()
+    expect(session.result.current.error).toBeNull()
+    expect(mocks.writeMarkdownFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains earlier saved tabs and later dirty tabs when a multi-document quit fails and is cancelled', async () => {
+    const session = renderHook(() => useDocumentSession())
+    act(() => session.result.current.createNewDocument())
+    act(() => updateActive(session, 'first'))
+    const first = session.result.current.activeTabId!
+    act(() => session.result.current.createNewDocument())
+    act(() => updateActive(session, 'second'))
+    const second = session.result.current.activeTabId!
+    mocks.pickMarkdownSavePath
+      .mockResolvedValueOnce('/tmp/first.md')
+      .mockResolvedValueOnce('/tmp/second.md')
+    const complete = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      session.result.current.requestCloseAll(complete)
+    })
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    expect(session.result.current.closingTabId).toBe(second)
+    mocks.writeMarkdownFile.mockRejectedValueOnce(new Error('disk full'))
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    expect(session.result.current.saveError).toContain('disk full')
+    act(() => session.result.current.cancelCloseTab())
+    expect(session.result.current.activeTabId).toBe(second)
+    expect(session.result.current.tabs.find((tab) => tab.id === first)?.document).toMatchObject({
+      path: '/tmp/first.md',
+      isDirty: false,
+    })
+    expect(session.result.current.tabs.find((tab) => tab.id === second)?.document).toMatchObject({
+      markdown: 'second',
+      isDirty: true,
+    })
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('keeps editor edits made during a write dirty even before their delayed publication', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Snapshot'))
+    let release!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fileOnDisk = document.markdown
+      return document
+    })
+    let save!: Promise<boolean>
+    act(() => {
+      save = session.result.current.saveDocument()
+    })
+    await waitFor(() => expect(release).toBeTypeOf('function'))
+    act(() =>
+      session.result.current.registerFlush(session.result.current.activeTabId!, () => {
+        updateActive(session, '# Latest editor-only edit')
+        return true
+      }),
+    )
+    await act(async () => {
+      release()
+      await save
+    })
+    expect(fileOnDisk).toBe('# Snapshot')
+    expect(session.result.current.document.markdown).toBe('# Latest editor-only edit')
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.saveFeedback).toBe('pending')
+  })
+
+  it('flushes editor-only edits before deciding whether an external change can reload', async () => {
+    const session = await openSavedDocument()
+    act(() =>
+      session.result.current.registerFlush(session.result.current.activeTabId!, () => {
+        updateActive(session, '# Unpublished local edit')
+        return true
+      }),
+    )
+    fileOnDisk = '# External replacement'
+    await act(async () => {
+      notifyChange?.()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(session.result.current.document.markdown).toBe('# Unpublished local edit')
+    expect(session.result.current.externalChange).toBe('pending')
+    expect(session.result.current.document.editorVersion).toBe(0)
+  })
+
+  it('does not return to a stale path when Cmd+S queues behind Save As', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Copy'))
+    const target = '/tmp/new-destination.md'
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce(target)
+    let release!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return document
+    })
+    let copy!: Promise<boolean>, save!: Promise<boolean>
+    act(() => {
+      copy = session.result.current.saveAsDocument()
+    })
+    await waitFor(() => expect(release).toBeTypeOf('function'))
+    act(() => {
+      save = session.result.current.saveDocument()
+    })
+    await act(async () => {
+      await Promise.resolve()
+      release()
+      await copy
+      await save
+    })
+    expect(session.result.current.document.path).toBe(target)
+    expect(mocks.writeMarkdownFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares one native picker for repeated saves of the same unnamed document', async () => {
+    const session = renderHook(() => useDocumentSession())
+    act(() => session.result.current.createNewDocument())
+    act(() => updateActive(session, 'unnamed'))
+    let pick!: (value: string | null) => void
+    mocks.pickMarkdownSavePath.mockImplementation(
+      () =>
+        new Promise<string | null>((resolve) => {
+          pick = resolve
+        }),
+    )
+    let one!: Promise<boolean>, two!: Promise<boolean>
+    act(() => {
+      one = session.result.current.saveDocument()
+      two = session.result.current.saveDocument()
+    })
+    await waitFor(() => expect(pick).toBeTypeOf('function'))
+    expect(mocks.pickMarkdownSavePath).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      pick(null)
+      await Promise.all([one, two])
+    })
   })
 
   it('keeps a document open when watcher registration is denied', async () => {
@@ -1134,7 +1335,9 @@ describe('useDocumentSession', () => {
     vi.useFakeTimers()
     act(() => session.result.current.updateMarkdown(originA, 'A1'))
     act(() => session.result.current.requestCloseTab(tabA.id))
-    act(() => session.result.current.discardAndCloseTab())
+    await act(async () => {
+      await session.result.current.discardAndCloseTab()
+    })
     act(() => session.result.current.updateMarkdown(originA, 'stale A'))
     await act(async () => {
       await expect(

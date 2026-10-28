@@ -45,6 +45,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const stableWaitersRef = useRef(new Map<number, Set<(stable: boolean) => void>>())
   const flushersRef = useRef(new Map<number, () => boolean>())
   const savingRef = useRef(new Map<number, Promise<boolean>>())
+  const savePickersRef = useRef(new Map<number, Promise<boolean>>())
+  const removingRef = useRef(new Map<number, Promise<boolean>>())
   const closeAllRef = useRef<{ complete: () => Promise<void>; failed?: () => void } | null>(null)
   const closingRef = useRef<number | null>(null)
   const saveRef = useRef<() => Promise<boolean>>(async () => false)
@@ -325,6 +327,29 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     [getTab, replaceTab],
   )
 
+  const clearRecoveryCopy = useCallback(
+    async (origin: DocumentOrigin, recoveryId: string) => {
+      try {
+        await queueDraft(recoveryId, null)
+        if (getOriginTab(origin))
+          replaceTab(origin.tabId, (tab) => ({
+            ...tab,
+            error: null,
+            document: { ...tab.document, recoveryId: undefined },
+          }))
+        return true
+      } catch (reason) {
+        if (getOriginTab(origin))
+          replaceTab(origin.tabId, (tab) => ({
+            ...tab,
+            error: readableError(reason, 'Could not clear recovery copy.'),
+          }))
+        return false
+      }
+    },
+    [getOriginTab, replaceTab],
+  )
+
   const performSaveToPath = useCallback(
     async (
       origin: DocumentOrigin,
@@ -345,6 +370,21 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       )
         return false
       const savedSnapshot = savedTab.document
+      // A normal Save queued behind Save As must not switch back to its old
+      // destination. Explicit Save As destinations remain intentional.
+      if (origin.path === path && savedSnapshot.path !== path) return false
+      if (
+        savedSnapshot.path === path &&
+        !savedSnapshot.isDirty &&
+        !savedTab.saveError &&
+        !allowExternalOverwrite &&
+        savedSnapshot.persistedMarkdown ===
+          composeMarkdownDocument(savedSnapshot.frontMatter, savedSnapshot.markdown)
+      )
+        return (
+          !savedTab.externalChange &&
+          (!savedSnapshot.recoveryId || (await clearRecoveryCopy(origin, savedSnapshot.recoveryId)))
+        )
       const safeSaveEnabled = usesMacOSSafeSaveV2()
       let expectedDisk =
         savedSnapshot.path !== path || savedSnapshot.persistedMarkdown === null
@@ -427,6 +467,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
               lineEnding: savedSnapshot.lineEnding,
               hasBom: savedSnapshot.hasBom,
             })
+        // The editor may be ahead of the debounced session publication.
+        // Publish it before deciding whether this older disk snapshot is clean.
+        flushersRef.current.get(origin.tabId)?.()
         const latestTab = getOriginTab(origin)
         if (!latestTab) {
           return false
@@ -455,15 +498,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
               : 'saved',
           saveError: null,
         }))
-        if (savedSnapshot.recoveryId) {
-          void queueDraft(savedSnapshot.recoveryId, null).catch((reason) =>
-            replaceTab(origin.tabId, (tab) => ({
-              ...tab,
-              error: readableError(reason, 'Could not clear recovery copy.'),
-            })),
-          )
-        }
-        return true
+        return (
+          !savedSnapshot.recoveryId || (await clearRecoveryCopy(origin, savedSnapshot.recoveryId))
+        )
       } catch (reason) {
         const externalConflict =
           safeSaveEnabled && String(reason).includes('Safe Save external change conflict')
@@ -483,7 +520,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         return false
       }
     },
-    [getOriginTab, replaceTab],
+    [clearRecoveryCopy, getOriginTab, replaceTab],
   )
 
   // Serialize writes for each document, including preflight disk reads. A
@@ -506,13 +543,22 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   )
 
   const saveAsDocument = useCallback(
-    async (id = activeTabIdRef.current) => {
-      if (id === null || !(await waitUntilStable(id))) return false
-      const tab = getTab(id)
-      if (!tab || tab.isComposing || tab.document.protectionReason) return false
-      const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
-      const path = await pickMarkdownSavePath(defaultPath)
-      return path ? saveToPath(originForTab(tab), path) : false
+    (id = activeTabIdRef.current): Promise<boolean> => {
+      if (id === null) return Promise.resolve(false)
+      const pending = savePickersRef.current.get(id)
+      if (pending) return pending
+      const operation = (async () => {
+        if (!(await waitUntilStable(id))) return false
+        const tab = getTab(id)
+        if (!tab || tab.isComposing || tab.document.protectionReason) return false
+        const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
+        const path = await pickMarkdownSavePath(defaultPath)
+        return path && (await waitUntilStable(id)) ? saveToPath(originForTab(tab), path) : false
+      })().finally(() => {
+        if (savePickersRef.current.get(id) === operation) savePickersRef.current.delete(id)
+      })
+      savePickersRef.current.set(id, operation)
+      return operation
     },
     [getTab, originForTab, saveToPath, waitUntilStable],
   )
@@ -619,6 +665,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       if (!currentTab || currentTab.document.path !== path) return
       try {
         const file = await recoverAndReadMarkdownFile(path)
+        flushersRef.current.get(id)?.()
         const latestTab = getTab(id)
         if (!latestTab || latestTab.document.path !== file.path) return
         const selfWrite = selfWritesRef.current.get(id)
@@ -779,8 +826,6 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     stableWaitersRef.current.delete(id)
     selfWritesRef.current.delete(id)
     flushersRef.current.delete(id)
-    const recoveryId = currentTabs[index].document.recoveryId
-    if (recoveryId) void queueDraft(recoveryId, null).catch(() => undefined)
     const nextTabs = currentTabs.filter((tab) => tab.id !== id)
     if (nextTabs.length === 0) {
       tabsRef.current = []
@@ -799,10 +844,48 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     setClosingTabId(null)
   }, [])
 
+  const removeProtectedTab = useCallback(
+    (id: number): Promise<boolean> => {
+      const pending = removingRef.current.get(id)
+      if (pending) return pending
+      const tab = getTab(id)
+      if (!tab) return Promise.resolve(true)
+      const { recoveryId, revision, isDirty } = tab.document
+      // A new untouched UUID has never had a snapshot. All other recovery
+      // identities must be cleared successfully before forgetting the document.
+      if (!recoveryId || (!revision && !isDirty)) {
+        removeTab(id)
+        return Promise.resolve(true)
+      }
+      replaceTab(id, (current) => ({ ...current, activity: 'saving' }))
+      const operation = queueDraft(recoveryId, null)
+        .then(() => {
+          removeTab(id)
+          return true
+        })
+        .catch((reason) => {
+          replaceTab(id, (current) => ({
+            ...current,
+            activity: 'idle',
+            error: readableError(
+              reason,
+              'Could not clear recovery copy. The document remains open.',
+            ),
+          }))
+          return false
+        })
+        .finally(() => removingRef.current.delete(id))
+      removingRef.current.set(id, operation)
+      return operation
+    },
+    [getTab, removeTab, replaceTab],
+  )
+
   const needsCloseConfirmation = (tab: DocumentTab) =>
     tab.document.isDirty ||
     tab.isComposing ||
     Boolean(tab.saveError) ||
+    Boolean(tab.error && tab.document.recoveryId) ||
     tab.activity === 'saving' ||
     savingRef.current.has(tab.id)
 
@@ -858,29 +941,30 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         closingRef.current = id
         selectTab(id)
         setClosingTabId(id)
-      } else removeTab(id)
+      } else void removeProtectedTab(id)
     },
-    [getTab, removeTab, selectTab],
+    [getTab, removeProtectedTab, selectTab],
   )
 
   const finishCloseTab = useCallback(
-    (id: number, discard: boolean) => {
-      if (!closeAllRef.current || discard) removeTab(id)
+    async (id: number, discard: boolean) => {
+      if ((!closeAllRef.current || discard) && !(await removeProtectedTab(id))) return
       closingRef.current = null
       setClosingTabId(null)
       continueCloseAll()
     },
-    [continueCloseAll, removeTab],
+    [continueCloseAll, removeProtectedTab],
   )
 
   const discardAndCloseTab = useCallback(() => {
     const id = closingRef.current
     // Never race an in-flight write with a discard or removal.
-    if (id !== null && !savingRef.current.has(id)) finishCloseTab(id, true)
+    if (id !== null && !savingRef.current.has(id)) return finishCloseTab(id, true)
   }, [finishCloseTab])
 
   const cancelCloseTab = useCallback(() => {
     const id = closingRef.current
+    if (id !== null && removingRef.current.has(id)) return
     if (id !== null) selectTab(id)
     closeAllRef.current = null
     setClosePending(false)
@@ -903,7 +987,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     if (closingRef.current !== id || !(await saveDocument(id))) return
     const tab = getTab(id)
     if (closingRef.current === id && tab && !tab.isComposing && !tab.document.isDirty)
-      finishCloseTab(id, false)
+      await finishCloseTab(id, false)
   }, [finishCloseTab, getTab, saveDocument])
 
   const recoverDrafts = useCallback(async () => {
@@ -929,6 +1013,17 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       if (doc.path || !doc.recoveryId || !doc.isDirty || tab.isComposing) return []
       return [
         window.setTimeout(() => {
+          const current = getTab(tab.id)
+          if (
+            !current ||
+            removingRef.current.has(tab.id) ||
+            current.document.path ||
+            current.isComposing ||
+            !current.document.isDirty ||
+            current.document.recoveryId !== doc.recoveryId ||
+            current.document.revision !== doc.revision
+          )
+            return
           void queueDraft(doc.recoveryId!, doc.markdown).catch((reason) =>
             replaceTab(tab.id, (current) => ({
               ...current,
@@ -939,7 +1034,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       ]
     })
     return () => timers.forEach(window.clearTimeout)
-  }, [draftSignature, replaceTab])
+  }, [draftSignature, getTab, replaceTab])
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? emptyDocumentTab,
@@ -964,6 +1059,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     cancelCloseTab,
     closingTabId,
     closePending,
+    discardPending: closingTabId !== null && removingRef.current.has(closingTabId),
     createNewDocument,
     discardAndCloseTab,
     openError,

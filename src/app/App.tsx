@@ -965,7 +965,7 @@ export function App() {
           role="alertdialog"
           aria-modal="true"
           onKeyDown={(event) => {
-            if (event.key === 'Escape') {
+            if (event.key === 'Escape' && !session.discardPending) {
               session.cancelCloseTab()
               void nativeClose.cancel().catch(() => undefined)
             }
@@ -985,7 +985,9 @@ export function App() {
           <strong id="close-confirmation-title">
             {copy.closeConfirmation(displayDocumentTitle(closingTab, copy))}
           </strong>
-          <span>{closingTab.saveError ? copy.lastSaveFailed : copy.unsavedChanges}</span>
+          <span>
+            {closingTab.saveError ? copy.lastSaveFailed : (closingTab.error ?? copy.unsavedChanges)}
+          </span>
           {session.closePending ? (
             <small role="status">
               {copy.closeRemainingDocuments(
@@ -994,6 +996,7 @@ export function App() {
                     tab.document.isDirty ||
                     tab.isComposing ||
                     tab.saveError ||
+                    Boolean(tab.error && tab.document.recoveryId) ||
                     tab.activity === 'saving',
                 ).length,
               )}
@@ -1016,6 +1019,7 @@ export function App() {
             </button>
             <button
               type="button"
+              disabled={session.discardPending}
               onClick={() => {
                 session.cancelCloseTab()
                 void nativeClose.cancel().catch(() => undefined)

@@ -307,20 +307,22 @@ function DirectoryListing({
   const live = useRef(true)
   useEffect(() => {
     live.current = true
+    let cancelled = false
     if (reload) {
       setLoading(true)
       void browseMarkdownFolder(node.path, showExcluded)
         .then((result) => {
-          if (live.current) setPage(result)
+          if (!cancelled) setPage(result)
         })
         .catch((reason) => {
-          if (live.current) setError(String(reason))
+          if (!cancelled) setError(String(reason))
         })
         .finally(() => {
-          if (live.current) setLoading(false)
+          if (!cancelled) setLoading(false)
         })
     }
     return () => {
+      cancelled = true
       live.current = false
     }
   }, [node.path, reload, showExcluded])
