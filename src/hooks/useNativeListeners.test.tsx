@@ -3,7 +3,6 @@ import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useNativeCommandListener } from './useNativeCommandListener'
-import { useNativeFileOpenListener } from './useNativeFileOpenListener'
 
 type Listener = (event: { payload: string }) => void
 const mocks = vi.hoisted(() => ({
@@ -44,7 +43,6 @@ afterEach(() => {
 
 for (const [name, eventName, useListener] of [
   ['command', 'milo://command', useNativeCommandListener],
-  ['file-open', 'milo://open-file', useNativeFileOpenListener],
 ] as const) {
   describe(`native ${name} listener lifecycle`, () => {
     it('releases a completed subscription exactly once on unmount', async () => {

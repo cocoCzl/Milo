@@ -1,4 +1,5 @@
 mod draft_recovery;
+mod file_open;
 mod file_system;
 #[cfg(target_os = "macos")]
 mod macos_safe_save;
@@ -78,6 +79,7 @@ struct LaunchMarkdownFile(Option<String>);
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(CloseCoordinator::default())
+        .manage(file_open::OpenQueue::default())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -178,6 +180,8 @@ pub fn run() {
             close_coordinator_ready,
             cancel_close,
             complete_close,
+            file_open::pending_markdown_open_requests,
+            file_open::acknowledge_markdown_open_request,
             draft_recovery::read_draft_recovery,
             draft_recovery::write_draft_recovery,
             file_system::read_markdown_document,
@@ -217,11 +221,13 @@ pub fn run() {
         if let tauri::RunEvent::Opened { urls } = event {
             for url in urls {
                 if let Some(path) = markdown_path_from_file_url(&url) {
+                    app.state::<file_open::OpenQueue>().enqueue(path);
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
-                    let _ = app.emit("milo://open-file", path);
+                    // Only a wake-up. The retained queue is authoritative.
+                    let _ = app.emit("milo://open-file", ());
                 }
             }
         }

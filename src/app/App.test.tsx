@@ -19,6 +19,18 @@ const preferenceMocks = vi.hoisted(() => ({
   save: vi.fn(),
 }))
 
+const nativeOpenMocks = vi.hoisted(() => ({
+  ready: false,
+  open: null as ((path: string) => Promise<boolean>) | null,
+}))
+vi.mock('../hooks/useNativeFileOpenListener', () => ({
+  useNativeFileOpenListener: (open: (path: string) => Promise<boolean>, ready: boolean) => {
+    nativeOpenMocks.ready = ready
+    nativeOpenMocks.open = open
+    return null
+  },
+}))
+
 const editorMocks = vi.hoisted(() => ({
   hasHeadings: true,
   compositionChanges: new Map<string, (state: EditorComposition) => void>(),
@@ -26,6 +38,7 @@ const editorMocks = vi.hoisted(() => ({
 }))
 
 import { App } from './App'
+import * as nativeFiles from '../file-system/nativeMarkdownFile'
 import type { EditorComposition } from '../editor/milkdown/compositionSaveBoundary'
 
 vi.mock('../editor/milkdown/MilkdownEditor', () => ({
@@ -150,6 +163,81 @@ describe('App', () => {
     )
     expect(container.querySelector('.document-area')).toHaveClass('document-area--empty')
     expect(screen.getByRole('button', { name: 'Open document' })).toBeVisible()
+  })
+
+  it('enables native queue consumption only after slow settings/recovery, surviving preference updates and deduplicating restored files', async () => {
+    let load!: (settings: Record<string, unknown>) => void
+    let finishRead!: (file: {
+      path: string
+      markdown: string
+      lineEnding: 'lf'
+      hasBom: boolean
+    }) => void
+    preferenceMocks.load.mockReturnValueOnce(
+      new Promise((resolve) => {
+        load = resolve
+      }),
+    )
+    const read = vi.spyOn(nativeFiles, 'recoverAndReadMarkdownFile').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRead = resolve
+        }),
+    )
+    try {
+      const { container } = render(<App />)
+      expect(nativeOpenMocks.ready).toBe(false)
+      await act(async () => {
+        load({
+          locale: 'en',
+          sidebarVisible: true,
+          startupSession: {
+            activeDocumentPath: '/restored.md',
+            openDocumentPaths: ['/restored.md'],
+          },
+        })
+      })
+      await waitFor(() => expect(finishRead).toBeTypeOf('function'))
+      expect(nativeOpenMocks.ready).toBe(false)
+      fireEvent.click(screen.getByRole('button', { name: 'Hide sidebar' }))
+      await act(async () => {
+        finishRead({
+          path: '/restored.md',
+          markdown: '# Restored',
+          lineEnding: 'lf',
+          hasBom: false,
+        })
+      })
+      await waitFor(() => expect(nativeOpenMocks.ready).toBe(true))
+      expect(container.querySelector('.document-area')).toHaveAttribute('aria-busy', 'false')
+      await act(async () => {
+        await nativeOpenMocks.open?.('/restored.md')
+      })
+      expect(screen.getAllByRole('tab')).toHaveLength(1)
+      expect(read).toHaveBeenCalledOnce()
+      read.mockResolvedValue({
+        path: '/finder.md',
+        markdown: '# Finder target',
+        lineEnding: 'lf',
+        hasBom: false,
+      })
+      await act(async () => {
+        await nativeOpenMocks.open?.('/finder.md')
+      })
+      expect(screen.getAllByRole('tab')).toHaveLength(2)
+      expect(screen.getByRole('tab', { name: 'finder.md' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Close finder.md' }))
+      await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1))
+      await act(async () => {
+        await nativeOpenMocks.open?.('/finder.md')
+      })
+      expect(screen.getAllByRole('tab')).toHaveLength(2)
+    } finally {
+      read.mockRestore()
+    }
   })
 
   it('starts with a true no-document surface and creates an untitled editor only on request', async () => {

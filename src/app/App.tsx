@@ -154,7 +154,7 @@ export function App() {
       typeof window.matchMedia === 'function' &&
       window.matchMedia(SIDEBAR_RESPONSIVE_QUERY).matches,
   )
-  const didRestoreStartupSession = useRef(false)
+  const startupRestorePromiseRef = useRef<Promise<unknown> | null>(null)
   const initialLaunchFilePromiseRef = useRef<Promise<string | null> | null>(null)
   const lastRecordedRecentPathRef = useRef<string | null | undefined>(undefined)
   const preferencesReturnFocusRef = useRef<HTMLElement | null>(null)
@@ -194,6 +194,7 @@ export function App() {
   const tabIdsSignature = session.tabs.map((tab) => tab.id).join(',')
   useEffect(() => {
     const openTabIds = new Set(tabIdsSignature.split(',').filter(Boolean).map(Number))
+    documentViewStatesRef.current = pruneTabState(documentViewStatesRef.current, openTabIds)
     setPresentationModes((current) => pruneTabState(current, openTabIds))
     setDocumentViewStates((current) => pruneTabState(current, openTabIds))
     setOutlineOpen((current) => pruneTabState(current, openTabIds))
@@ -349,16 +350,23 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (isLoading || didRestoreStartupSession.current) return
-    didRestoreStartupSession.current = true
+    if (isLoading) return
     let disposed = false
     const launchFilePromise =
       initialLaunchFilePromiseRef.current ?? initialLaunchMarkdownFile().catch(() => null)
     initialLaunchFilePromiseRef.current = launchFilePromise
-    void launchFilePromise
-      .then((launchPath) => restoreStartupSession(settings.startupSession, launchPath))
+    startupRestorePromiseRef.current ??= launchFilePromise.then((launchPath) =>
+      restoreStartupSession(settings.startupSession, launchPath),
+    )
+    void startupRestorePromiseRef.current
       .then(() => {
         if (!disposed) setStartupSessionRestored(true)
+      })
+      .catch((reason) => {
+        if (!disposed) {
+          setRecoveryError(String(reason))
+          setStartupSessionRestored(true)
+        }
       })
     return () => {
       disposed = true
@@ -553,9 +561,7 @@ export function App() {
     }
   })
 
-  useNativeFileOpenListener((path) => {
-    void openDocumentAtPath(path)
-  })
+  const nativeOpenError = useNativeFileOpenListener(openDocumentAtPath, startupSessionRestored)
 
   useEffect(() => {
     const handleZoomShortcut = (event: KeyboardEvent) => {
@@ -954,9 +960,9 @@ export function App() {
           {session.openError}
         </div>
       ) : null}
-      {recoveryError ? (
+      {recoveryError || nativeOpenError ? (
         <div className="document-error" role="alert">
-          {recoveryError}
+          {recoveryError ?? nativeOpenError}
         </div>
       ) : null}
       {closingTab ? (
@@ -1005,14 +1011,18 @@ export function App() {
           <div className="close-confirmation__actions">
             <button
               type="button"
-              disabled={closingTab.activity === 'saving'}
+              disabled={closingTab.activity === 'saving' || session.closeSavePending}
               onClick={() => void session.discardAndCloseTab()}
             >
               {copy.discardChanges}
             </button>
             <button
               type="button"
-              disabled={closingTab.isComposing || closingTab.activity === 'saving'}
+              disabled={
+                closingTab.isComposing ||
+                closingTab.activity === 'saving' ||
+                session.closeSavePending
+              }
               onClick={() => void session.saveAndCloseTab()}
             >
               {copy.saveAndClose}

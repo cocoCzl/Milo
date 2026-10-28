@@ -44,11 +44,16 @@ async function open({
       ])
       for (let i = 2; i <= tabs; i++) files.set(`/test/tab-${i}.md`, content)
       const paths = [...files.keys()].filter((path) => path !== '/test/short.md')
+      const openRequests = []
+      let openId = 0
       let id = 0
       const test = {
         writes: [],
         command: (payload) => emit('milo://command', payload),
-        open: (payload) => emit('milo://open-file', payload),
+        open: (path) => {
+          openRequests.push({ id: ++openId, path })
+          emit('milo://open-file', null)
+        },
       }
       function emit(event, payload) {
         for (const [eventId, listener] of listeners) {
@@ -125,6 +130,12 @@ async function open({
           )
             return null
           if (cmd === 'plugin:fs|watch') return ++id
+          if (cmd === 'pending_markdown_open_requests') return [...openRequests]
+          if (cmd === 'acknowledge_markdown_open_request') {
+            const index = openRequests.findIndex((request) => request.id === args.id)
+            if (index >= 0) openRequests.splice(index, 1)
+            return null
+          }
           if (cmd === 'initial_launch_markdown_file') return null
           throw new Error(`Unexpected test IPC: ${cmd}`)
         },

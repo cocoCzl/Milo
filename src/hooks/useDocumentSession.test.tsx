@@ -1649,4 +1649,160 @@ describe('useDocumentSession', () => {
       mimeType: 'image/png',
     })
   })
+
+  it('keeps a clean document guarded while its Save As panel is unresolved', async () => {
+    const session = await openSavedDocument()
+    let choose!: (path: string) => void
+    mocks.pickMarkdownSavePath.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          choose = resolve
+        }),
+    )
+    let copy!: Promise<boolean>
+    act(() => {
+      copy = session.result.current.saveAsDocument()
+    })
+    await waitFor(() => expect(choose).toBeTypeOf('function'))
+    const complete = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      session.result.current.requestCloseAll(complete)
+    })
+    expect(session.result.current.closingTabId).toBe(session.result.current.activeTabId)
+    expect(complete).not.toHaveBeenCalled()
+    await act(async () => {
+      await session.result.current.discardAndCloseTab()
+    })
+    expect(session.result.current.tabs).toHaveLength(1)
+    await act(async () => {
+      choose('/tmp/selected-copy.md')
+      await copy
+    })
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    await waitFor(() => expect(complete).toHaveBeenCalledOnce())
+    expect(session.result.current.document.path).toBe('/tmp/selected-copy.md')
+    expect(mocks.pickMarkdownSavePath).toHaveBeenCalledOnce()
+  })
+
+  it('saves the latest edit to the new destination when Save queues behind a slow Save As', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Copy snapshot'))
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce('/tmp/latest-copy.md')
+    let release!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fileOnDisk = document.markdown
+      return document
+    })
+    let copy!: Promise<boolean>, save!: Promise<boolean>
+    act(() => {
+      copy = session.result.current.saveAsDocument()
+    })
+    await waitFor(() => expect(release).toBeTypeOf('function'))
+    act(() => {
+      updateActive(session, '# Latest copy')
+      save = session.result.current.saveDocument()
+    })
+    await act(async () => {
+      release()
+      await Promise.all([copy, save])
+    })
+    expect(mocks.writeMarkdownFile.mock.calls.map(([file]) => file.path)).toEqual([
+      '/tmp/latest-copy.md',
+      '/tmp/latest-copy.md',
+    ])
+    expect(fileOnDisk).toBe('# Latest copy')
+    expect(session.result.current.document.isDirty).toBe(false)
+  })
+
+  it.each(['autosave then Quit', 'manual Save then window close'])(
+    'waits for both old and latest stable writes: %s',
+    async (scenario) => {
+      const session = await openSavedDocument()
+      vi.useFakeTimers()
+      const releases: (() => void)[] = []
+      mocks.writeMarkdownFile.mockImplementation(async (document) => {
+        await new Promise<void>((resolve) => {
+          releases.push(resolve)
+        })
+        fileOnDisk = document.markdown
+        return document
+      })
+      act(() => updateActive(session, '# Old stable snapshot'))
+      if (scenario.startsWith('auto')) await act(async () => vi.advanceTimersByTimeAsync(1000))
+      else
+        await act(async () => {
+          void session.result.current.saveDocument()
+        })
+      expect(releases).toHaveLength(1)
+      const complete = vi.fn().mockResolvedValue(undefined)
+      act(() => {
+        expect(session.result.current.requestCloseAll(complete)).toBe(true)
+        expect(session.result.current.requestCloseAll(complete)).toBe(false)
+        updateActive(session, '# Newest stable snapshot')
+      })
+      let close!: Promise<void>
+      act(() => {
+        close = session.result.current.saveAndCloseTab()
+      })
+      expect(complete).not.toHaveBeenCalled()
+      await act(async () => {
+        releases[0]()
+      })
+      expect(releases).toHaveLength(2)
+      expect(fileOnDisk).toBe('# Old stable snapshot')
+      expect(session.result.current.document.isDirty).toBe(true)
+      expect(complete).not.toHaveBeenCalled()
+      await act(async () => {
+        releases[1]()
+        await close
+      })
+      expect(fileOnDisk).toBe('# Newest stable snapshot')
+      expect(session.result.current.document.isDirty).toBe(false)
+      expect(complete).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('keeps a failed slow write guarded, then cancellation permits continued editing and Save', async () => {
+    const session = await openSavedDocument()
+    act(() => updateActive(session, '# Retained after failure'))
+    let fail!: (error: Error) => void
+    mocks.writeMarkdownFile.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject
+        }),
+    )
+    let save!: Promise<boolean>
+    act(() => {
+      save = session.result.current.saveDocument()
+    })
+    await waitFor(() => expect(fail).toBeTypeOf('function'))
+    const complete = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      session.result.current.requestCloseAll(complete)
+    })
+    await act(async () => {
+      fail(new Error('controlled disk failure'))
+      await save
+    })
+    expect(complete).not.toHaveBeenCalled()
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.saveError).toContain('controlled disk failure')
+    act(() => {
+      session.result.current.cancelCloseTab()
+      updateActive(session, '# Continued after cancellation')
+    })
+    expect(session.result.current.closingTabId).toBeNull()
+    expect(session.result.current.closePending).toBe(false)
+    await act(async () => {
+      await session.result.current.saveDocument()
+    })
+    expect(fileOnDisk).toBe('# Continued after cancellation')
+    expect(session.result.current.saveError).toBeNull()
+  })
 })

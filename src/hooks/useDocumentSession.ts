@@ -53,6 +53,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const flushersRef = useRef(new Map<number, () => boolean>())
   const savingRef = useRef(new Map<number, Promise<boolean>>())
   const savePickersRef = useRef(new Map<number, Promise<boolean>>())
+  const [savePickerIds, setSavePickerIds] = useState<ReadonlySet<number>>(new Set())
   const removingRef = useRef(new Map<number, Promise<boolean>>())
   const closeAllRef = useRef<{ complete: () => Promise<void>; failed?: () => void } | null>(null)
   const closingRef = useRef<number | null>(null)
@@ -580,9 +581,13 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         const path = await pickMarkdownSavePath(defaultPath)
         return path && (await waitUntilStable(id)) ? saveToPath(originForTab(tab), path) : false
       })().finally(() => {
-        if (savePickersRef.current.get(id) === operation) savePickersRef.current.delete(id)
+        if (savePickersRef.current.get(id) === operation) {
+          savePickersRef.current.delete(id)
+          setSavePickerIds(new Set(savePickersRef.current.keys()))
+        }
       })
       savePickersRef.current.set(id, operation)
+      setSavePickerIds(new Set(savePickersRef.current.keys()))
       return operation
     },
     [getTab, originForTab, saveToPath, waitUntilStable],
@@ -590,7 +595,10 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const saveDocument = useCallback(
     async (id = activeTabIdRef.current) => {
-      if (id === null || !(await waitUntilStable(id))) return false
+      if (id === null) return false
+      const picker = savePickersRef.current.get(id)
+      if (picker && !(await picker)) return false
+      if (!(await waitUntilStable(id))) return false
       const tab = getTab(id)
       if (!tab || tab.document.protectionReason) return false
       return tab.document.path
@@ -917,6 +925,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     Boolean(tab.saveError) ||
     Boolean(tab.error && tab.document.recoveryId) ||
     tab.activity === 'saving' ||
+    savePickersRef.current.has(tab.id) ||
     savingRef.current.has(tab.id)
 
   const continueCloseAll = useCallback(() => {
@@ -989,7 +998,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const discardAndCloseTab = useCallback(() => {
     const id = closingRef.current
     // Never race an in-flight write with a discard or removal.
-    if (id !== null && !savingRef.current.has(id)) return finishCloseTab(id, true)
+    if (id !== null && !savingRef.current.has(id) && !savePickersRef.current.has(id))
+      return finishCloseTab(id, true)
   }, [finishCloseTab])
 
   const cancelCloseTab = useCallback(() => {
@@ -1089,6 +1099,9 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     cancelCloseTab,
     closingTabId,
     closePending,
+    closeSavePending:
+      closingTabId !== null &&
+      (savePickerIds.has(closingTabId) || savingRef.current.has(closingTabId)),
     discardPending: closingTabId !== null && removingRef.current.has(closingTabId),
     createNewDocument,
     discardAndCloseTab,
