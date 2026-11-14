@@ -29,6 +29,43 @@ it('uses logarithmic live geometry reads and accounts for changed layout', () =>
 })
 
 describe('scroll navigation', () => {
+  it('keeps the top heading active when the whole document fits without scrolling', () => {
+    const stage = document.createElement('section')
+    Object.defineProperties(stage, { scrollHeight: { value: 800 }, clientHeight: { value: 800 } })
+    stage.getBoundingClientRect = () => ({ top: 0, bottom: 800 }) as DOMRect
+    const headings = [0, 1, 2].map((pos) => ({
+      id: String(pos),
+      key: String(pos),
+      level: 1,
+      text: String(pos),
+      pos,
+    }))
+    const measure = (pos: number) =>
+      ({
+        getBoundingClientRect: () => ({ top: 24 + pos * 240, bottom: 64 + pos * 240 }),
+      }) as HTMLElement
+    expect(activeHeadingFromScroll(headings, measure, stage)).toBe(0)
+  })
+
+  it('still activates the final visible heading within the scrolled bottom tolerance', () => {
+    const stage = document.createElement('section')
+    Object.defineProperties(stage, { scrollHeight: { value: 1100 }, clientHeight: { value: 800 } })
+    stage.scrollTop = 294
+    stage.getBoundingClientRect = () => ({ top: 0, bottom: 800 }) as DOMRect
+    const headings = [0, 1].map((pos) => ({
+      id: String(pos),
+      key: String(pos),
+      level: 1,
+      text: String(pos),
+      pos,
+    }))
+    const measure = (pos: number) =>
+      ({
+        getBoundingClientRect: () => ({ top: pos ? 700 : -280, bottom: pos ? 740 : -240 }),
+      }) as HTMLElement
+    expect(activeHeadingFromScroll(headings, measure, stage)).toBe(1)
+  })
+
   it('retains bottom tolerance and handles no headings', () => {
     const stage = document.createElement('section')
     stage.getBoundingClientRect = () => ({ top: 0, bottom: 800 }) as DOMRect

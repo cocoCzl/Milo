@@ -113,7 +113,10 @@ export function activeHeadingFromScroll(
   // is visually negligible, use the last heading actually intersecting the
   // article viewport so the final chapters can become active.
   const bottomThreshold = Math.max(scrollBottomTolerance, Math.min(48, stage.clientHeight * 0.08))
-  const isAtBottom = remainingScroll <= bottomThreshold
+  // A short document is simultaneously at both ends. Keep its top heading
+  // active until the user actually scrolls; fitting the viewport is not an
+  // intentional navigation to the final chapter.
+  const isAtBottom = stage.scrollTop > 0 && remainingScroll <= bottomThreshold
   const activationLine = stageRect.top + headingScrollOffset + headingActivationTolerance
   // Heading DOM order matches document order. Read live geometry so image
   // loads, resizing, zoom and font changes require no position-cache repair.

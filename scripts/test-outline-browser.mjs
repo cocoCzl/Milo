@@ -470,6 +470,31 @@ try {
   )
   await lazy.close()
 
+  for (const uiZoom of [100, 140]) {
+    const fitted = await open({
+      uiZoom,
+      content: '# Root\n\nParagraph.\n\n## Child\n\nParagraph.\n\n# Last\n\nEnd.',
+    })
+    await showOutline(fitted)
+    const stage = fitted.locator('.document-stage')
+    assert.equal(await stage.evaluate((el) => el.scrollHeight - el.clientHeight), 0)
+    const nav = fitted.getByRole('navigation', { name: '大纲', exact: true })
+    const root = nav.getByRole('button', { name: 'Root', exact: true })
+    const last = nav.getByRole('button', { name: 'Last', exact: true })
+    assert.equal(await root.getAttribute('aria-current'), 'location')
+    await last.focus()
+    assert(await last.evaluate((el) => el === document.activeElement))
+    assert.equal(
+      await root.getAttribute('aria-current'),
+      'location',
+      'focus changed current chapter',
+    )
+    assert.equal(await last.getAttribute('aria-current'), null)
+    assert.equal(await stage.evaluate((el) => el.scrollTop), 0)
+    assert.deepEqual(await fitted.evaluate(() => window.__miloOutlineTest.writes), [])
+    await fitted.close()
+  }
+
   const closed = await open()
   await closed.locator('.document-tab__close').click()
   await closed.locator('.document-empty-state').waitFor()
