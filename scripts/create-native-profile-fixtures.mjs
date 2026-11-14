@@ -1,44 +1,28 @@
-// Fixed disposable inputs; never changes fixtures to improve measured results.
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
+// Disposable repeatable inputs; no user data and no changes to release settings.
+import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { unified } from 'unified'
-import remarkParse from 'remark-parse'
-import remarkGfm from 'remark-gfm'
+import { samples, describeSample } from './performanceSamples.mjs'
 const output = resolve(process.argv[2] || '/private/tmp/milo-native-review')
+const writeFixture = (path, data) => writeFile(path, data, { flag: 'wx' })
 await mkdir(`${output}/tabs`, { recursive: true })
-const unit =
-  '# Document\n\n' +
-  '中文 English paragraph sentence. '.repeat(80) +
-  '\n\n**strong** and [link](https://example.com).\n\n```ts\nconst value = 1\n```\n\n| A | B |\n| - | - |\n| x | |\n\n'
-const plainUnit = 'Plain text paragraph 中文写作内容。 '.repeat(80) + '\n\n'
-const sources = {
-  'plain-1mb.md': plainUnit.repeat(Math.ceil(1_000_000 / Buffer.byteLength(plainUnit))),
-  'structured-1mb.md': unit.repeat(Math.ceil(1_000_000 / Buffer.byteLength(unit))),
-  'ordinary.md': await readFile(
-    new URL('../tests/fixtures/outline-long.md', import.meta.url),
-    'utf8',
-  ),
+await mkdir(`${output}/assets`, { recursive: true })
+const manifest = {
+  generatedBy: 'scripts/create-native-profile-fixtures.mjs',
+  home: { bytes: 0, editors: 0 },
+  tabCounts: [1, 5, 10, 20],
+  tabPhases: ['restored', 'visited', 'edited', 'closed'],
+  files: [],
 }
-const manifest = { generatedBy: 'scripts/create-native-profile-fixtures.mjs', files: [] }
-for (const [name, markdown] of Object.entries(sources)) {
-  const counts = { heading: 0, code: 0, table: 0, image: 0, paragraph: 0 }
-  const visit = (node) => {
-    if (node.type in counts) counts[node.type]++
-    for (const child of node.children || []) visit(child)
-  }
-  visit(unified().use(remarkParse).use(remarkGfm).parse(markdown))
-  await writeFile(`${output}/${name}`, markdown)
-  manifest.files.push({
-    name,
-    bytes: Buffer.byteLength(markdown),
-    sha256: createHash('sha256').update(markdown).digest('hex'),
-    counts,
-    bom: false,
-    lineEnding: 'LF',
-  })
+for (const [name, markdown] of Object.entries(samples)) {
+  await writeFixture(`${output}/${name}.md`, markdown)
+  manifest.files.push(describeSample(`${name}.md`, markdown))
 }
-for (let i = 1; i <= 10; i++)
-  await writeFile(`${output}/tabs/${String(i).padStart(2, '0')}.md`, sources['ordinary.md'])
-await writeFile(`${output}/manifest.json`, JSON.stringify(manifest, null, 2) + '\n')
+const image = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0ZkAAAAASUVORK5CYII=',
+  'base64',
+)
+for (let i = 0; i < 80; i++) await writeFixture(`${output}/assets/image-${i}.png`, image)
+for (let i = 1; i <= 20; i++)
+  await writeFixture(`${output}/tabs/${String(i).padStart(2, '0')}.md`, samples['small-mixed'])
+await writeFixture(`${output}/manifest.json`, JSON.stringify(manifest, null, 2) + '\n')
 console.log(JSON.stringify(manifest, null, 2))

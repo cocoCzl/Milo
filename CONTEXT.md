@@ -41,7 +41,7 @@ Pasting rich text converts only formatting with a direct Markdown representation
 _Avoid_: HTML paste, rich-text import
 
 **Front Matter**:
-YAML metadata at the beginning of a Markdown document. Milo preserves it byte-for-byte while editing the document body in the MVP, without offering metadata editing controls.
+YAML metadata at the beginning of a Markdown document. Milo preserves it byte-for-byte while editing the document body in the MVP, without metadata controls in WYSIWYG; unreleased whole-file Source mode also allows explicit metadata edits.
 _Avoid_: document properties, editor metadata
 
 **Protected Document**:
@@ -61,7 +61,7 @@ An image referenced by an HTTP(S) Markdown URL. Milo does not load it automatica
 _Avoid_: embedded cloud image, automatic external resource
 
 **External Link**:
-A non-local URL in a Markdown document. It opens only through the operating system's default browser when the user command-clicks it, never within Milo's editor surface.
+A non-local URL in a Markdown document. It opens through the operating system's default browser, never within Milo's editor surface. Edit uses Command/Control-click; unreleased Read mode also accepts an ordinary click.
 _Avoid_: embedded web view, normal-click navigation
 
 **Supported Text File**:
@@ -107,8 +107,8 @@ Network activity initiated by Milo without a user's immediate content action. It
 _Avoid_: anonymous usage data, passive update polling
 
 **Presentation Mode**:
-The active Edit or Read state for a Document Tab. Both states use the same Markdown document and editor instance; Read disables mutation and editing affordances without introducing a second renderer or rebuilding the document.
-_Avoid_: source mode, preview renderer, simultaneous dual-pane editor
+The active Edit, Read or Source state for a Document Tab. Edit/Read share a view; Read disables mutation without rebuilding. Source loads a whole-file textarea on demand, owns the only editable state while active, and uses ordinary session saves. An unchanged return preserves visual-editor history; actual Source edits establish a new visual-editor undo boundary. Source native undo is local to that Source view.
+_Avoid_: simultaneous editable models, simultaneous dual-pane editor
 
 **Granted File Scope**:
 The files and folders the user explicitly selects through system dialogs, plus necessary descendants of a selected Current Folder. Milo does not scan or request broad filesystem access outside that scope.
@@ -178,6 +178,12 @@ _Avoid_: arbitrary Markdown, private document format
 
 Native window close and application quit share a sequential all-tab coordinator. macOS window close hides the window after approval; quit exits the process. Repeated requests are coalesced, a cancelled request returns focus to the affected tab, and in-flight writes, failures and unsettled composition remain protected. Cocoa termination is intercepted on the existing application delegate because the predefined Quit action bypassed Tauri's ExitRequested in a disposable native test.
 
-**Document Find** searches the ProseMirror document model in Edit and Read, using decorations outside content/history. Command-F opens it, Enter/Shift-Enter navigate, and Escape restores editor focus/selection. Matching is literal and non-overlapping, ASCII case-insensitive and otherwise exact. Queries are cleared on tab switch. Global search and replacement remain deferred.
+**Document Find** searches the ProseMirror document model in Edit and Read, using decorations outside content/history. Command-F opens it, Enter/Shift-Enter navigate, and Escape restores editor focus/selection. Matching is literal and non-overlapping, ASCII case-insensitive and otherwise exact. Queries are cleared on tab switch. An optional case-sensitive literal search and single/all replacement are available in Edit; replacements inherit marks at their start and each action is one undo step. Matches span inline marks but never textblock/cell/atom boundaries; newline replacement is excluded. Decoration rendering is bounded to 500 nearby matches. Source find is exact, case-sensitive, whole raw text (including Front Matter), next/wrap only; it does not offer replacement controls. Cross-document content search/replacement remains deferred.
 
 Untouched saves reuse the original Markdown body; edited bodies use normalized CommonMark/GFM serialization. This is semantic round-tripping, not byte-preserving full-document editing. Keep test logs, screenshots and temporary verification reports outside the repository. Native acceptance limits are summarized in [Known issues](docs/KNOWN_ISSUES.md); the original performance budgets remain in the release runbook. Historical release IME acceptance and budget exceptions do not validate this branch.
+
+Local navigation resolves relative `.md`/`.markdown`, percent-encoded paths and fragments at the original document path. Read uses ordinary clicks; Edit uses Command/Control-click. HTTP(S) continues through the system opener. Internal navigation never navigates the WebView; up to 50 Back locations retain tab and scroll targets. Cmd+P walks only the selected Current Folder, one directory IPC at a time, with cancellation and 500-directory/10,000-file/100-result limits. Session path metadata retains at most 64 documents independently of the recent-files list; unopened views remain lazy.
+
+Disk jobs serialize whole document transactions (including recovery/image writes) in one cancellation-safe lane to cover path aliases; settings and recovery drafts use separate lanes. This prioritizes consistency over parallel file throughput. Frontend saves retain original document/revision identities. Independent per-tab autosave timers prevent other tabs from postponing a pending save. Directory pages reuse a bounded 30-second cache; offset zero/Refresh rescans, and changed directory metadata rejects stale continuation.
+
+The [optimization work record](docs/EDITOR_OPTIMIZATION.md) records implementation status, reproducible synthetic samples, measured resource counts, and remaining native acceptance. Milkdown views/history are still retained after a visit. View eviction and lossless block preservation are not implemented: destroying a Milkdown instance also destroys the current plugin/history lifecycle, and reference definitions resolve across block boundaries.

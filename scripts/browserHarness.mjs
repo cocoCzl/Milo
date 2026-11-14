@@ -1,7 +1,7 @@
 // Shared real App/Milkdown harness. Only native IPC is stubbed; no user files or preferences are touched.
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
-import { chromium } from 'playwright'
+import { chromium, webkit } from 'playwright'
 const output = process.env.MILO_OUTLINE_ARTIFACTS || '/private/tmp/milo-outline-regression'
 const url = process.env.MILO_TEST_URL || 'http://127.0.0.1:1420'
 const markdown = await readFile(
@@ -9,7 +9,9 @@ const markdown = await readFile(
   'utf8',
 )
 await mkdir(output, { recursive: true })
-const browser = await chromium.launch({ headless: true })
+const browser = await (process.env.MILO_BROWSER === 'webkit' ? webkit : chromium).launch({
+  headless: true,
+})
 const errors = []
 
 async function settle(page) {
@@ -28,14 +30,38 @@ async function open({
   content = markdown,
   home = false,
   tabs = 1,
+  instrument = false,
+  folder = null,
 } = {}) {
   const page = await browser.newPage({ viewport: { width, height } })
+  if (instrument)
+    await page.addInitScript(() => {
+      const registrations = new Map()
+      const add = EventTarget.prototype.addEventListener
+      const remove = EventTarget.prototype.removeEventListener
+      EventTarget.prototype.addEventListener = function (type, callback, options) {
+        if (this === document || this === window) {
+          const key = `${this === document ? 'document' : 'window'}:${type}:${typeof options === 'boolean' ? options : !!options?.capture}`
+          let group = registrations.get(key)
+          if (!group) registrations.set(key, (group = new Set()))
+          group.add(callback)
+        }
+        return add.call(this, type, callback, options)
+      }
+      EventTarget.prototype.removeEventListener = function (type, callback, options) {
+        const key = `${this === document ? 'document' : 'window'}:${type}:${typeof options === 'boolean' ? options : !!options?.capture}`
+        registrations.get(key)?.delete(callback)
+        return remove.call(this, type, callback, options)
+      }
+      window.__miloListenerCounts = () =>
+        Object.fromEntries([...registrations].map(([key, values]) => [key, values.size]))
+    })
   page.on('pageerror', (error) => {
     errors.push(error.message)
     console.error(error.stack)
   })
   await page.addInitScript(
-    ({ content, theme, uiZoom, docZoom, sidebar, home, tabs }) => {
+    ({ content, theme, uiZoom, docZoom, sidebar, home, tabs, folder }) => {
       const callbacks = new Map()
       const listeners = new Map()
       const files = new Map([
@@ -48,7 +74,9 @@ async function open({
       let openId = 0
       let id = 0
       const test = {
+        setFile: (path, content) => files.set(path, content),
         writes: [],
+        profiles: [],
         command: (payload) => emit('milo://command', payload),
         open: (path) => {
           openRequests.push({ id: ++openId, path })
@@ -69,6 +97,8 @@ async function open({
         },
       }
       window.__TAURI_INTERNALS__ = {
+        convertFileSrc: () =>
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0ZkAAAAASUVORK5CYII=',
         metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
         transformCallback(fn) {
           callbacks.set(++id, fn)
@@ -88,7 +118,7 @@ async function open({
               documentFontStyle: 'sans',
               readingWidth: 'standard',
               lineHeight: 'standard',
-              currentFolder: null,
+              currentFolder: folder,
               recentFiles: [],
               recentFolders: [],
               sidebarVisible: sidebar,
@@ -97,6 +127,25 @@ async function open({
                 activeDocumentPath: home ? null : '/test/outline-long.md',
                 openDocumentPaths: home ? [] : paths,
               },
+            }
+          if (cmd === 'record_open_profile') {
+            test.profiles.push(args.record)
+            return null
+          }
+          if (cmd === 'browse_markdown_folder')
+            return {
+              path: args.path,
+              name: args.path.split('/').at(-1),
+              isDirectory: true,
+              nextOffset: null,
+              children: [...files.keys()]
+                .filter((path) => path.startsWith(`${args.path}/`))
+                .map((path) => ({
+                  path,
+                  name: path.split('/').at(-1),
+                  isDirectory: false,
+                  children: [],
+                })),
             }
           if (cmd === 'read_draft_recovery') return { drafts: [], errors: [] }
           if (
@@ -107,13 +156,15 @@ async function open({
           )
             return null
           if (cmd === 'save_application_settings') return args.settings
-          if (cmd === 'read_markdown_document')
+          if (cmd === 'read_markdown_document') {
+            if (!files.has(args.path)) throw new Error('Test file does not exist')
             return {
               path: args.path,
               markdown: files.get(args.path),
               hasBom: false,
               lineEnding: 'lf',
             }
+          }
           if (cmd.startsWith('write_markdown_document')) {
             files.set(args.request.path, args.request.markdown)
             test.writes.push(args.request)
@@ -141,7 +192,7 @@ async function open({
         },
       }
     },
-    { content, theme, uiZoom, docZoom, sidebar, home, tabs },
+    { content, theme, uiZoom, docZoom, sidebar, home, tabs, folder },
   )
   await page.goto(url)
   try {

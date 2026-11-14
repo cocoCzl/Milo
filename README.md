@@ -21,14 +21,14 @@ Milo 0.3.0 is the first public beta, available as a [GitHub Pre-release](https:/
 - Native Open, Save, Save As, recent files, Current Folder browsing and switching, tabs, startup-session restoration, and external-change protection.
 - Byte-preserved YAML Front Matter, UTF-8/BOM and LF/CRLF preservation, protected read-only handling for unsupported documents, and inode-preserving safe save with crash recovery on macOS.
 - Image paste into a document-adjacent `assets/` folder using relative Markdown links.
-- Remote images load only after an explicit action; external links open only with command-click.
+- Remote images load only after an explicit action; external links use command-click in Edit (unreleased Read mode also accepts a plain click).
 - macOS menus, keyboard shortcuts, accessibility labels, reduced-motion support, and a restrained writing surface.
 
-The development branch also includes protected native window close/quit, local unnamed-document recovery, lazy tab and folder loading, a compact top bar, collapsible Outline levels and **Cmd+F document find** in Edit and Read. These changes are unreleased; the linked 0.3.0 binary does not include them. Remaining native IME and performance acceptance gaps are listed in [Known issues](docs/KNOWN_ISSUES.md).
+The development branch also includes protected native window close/quit, local unnamed-document recovery, lazy tab and folder loading, a compact top bar, collapsible Outline levels and **Cmd+F document find** in Edit and Read. It now also includes relative Markdown links and anchors with Back navigation, find/replace, Cmd+P search inside the selected folder, Finder/path actions, and an on-demand whole-file Source mode. Disk transactions run on ordered blocking workers; Home no longer preloads Milkdown. These changes are unreleased; the linked 0.3.0 binary does not include them. Remaining native IME and performance acceptance gaps are listed in [Known issues](docs/KNOWN_ISSUES.md).
 
 ## Privacy and data model
 
-Saved Markdown files remain the authoritative documents. Application preferences, recent paths and session metadata live outside document folders. In the current development source, unnamed dirty documents also get independent local recovery JSON copies of stable content (after 600 ms); these are removed after successful first save or explicit discard. Snapshots can lag edits and cannot guarantee recovery before the first snapshot or after disk failure. No database or cloud copy is used.
+Saved Markdown files remain the authoritative documents. Application preferences, recent paths and session metadata live outside document folders. In the current development source, unnamed dirty documents also get independent local recovery JSON copies of stable content (sampled on a bounded 600 ms timer; unsettled composition is excluded); these are removed after successful first save or explicit discard. Snapshots can lag edits and cannot guarantee recovery before the first snapshot or after disk failure. No database or cloud copy is used.
 
 Remote image URLs are never requested until you choose to load a particular image. Milo does not ship an embedded browser, account system, analytics service, or backend API.
 
@@ -39,7 +39,7 @@ Remote image URLs are never requested until you choose to load a particular imag
 - Editor: Milkdown, ProseMirror, Remark, and GFM
 - Native services: Tauri dialogs, file watching, JSON application settings, and system menus
 
-Mermaid, KaTeX, Shiki, Source Mode, export, and global search/replacement are deliberately deferred so they cannot slow the MVP startup path.
+Mermaid, KaTeX, Shiki, export, and cross-document content search/replacement remain deferred. Source mode loads on demand, includes Front Matter, and uses the same safe-save/conflict/recovery pipeline. Unchanged mode switches preserve the original text. Editing Source then returning to WYSIWYG starts a new visual-editor undo history; unsupported raw HTML stays in Source. Other decoding/protection errors remain protected. WYSIWYG edits still normalize Markdown formatting; full-file lossless editing is not claimed. See the [implementation and validation record](docs/EDITOR_OPTIMIZATION.md).
 
 ## Download and install
 
