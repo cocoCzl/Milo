@@ -7,6 +7,15 @@ export type EditorCopy = BlockMenuCopy &
   EditorContextMenuCopy &
   EditorLinkPopoverCopy &
   SelectionToolbarCopy & {
+    copied: string
+    copyFailed: string
+    editorLoadFailed: string
+    retry: string
+    replace: string
+    replaceAll: string
+    matchCase: string
+    linkOpenFailed: string
+    anchorNotFound: string
     find: string
     findPrevious: string
     findNext: string
@@ -38,6 +47,15 @@ export type EditorCopy = BlockMenuCopy &
   }
 
 export const defaultEditorCopy: EditorCopy = {
+  copied: 'Copied',
+  copyFailed: 'Copy failed — try again',
+  editorLoadFailed: 'Could not load the editor. Your document is retained.',
+  retry: 'Retry',
+  replace: 'Replace',
+  replaceAll: 'Replace all',
+  matchCase: 'Match case',
+  linkOpenFailed: 'Could not open this link. Try again.',
+  anchorNotFound: 'Heading not found in this document.',
   find: 'Find in document',
   findPrevious: 'Previous match',
   findNext: 'Next match',

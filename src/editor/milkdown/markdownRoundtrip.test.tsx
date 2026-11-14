@@ -58,3 +58,30 @@ it('does not publish normalized content merely for saving, mode or outline chang
   expect(container.querySelector('.ProseMirror')).toHaveAttribute('contenteditable', 'false')
   expect(change).not.toHaveBeenCalled()
 })
+
+it('retains cross-block reference targets after editing while documenting why block splicing needs dependency tracking', async () => {
+  const source =
+    'Opening words.\n\n> [Reference][shared]\n\n- [Reference][shared]\n\n| Link |\n| --- |\n| [Reference][shared] |\n\n[shared]: https://example.com/shared "Shared title"\n'
+  const change = vi.fn()
+  const { container } = render(
+    <MilkdownEditor initialMarkdown={source} onMarkdownChange={change} />,
+  )
+  await waitFor(() =>
+    expect(container.querySelector('.milkdown-editor')).toHaveAttribute('aria-busy', 'false'),
+  )
+  const links = container.querySelectorAll('.ProseMirror a')
+  expect(links).toHaveLength(3)
+  for (const link of links) expect(link).toHaveAttribute('href', 'https://example.com/shared')
+  const opening = container.querySelector('.ProseMirror > p')!
+  opening.textContent = 'Opening words edited.'
+  fireEvent.input(opening.closest('.ProseMirror')!, { inputType: 'insertText' })
+  await waitFor(() => expect(change).toHaveBeenCalled())
+  const output = change.mock.calls.at(-1)![0] as string
+  expect(
+    output.match(/\[Reference\]\(https:\/\/example.com\/shared "Shared title"\)/g),
+  ).toHaveLength(3)
+  expect(output).not.toContain('[shared]:')
+  // PM has resolved references and discarded definition identity. Preserving an
+  // untouched definition/use independently could create stale or dangling links.
+  expect(output).not.toBe(source.replace('Opening words.', 'Opening words edited.'))
+})

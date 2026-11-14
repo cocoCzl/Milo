@@ -1,9 +1,5 @@
 // Opt-in local measurement only. Ordinary builds retain helpers but record nothing.
 import { invoke } from '@tauri-apps/api/core'
-import type { MilkdownPlugin } from '@milkdown/ctx'
-import { createTimer } from '@milkdown/ctx'
-import { editorStateOptionsCtx, editorStateTimerCtx, ParserReady, parserCtx } from '@milkdown/core'
-import { Plugin } from '@milkdown/prose/state'
 import type { Node } from '@milkdown/prose/model'
 
 const profileEnabled = () => import.meta.env.VITE_MILO_PROFILE === '1'
@@ -84,7 +80,6 @@ export function emitProfile(profile: OpenProfile | undefined, phase: string) {
     record: {
       kind: 'frontend',
       phase,
-      path: profile.path,
       source: profile.source,
       epochMs: profile.epochMs,
       bytes: profile.bytes,
@@ -92,72 +87,44 @@ export function emitProfile(profile: OpenProfile | undefined, phase: string) {
       marks: { ...profile.marks },
       build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
     },
-  }).catch((reason) => console.error('Milo open profile could not be recorded', reason))
+  }).catch(() => console.error('Milo open profile could not be recorded'))
 }
-export function createOpenProfilePlugin(profile: OpenProfile): MilkdownPlugin {
-  const wrapped = createTimer('MiloProfileParserWrapped')
-  return (ctx) => {
-    ctx.record(wrapped).update(editorStateTimerCtx, (timers) => [...timers, wrapped])
-    return async () => {
-      await ctx.wait(ParserReady)
-      ctx.update(parserCtx, (parser) => (value) => {
-        const doc = profileMeasure(profile, 'milkdown-parse', () => parser(value))
-        if (doc) documents.set(doc, profile)
-        return doc
-      })
-      ctx.update(editorStateOptionsCtx, (override) => (options) => {
-        const configured = override(options)
-        markProfile(profile, 'plugin-state-init-start')
-        return {
-          ...configured,
-          plugins: [
-            ...(configured.plugins ?? []),
-            new Plugin({
-              state: {
-                init: () => {
-                  markProfile(profile, 'plugin-state-init-end')
-                  return null
-                },
-                apply: (_transaction, value) => value,
-              },
-              view: () => {
-                markProfile(profile, 'view-dom-built')
-                return {}
-              },
-              props: {
-                handleKeyDown: (_view, event) => {
-                  if (event.isTrusted && !profile.inputRecorded)
-                    profile.inputStart = performance.now()
-                  return false
-                },
-              },
-            }),
-            new Plugin({
-              view: () => ({
-                update: (view, previous) => {
-                  if (
-                    profile.inputStart !== undefined &&
-                    !profile.inputRecorded &&
-                    previous.doc !== view.state.doc
-                  ) {
-                    profile.inputRecorded = true
-                    profile.entries.push({
-                      stage: 'trusted-key-to-model-change',
-                      ms: performance.now() - profile.inputStart,
-                      endMs: performance.now() - profile.started,
-                    })
-                    emitProfile(profile, 'input-probe')
-                  }
-                },
-              }),
-            }),
-          ],
-        }
-      })
-      ctx.done(wrapped)
-      return () => {
-        ctx.clearTimer(wrapped)
-      }
-    }
+
+export function bindProfileDocument(doc: Node, profile: OpenProfile) {
+  documents.set(doc, profile)
+}
+
+export type RuntimeMetric = { count: number; totalMs: number; maxMs: number; recentMs: number[] }
+const runtimeMetrics: Record<string, RuntimeMetric> = {}
+if (profileEnabled())
+  (globalThis as typeof globalThis & { __miloMetrics?: typeof runtimeMetrics }).__miloMetrics =
+    runtimeMetrics
+function recordRuntime(stage: string, ms: number) {
+  const metric = (runtimeMetrics[stage] ??= { count: 0, totalMs: 0, maxMs: 0, recentMs: [] })
+  metric.count++
+  metric.totalMs += ms
+  metric.maxMs = Math.max(metric.maxMs, ms)
+  metric.recentMs.push(ms)
+  if (metric.recentMs.length > 128) metric.recentMs.shift()
+}
+export function measureRuntime<T>(stage: string, operation: () => T): T {
+  if (!profileEnabled()) return operation()
+  const start = performance.now()
+  try {
+    return operation()
+  } finally {
+    recordRuntime(stage, performance.now() - start)
+  }
+}
+export async function measureRuntimeAsync<T>(
+  stage: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (!profileEnabled()) return operation()
+  const start = performance.now()
+  try {
+    return await operation()
+  } finally {
+    recordRuntime(stage, performance.now() - start)
   }
 }

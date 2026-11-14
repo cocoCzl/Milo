@@ -36,6 +36,8 @@ export const emptyDocumentTab: DocumentTab = {
 }
 
 export type DocumentSession = {
+  sourceMode?: boolean
+  sourceEntryRevision?: number
   recoveryId?: string
   id: number
   path: string | null

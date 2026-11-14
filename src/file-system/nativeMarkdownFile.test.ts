@@ -41,9 +41,17 @@ describe('ensureMarkdownExtension', () => {
     expect(mocks.invoke).toHaveBeenNthCalledWith(1, 'write_markdown_document', {
       request: document,
     })
-    expect(mocks.invoke).toHaveBeenNthCalledWith(2, 'write_image_asset', {
-      request: { documentPath: document.path, ...image },
-    })
+    expect(mocks.invoke).toHaveBeenNthCalledWith(
+      2,
+      'write_image_asset_binary',
+      new Uint8Array(image.bytes),
+      {
+        headers: {
+          'x-milo-document': JSON.stringify(document.path),
+          'x-milo-mime': image.mimeType,
+        },
+      },
+    )
   })
 
   it('recovers an ordinary macOS document before reading and sends its expected disk version to safe save', async () => {

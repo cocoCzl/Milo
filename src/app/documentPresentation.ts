@@ -9,7 +9,12 @@ export function displayDocumentTitle(
 }
 
 export function statusTone(tab: DocumentTab): 'saved' | 'dirty' | 'error' {
-  if (tab.saveError || tab.error || tab.externalChange || tab.document.protectionReason)
+  if (
+    tab.saveError ||
+    tab.error ||
+    tab.externalChange ||
+    (tab.document.protectionReason && !tab.document.sourceMode)
+  )
     return 'error'
   if (tab.document.isDirty || tab.activity === 'saving' || tab.activity === 'opening')
     return 'dirty'
@@ -22,7 +27,7 @@ export function fileName(path: string): string {
 
 export function documentStatus(tab: DocumentTab, copy: InterfaceCopy): string {
   if (tab.externalChange) return copy.externalChange
-  if (tab.document.protectionReason) return copy.protectedDocument
+  if (tab.document.protectionReason && !tab.document.sourceMode) return copy.protectedDocument
   if (tab.saveError || tab.error) return copy.saveFailed
   if (tab.activity === 'opening') return `${copy.openDocument}…`
   if (tab.activity === 'saving') return `${copy.saving}…`

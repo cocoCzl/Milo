@@ -1,11 +1,19 @@
+import { isSupportedLink, type NavigationTarget } from '../../file-system/documentLink'
+import { createOpenProfilePlugin } from '../../diagnostics/editorOpenProfile'
 import {
+  measureRuntime,
   takeOpenProfile,
-  createOpenProfilePlugin,
   markProfile,
   profileMeasure,
   emitProfile,
 } from '../../diagnostics/openProfile'
-import { createDocumentFind, moveFindMatch, setFindQuery, type FindState } from './documentFind'
+import {
+  replaceFindMatches,
+  createDocumentFind,
+  moveFindMatch,
+  setFindQuery,
+  type FindState,
+} from './documentFind'
 import { DocumentFindBar } from './DocumentFindBar'
 import {
   defaultValueCtx,
@@ -76,7 +84,7 @@ import {
   readHeadings,
   type PendingHeadingNavigation,
 } from './headingNavigation'
-import { createCodeBlockNodeView } from './codeBlockNodeView'
+import { closeCodeBlockMenu, createCodeBlockNodeView } from './codeBlockNodeView'
 import { createImageNodeView } from './imageNodeView'
 import {
   createCompositionSaveBoundary,
@@ -105,6 +113,9 @@ type MilkdownEditorProps = {
   documentPath?: string | null
   initialMarkdown: string
   onRegisterFlush?: (flush: (() => boolean) | null) => void
+  onNavigateLink?: (href: string) => void
+  navigationTarget?: NavigationTarget
+  onContentChange?: () => void
   onMarkdownChange?: (markdown: string) => void
   onCompositionChange?: (state: EditorComposition) => void
   onPasteImage?: (image: PastedImage) => Promise<string | null>
@@ -191,6 +202,9 @@ export function MilkdownEditor({
   editorId = 'standalone-editor',
   documentPath = null,
   initialMarkdown,
+  onNavigateLink,
+  navigationTarget,
+  onContentChange,
   onMarkdownChange,
   onRegisterFlush,
   onCompositionChange,
@@ -218,7 +232,11 @@ export function MilkdownEditor({
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<EditorMenu | null>(null)
   const [findOpen, setFindOpen] = useState(false)
+  const [interactionError, setInteractionError] = useState<string | null>(null)
+  const [creationError, setCreationError] = useState(false)
+  const [creationAttempt, setCreationAttempt] = useState(0)
   const [findQuery, setFindQueryState] = useState('')
+  const findCaseRef = useRef(false)
   const [findResult, setFindResult] = useState<Pick<FindState, 'matches' | 'current'>>({
     matches: [],
     current: -1,
@@ -251,6 +269,8 @@ export function MilkdownEditor({
   const dismissedSelectionRef = useRef<string | null>(null)
   if (!contextualStoreRef.current) contextualStoreRef.current = new ContextualEditorStore()
 
+  const onContentChangeRef = useRef(onContentChange)
+  onContentChangeRef.current = onContentChange
   onMarkdownChangeRef.current = onMarkdownChange
   onRegisterFlushRef.current = onRegisterFlush
   onCompositionChangeRef.current = onCompositionChange
@@ -276,6 +296,7 @@ export function MilkdownEditor({
     markProfile(profile, 'editor-effect-start')
     let disposed = false
     let publishTimer: number | undefined
+    let maxPublishTimer: number | undefined
     let serializedDoc: import('@milkdown/prose/model').Node | null = null
     let serialized = ''
     let originalDoc: import('@milkdown/prose/model').Node | null = null
@@ -287,7 +308,7 @@ export function MilkdownEditor({
       if (serializedDoc !== view.state.doc) {
         serialized = originalDoc?.eq(view.state.doc)
           ? initialMarkdownRef.current
-          : ctx.get(serializerCtx)(view.state.doc)
+          : measureRuntime('markdown-serialize', () => ctx.get(serializerCtx)(view.state.doc))
         serializedDoc = view.state.doc
       }
       return serialized
@@ -295,6 +316,8 @@ export function MilkdownEditor({
     const publish = () => {
       if (disposed) return false
       window.clearTimeout(publishTimer)
+      window.clearTimeout(maxPublishTimer)
+      maxPublishTimer = undefined
       return editor.action((ctx) => {
         const view = ctx.get(editorViewCtx)
         if (hasPendingComposition(view)) return false
@@ -329,9 +352,11 @@ export function MilkdownEditor({
           new Plugin({
             view: (view) => ({
               update: (_view, previous) => {
-                if (disposed || previous.doc === view.state.doc) return
+                if (disposed || !originalDoc || previous.doc === view.state.doc) return
+                onContentChangeRef.current?.()
                 window.clearTimeout(publishTimer)
-                publishTimer = window.setTimeout(publish, 150)
+                publishTimer = window.setTimeout(publish, 350)
+                maxPublishTimer ??= window.setTimeout(publish, 2000)
                 const next = readHeadings(view.state)
                 setHeadings((current) =>
                   current.length === next.length &&
@@ -432,55 +457,67 @@ export function MilkdownEditor({
     if (profile) editor.use(createOpenProfilePlugin(profile))
     editorRef.current = editor
     markProfile(profile, 'milkdown-create-start')
-    void editor.create().then(() => {
-      markProfile(profile, 'milkdown-create-end')
-      if (disposed) {
-        void editor.destroy()
-        return
-      }
+    void editor
+      .create()
+      .then(() => {
+        markProfile(profile, 'milkdown-create-end')
+        if (disposed) {
+          void editor.destroy()
+          return
+        }
 
-      const proseMirror = editorRoot.querySelector<HTMLElement>('.ProseMirror')
+        const proseMirror = editorRoot.querySelector<HTMLElement>('.ProseMirror')
 
-      proseMirror?.setAttribute('aria-label', ariaLabelRef.current)
-      proseMirror?.setAttribute('tabindex', '0')
-      proseMirror?.focus()
-      editor.action((ctx) => {
-        const editorState = ctx.get(editorViewCtx).state
-        originalDoc = editorState.doc
-        publishedDoc = editorState.doc
-        setHeadings(readHeadings(editorState))
-      })
-      onRegisterFlushRef.current?.(publish)
-      setIsReady(true)
-      if (profile)
-        window.setTimeout(() => {
-          if (disposed) return
-          profileMeasure(profile, 'first-layout-forced', () => proseMirror?.getBoundingClientRect())
-          markProfile(profile, 'layout-and-editable')
+        proseMirror?.setAttribute('aria-label', ariaLabelRef.current)
+        proseMirror?.setAttribute('tabindex', '0')
+        proseMirror?.focus()
+        editor.action((ctx) => {
+          const editorState = ctx.get(editorViewCtx).state
+          originalDoc = editorState.doc
+          publishedDoc = editorState.doc
+          setHeadings(readHeadings(editorState))
+        })
+        onRegisterFlushRef.current?.(publish)
+        setIsReady(true)
+        if (profile)
           window.setTimeout(() => {
-            if (!disposed) {
-              markProfile(profile, 'next-task')
-              emitProfile(profile, 'ready')
-            }
+            if (disposed) return
+            profileMeasure(profile, 'first-layout-forced', () =>
+              proseMirror?.getBoundingClientRect(),
+            )
+            markProfile(profile, 'layout-and-editable')
+            window.setTimeout(() => {
+              if (!disposed) {
+                markProfile(profile, 'next-task')
+                emitProfile(profile, 'ready')
+              }
+            }, 0)
           }, 0)
-        }, 0)
-    })
+      })
+      .catch(() => {
+        if (!disposed) setCreationError(true)
+      })
 
     return () => {
       disposed = true
       window.clearTimeout(publishTimer)
+      window.clearTimeout(maxPublishTimer)
       onRegisterFlushRef.current?.(null)
       contextualStoreRef.current?.clear()
       editorRef.current = null
       void editor.destroy()
     }
-  }, [])
+  }, [creationAttempt])
 
   useEffect(() => {
     editorRootRef.current
       ?.querySelector<HTMLElement>('.ProseMirror')
       ?.setAttribute('aria-label', ariaLabel)
   }, [ariaLabel])
+
+  useEffect(() => {
+    if (!active || presentationMode !== 'edit') closeCodeBlockMenu(editorRootRef.current)
+  }, [active, presentationMode])
 
   useEffect(() => {
     if (!isReady) return
@@ -542,7 +579,20 @@ export function MilkdownEditor({
       if (isReady) editorRef.current?.action((ctx) => setFindQuery(ctx.get(editorViewCtx), ''))
       return
     }
+    if (!isReady) return
     const open = (event: KeyboardEvent) => {
+      if (
+        event.isComposing ||
+        event.keyCode === 229 ||
+        editorRef.current?.action((ctx) => hasPendingComposition(ctx.get(editorViewCtx)))
+      )
+        return
+      if (event.key === 'Escape' && findOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeFind()
+        return
+      }
       if (
         !(event.metaKey || event.ctrlKey) ||
         event.key.toLowerCase() !== 'f' ||
@@ -565,7 +615,7 @@ export function MilkdownEditor({
       window.removeEventListener('keydown', open)
       window.removeEventListener('milo:find', openFromMenu)
     }
-  }, [active, isReady])
+  }, [active, isReady, findOpen, closeFind])
 
   useEffect(() => {
     if (active && findOpen && findResult.matches.length)
@@ -595,7 +645,7 @@ export function MilkdownEditor({
         .arrayBuffer()
         .then((buffer) =>
           onPasteImageRef.current?.({
-            bytes: Array.from(new Uint8Array(buffer)),
+            bytes: new Uint8Array(buffer),
             mimeType: image.type,
           }),
         )
@@ -612,7 +662,7 @@ export function MilkdownEditor({
       if (!(target instanceof Element)) return
       const link = target.closest<HTMLAnchorElement>('a[href]')
       const url = link?.getAttribute('href')
-      if (!url || !isExternalHttpUrl(url)) return null
+      if (!url || !isSupportedLink(url)) return null
       return url
     },
     [],
@@ -653,9 +703,11 @@ export function MilkdownEditor({
       event.preventDefault()
       event.stopPropagation()
       linkNavigationPointerRef.current = false
-      void openExternalLink(url).catch(() => undefined)
+      if (isExternalHttpUrl(url))
+        void openExternalLink(url).catch(() => setInteractionError(copyRef.current.linkOpenFailed))
+      else onNavigateLink?.(url)
     },
-    [linkNavigationTarget],
+    [linkNavigationTarget, onNavigateLink],
   )
 
   const focusEditor = useCallback(() => {
@@ -762,6 +814,32 @@ export function MilkdownEditor({
     },
     [active],
   )
+
+  const lastNavigationRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (
+      !active ||
+      !isReady ||
+      !navigationTarget ||
+      lastNavigationRef.current === navigationTarget.token
+    )
+      return
+    lastNavigationRef.current = navigationTarget.token
+    const stage = editorRootRef.current?.closest<HTMLElement>('.document-stage')
+    if (navigationTarget.scrollTop !== undefined) {
+      if (stage) stage.scrollTop = navigationTarget.scrollTop
+      return
+    }
+    if (!navigationTarget.anchor) {
+      if (stage) stage.scrollTop = 0
+      return
+    }
+    const heading = headings.find(
+      (h) => h.id === navigationTarget.anchor || h.text === navigationTarget.anchor,
+    )
+    if (heading) navigateToHeading(heading)
+    else setInteractionError(copyRef.current.anchorNotFound)
+  }, [active, isReady, navigationTarget, headings, navigateToHeading])
 
   useEffect(() => {
     if (!active || !isReady) return
@@ -1264,15 +1342,54 @@ export function MilkdownEditor({
         if (!event.defaultPrevented) pasteImage(event)
       }}
     >
+      {interactionError ? (
+        <div role="alert" className="document-error">
+          <span>{interactionError}</span>
+          <button type="button" onClick={() => setInteractionError(null)}>
+            {editorCopy.cancel}
+          </button>
+        </div>
+      ) : null}
+      {creationError ? (
+        <div role="alert" className="document-error">
+          <span>{editorCopy.editorLoadFailed}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setCreationError(false)
+              setCreationAttempt((n) => n + 1)
+            }}
+          >
+            {editorCopy.retry}
+          </button>
+        </div>
+      ) : null}
       {findOpen && active ? (
         <DocumentFindBar
           copy={editorCopy}
           query={findQuery}
           count={findResult.matches.length}
           current={findResult.current}
+          onMatchCase={(value) => {
+            findCaseRef.current = value
+            editorRef.current?.action((ctx) =>
+              setFindQuery(ctx.get(editorViewCtx), findQuery, value),
+            )
+          }}
+          onReplace={
+            presentationMode === 'edit'
+              ? (text, all) => {
+                  editorRef.current?.action((ctx) =>
+                    replaceFindMatches(ctx.get(editorViewCtx), text, all),
+                  )
+                }
+              : undefined
+          }
           onQuery={(query) => {
             setFindQueryState(query)
-            editorRef.current?.action((ctx) => setFindQuery(ctx.get(editorViewCtx), query))
+            editorRef.current?.action((ctx) =>
+              setFindQuery(ctx.get(editorViewCtx), query, findCaseRef.current),
+            )
           }}
           onMove={(direction) =>
             editorRef.current?.action((ctx) => moveFindMatch(ctx.get(editorViewCtx), direction))
@@ -1320,7 +1437,7 @@ export function MilkdownEditor({
                   canRemove={linkCanRemove}
                   copy={editorCopy}
                   href={linkUrl}
-                  hrefValid={isExternalHttpUrl(linkUrl.trim())}
+                  hrefValid={isSupportedLink(linkUrl.trim())}
                   mode={linkMode}
                   position={linkAnchor}
                   selection={linkSelection}

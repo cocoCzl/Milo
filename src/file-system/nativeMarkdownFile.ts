@@ -1,3 +1,4 @@
+import { measureRuntimeAsync } from '../diagnostics/openProfile'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 
@@ -19,7 +20,7 @@ export type MarkdownTreeNode = {
 }
 
 export type PastedImage = {
-  bytes: number[]
+  bytes: number[] | Uint8Array
   mimeType: string
 }
 
@@ -82,21 +83,25 @@ export async function recoverAndReadMarkdownFile(
 }
 
 export async function writeMarkdownFile(document: MarkdownFile): Promise<MarkdownFile> {
-  return invoke<MarkdownFile>('write_markdown_document', { request: document })
+  return measureRuntimeAsync('save-ipc', () =>
+    invoke<MarkdownFile>('write_markdown_document', { request: document }),
+  )
 }
 
 export async function writeMarkdownFileSafely(
   document: MarkdownFile,
   expectedDisk: MarkdownFile | null,
 ): Promise<MarkdownFile> {
-  return invoke<MarkdownFile>('write_markdown_document_safe_v2', {
-    request: {
-      ...document,
-      expectedMarkdown: expectedDisk?.markdown ?? null,
-      expectedLineEnding: expectedDisk?.lineEnding ?? null,
-      expectedHasBom: expectedDisk?.hasBom ?? null,
-    },
-  })
+  return measureRuntimeAsync('safe-save-ipc', () =>
+    invoke<MarkdownFile>('write_markdown_document_safe_v2', {
+      request: {
+        ...document,
+        expectedMarkdown: expectedDisk?.markdown ?? null,
+        expectedLineEnding: expectedDisk?.lineEnding ?? null,
+        expectedHasBom: expectedDisk?.hasBom ?? null,
+      },
+    }),
+  )
 }
 
 export async function pickMarkdownFolder(): Promise<string | null> {
@@ -120,7 +125,14 @@ export async function writeImageAsset(
   documentPath: string,
   image: PastedImage,
 ): Promise<ImageAsset> {
-  return invoke<ImageAsset>('write_image_asset', { request: { documentPath, ...image } })
+  // ASCII JSON header retains Unicode paths without a number[] JSON payload.
+  const pathHeader = JSON.stringify(documentPath).replace(
+    /[\u007f-\uffff]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  )
+  return invoke<ImageAsset>('write_image_asset_binary', new Uint8Array(image.bytes), {
+    headers: { 'x-milo-document': pathHeader, 'x-milo-mime': image.mimeType },
+  })
 }
 
 export function ensureMarkdownExtension(path: string): string {

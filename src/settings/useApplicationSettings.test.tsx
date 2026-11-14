@@ -212,4 +212,15 @@ describe('useApplicationSettings', () => {
     expect(hook.result.current.settingsError).toBe('Preference storage could not be read')
     hook.unmount()
   })
+  it('restores twenty document paths without mounting them or truncating the session to recent-file count', async () => {
+    const paths = Array.from({ length: 20 }, (_, index) => `/notes/tab-${index}.md`)
+    settingsBoundary.load.mockResolvedValue({
+      startupSession: { activeDocumentPath: paths[19], openDocumentPaths: paths },
+    })
+    const hook = renderHook(() => useApplicationSettings())
+    await waitFor(() =>
+      expect(hook.result.current.settings.startupSession.openDocumentPaths).toEqual(paths),
+    )
+    expect(hook.result.current.settings.startupSession.activeDocumentPath).toBe(paths[19])
+  })
 })

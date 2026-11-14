@@ -1805,4 +1805,178 @@ describe('useDocumentSession', () => {
     expect(fileOnDisk).toBe('# Continued after cancellation')
     expect(session.result.current.saveError).toBeNull()
   })
+  it('saves protected syntax only from Source, preserves Front Matter and refuses unsafe mode conversion', async () => {
+    fileOnDisk = '---\nname: original\n---\n\n<div>raw HTML</div>\n'
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    expect(session.result.current.document.protectionReason).toContain('raw HTML')
+    await act(async () => {
+      expect(await session.result.current.saveDocument()).toBe(false)
+      expect(await session.result.current.setSourceMode(id, true)).toBe(true)
+    })
+    const source = '---\nname: edited\n---\n\n<div>中文 HTML</div>\n'
+    act(() =>
+      session.result.current.updateSource(
+        {
+          tabId: session.result.current.activeTabId!,
+          documentId: session.result.current.document.id,
+          path: session.result.current.document.path,
+        },
+        source,
+      ),
+    )
+    await act(async () => {
+      expect(await session.result.current.saveDocument()).toBe(true)
+    })
+    expect(fileOnDisk).toBe(source)
+    await act(async () => {
+      expect(await session.result.current.setSourceMode(id, false)).toBe(false)
+    })
+    expect(session.result.current.document.sourceMode).toBe(true)
+    expect(session.result.current.document.isDirty).toBe(false)
+    act(() =>
+      session.result.current.updateSource(
+        {
+          tabId: session.result.current.activeTabId!,
+          documentId: session.result.current.document.id,
+          path: session.result.current.document.path,
+        },
+        '# Supported\n',
+      ),
+    )
+    await act(async () => {
+      expect(await session.result.current.setSourceMode(id, false)).toBe(true)
+    })
+    expect(session.result.current.document.protectionReason).toBeNull()
+    expect(session.result.current.document.markdown).toBe('# Supported\n')
+  })
+
+  it('keeps unchanged mode switches clean and ignores an obsolete visual-editor callback while Source owns the file', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    const version = session.result.current.document.editorVersion
+    await act(async () => {
+      expect(await session.result.current.setSourceMode(id, true)).toBe(true)
+    })
+    act(() =>
+      session.result.current.updateMarkdown(
+        {
+          tabId: session.result.current.activeTabId!,
+          documentId: session.result.current.document.id,
+          path: session.result.current.document.path,
+        },
+        'stale hidden view',
+      ),
+    )
+    expect(session.result.current.document.markdown).toBe('# Before\n')
+    await act(async () => {
+      expect(await session.result.current.setSourceMode(id, false)).toBe(true)
+    })
+    expect(session.result.current.document.editorVersion).toBe(version)
+    expect(session.result.current.document.isDirty).toBe(false)
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
+  it('retries a denied watcher independently of save feedback', async () => {
+    mocks.watchMarkdownFile.mockRejectedValueOnce(new Error('watch denied'))
+    const session = renderHook(() => useDocumentSession())
+    await act(async () => {
+      await session.result.current.openDocumentAtPath(path)
+    })
+    await waitFor(() => expect(session.result.current.watchState).toBe('unavailable'))
+    await act(async () => {
+      await session.result.current.retryWatch(session.result.current.activeTabId!)
+    })
+    await waitFor(() => expect(session.result.current.watchState).toBe('active'))
+    expect(session.result.current.watchError).toBeNull()
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+  it('keeps a Source edit made while safety inspection is returning and rejects the obsolete mode switch', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    await act(async () => {
+      await session.result.current.setSourceMode(id, true)
+    })
+    const safety = await import('../editor/markdown/documentSafety')
+    const inspect = safety.inspectMarkdownDocument
+    const spy = vi.spyOn(safety, 'inspectMarkdownDocument').mockImplementationOnce((text) => {
+      const result = inspect(text)
+      session.result.current.updateSource(originFor(session, id), '# Newer source')
+      return result
+    })
+    try {
+      await act(async () => {
+        expect(await session.result.current.setSourceMode(id, false)).toBe(false)
+      })
+      expect(session.result.current.document.sourceMode).toBe(true)
+      expect(session.result.current.document.markdown).toBe('# Newer source')
+      expect(session.result.current.document.isDirty).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('keeps local input made during external-change inspection and offers a conflict', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    const safety = await import('../editor/markdown/documentSafety')
+    const inspect = safety.inspectMarkdownDocument
+    const spy = vi.spyOn(safety, 'inspectMarkdownDocument').mockImplementationOnce((text) => {
+      const result = inspect(text)
+      session.result.current.updateMarkdown(originFor(session, id), '# Local input')
+      return result
+    })
+    try {
+      fileOnDisk = '# Changed outside'
+      act(() => notifyChange?.())
+      await waitFor(() => expect(session.result.current.externalChange).toBe('pending'))
+      expect(session.result.current.document.markdown).toBe('# Local input')
+      act(() =>
+        session.result.current.updateMarkdown(originFor(session, id), '# Continued local input'),
+      )
+      expect(session.result.current.externalChange).toBe('pending')
+      expect(session.result.current.document.isDirty).toBe(true)
+      expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('reuses the canonical file when restored session paths are aliases', async () => {
+    const session = renderHook(() => useDocumentSession())
+    await act(async () => {
+      await session.result.current.restoreStartupSession({
+        activeDocumentPath: '/tmp/alias.md',
+        openDocumentPaths: [path, '/tmp/alias.md'],
+      })
+    })
+    expect(session.result.current.tabs).toHaveLength(1)
+    expect(session.result.current.document.path).toBe(path)
+  })
+  it('does not postpone one document autosave when another tab is edited', async () => {
+    mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
+      path: requestedPath,
+      markdown: '# Before\n',
+      lineEnding: 'lf',
+      hasBom: false,
+    }))
+    const session = await openSavedDocument()
+    const first = session.result.current.activeTabId!
+    await act(async () => {
+      await session.result.current.openDocumentAtPath('/tmp/second.md')
+    })
+    vi.useFakeTimers()
+    act(() => session.result.current.updateMarkdown(originFor(session, first), '# First edit'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800)
+    })
+    act(() => updateActive(session, '# Second edit'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200)
+    })
+    expect(mocks.writeMarkdownFile.mock.calls.map(([file]) => file.path)).toEqual([path])
+    expect(session.result.current.tabs.find((tab) => tab.id === first)?.document.isDirty).toBe(
+      false,
+    )
+  })
 })

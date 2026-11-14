@@ -1,13 +1,8 @@
-import {
-  startOpenProfile,
-  profileAsync,
-  profileMeasure,
-  stageOpenProfile,
-} from '../diagnostics/openProfile'
+import { startOpenProfile, profileAsync, stageOpenProfile } from '../diagnostics/openProfile'
 import { queueDraft, readDrafts, flushDrafts } from '../file-system/draftRecovery'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { composeMarkdownDocument, inspectMarkdownDocument } from '../editor/markdown/documentSafety'
+import { composeMarkdownDocument, splitFrontMatter } from '../editor/markdown/documentBoundary'
 import { watchMarkdownFile } from '../file-system/nativeFileWatcher'
 import type { StartupSession } from '../settings/applicationSettings'
 import {
@@ -32,6 +27,12 @@ import {
   writeMarkdownFileSafely,
 } from '../file-system/nativeMarkdownFile'
 
+// Safety parsing is loaded only when a document actually needs inspection.
+async function inspectMarkdownDocument(markdown: string) {
+  const safety = await import('../editor/markdown/documentSafety')
+  return safety.inspectMarkdownDocument(markdown)
+}
+
 let documentId = 0
 
 function createUntitledDocument(): DocumentSession {
@@ -40,6 +41,8 @@ function createUntitledDocument(): DocumentSession {
 }
 
 export function useDocumentSession(untitledTitle = 'Untitled') {
+  const autoSaveTimers = useRef(new Map<number, { signature: string; timer: number }>())
+  const [watchRetry, setWatchRetry] = useState(0)
   const [openError, setOpenError] = useState<string | null>(null)
   const [tabs, setTabs] = useState<DocumentTab[]>([])
   const [activeTabId, setActiveTabId] = useState<number | null>(null)
@@ -140,11 +143,28 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     return nextTab
   }, [])
 
+  const markContentChanged = useCallback(
+    (origin: DocumentOrigin) => {
+      const tab = getOriginTab(origin)
+      if (!tab || tab.document.sourceMode || tab.document.protectionReason || tab.document.isDirty)
+        return
+      replaceTab(origin.tabId, (current) => ({
+        ...current,
+        document: { ...current.document, isDirty: true },
+        saveFeedback: current.document.path ? 'pending' : 'idle',
+      }))
+    },
+    [getOriginTab, replaceTab],
+  )
+
   const updateMarkdown = useCallback(
     (origin: DocumentOrigin, markdown: string) => {
       const tab = getOriginTab(origin)
       const ignored =
-        !tab || Boolean(tab.document.protectionReason) || tab.document.markdown === markdown
+        !tab ||
+        tab.document.sourceMode ||
+        Boolean(tab.document.protectionReason) ||
+        (tab.document.markdown === markdown && !tab.document.isDirty)
       if (ignored) return
 
       replaceTab(origin.tabId, (current) => {
@@ -161,13 +181,85 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
             isDirty,
             revision: current.document.revision + 1,
           },
-          externalChange: null,
+          externalChange: current.externalChange === 'pending' ? 'pending' : null,
           notice: null,
           saveFeedback: current.document.path && isDirty ? 'pending' : 'idle',
         }
       })
     },
     [getOriginTab, replaceTab],
+  )
+
+  const updateSource = useCallback(
+    (origin: DocumentOrigin, source: string) => {
+      const tab = getOriginTab(origin)
+      if (!tab?.document.sourceMode) return
+      const boundary = splitFrontMatter(source)
+      replaceTab(tab.id, (current) => ({
+        ...current,
+        document: {
+          ...current.document,
+          ...{ frontMatter: boundary.frontMatter, markdown: boundary.body },
+          isDirty:
+            current.document.persistedMarkdown === null
+              ? source.length > 0
+              : source !== current.document.persistedMarkdown,
+          revision: current.document.revision + 1,
+        },
+        saveFeedback: current.document.path ? 'pending' : 'idle',
+      }))
+    },
+    [getOriginTab, replaceTab],
+  )
+  const setSourceMode = useCallback(
+    async (id: number, sourceMode: boolean) => {
+      if (!(await waitUntilStable(id))) return false
+      const tab = getTab(id)
+      if (
+        !tab ||
+        tab.activity !== 'idle' ||
+        tab.isComposing ||
+        tab.externalChange ||
+        (tab.document.protectionReason &&
+          !tab.document.protectionReason.includes('contains raw HTML'))
+      )
+        return false
+      if (Boolean(tab.document.sourceMode) === sourceMode) return true
+      const inspected = sourceMode
+        ? null
+        : await inspectMarkdownDocument(
+            composeMarkdownDocument(tab.document.frontMatter, tab.document.markdown),
+          )
+      if (getTab(id)?.document.revision !== tab.document.revision || getTab(id)?.isComposing)
+        return false
+      if (inspected?.protectionReason) {
+        replaceTab(id, (current) => ({
+          ...current,
+          notice: 'source-required',
+        }))
+        return false
+      }
+      replaceTab(id, (current) => ({
+        ...current,
+        notice: null,
+        document: {
+          ...current.document,
+          sourceMode,
+          sourceEntryRevision: sourceMode
+            ? current.document.revision
+            : current.document.sourceEntryRevision,
+          protectionReason: inspected
+            ? inspected.protectionReason
+            : current.document.protectionReason,
+          editorVersion:
+            !sourceMode && current.document.revision !== current.document.sourceEntryRevision
+              ? current.document.editorVersion + 1
+              : current.document.editorVersion,
+        },
+      }))
+      return true
+    },
+    [getTab, replaceTab, waitUntilStable],
   )
 
   const createNewDocument = useCallback(() => {
@@ -177,7 +269,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const updateComposition = useCallback(
     (origin: DocumentOrigin, state: EditorComposition) => {
       if (!getOriginTab(origin)) return
-      if (state.phase === 'settled') updateMarkdown(origin, state.markdown)
+      if (state.phase === 'settled' && !getOriginTab(origin)?.document.sourceMode)
+        updateMarkdown(origin, state.markdown)
       replaceTab(origin.tabId, (tab) => ({
         ...tab,
         isComposing: state.phase === 'composing',
@@ -222,7 +315,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           return true
         }
 
-        const inspected = profileMeasure(profile, 'safety-parse', () =>
+        const inspected = await profileAsync(profile, 'safety-parse', () =>
           inspectMarkdownDocument(file.markdown),
         )
         stageOpenProfile(file.path, profile, file.markdown)
@@ -294,10 +387,25 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           // Closed placeholders stay closed, and another open operation wins.
           const current = getTab(placeholder.id)
           if (!current || current.activity !== 'opening') return
-          const inspected = profileMeasure(profile, 'safety-parse', () =>
+          const inspected = await profileAsync(profile, 'safety-parse', () =>
             inspectMarkdownDocument(file.markdown),
           )
           stageOpenProfile(file.path, profile, file.markdown)
+          const duplicate = tabsRef.current.find(
+            (tab) =>
+              tab.id !== placeholder.id &&
+              tab.activity !== 'opening' &&
+              tab.document.path === file.path,
+          )
+          if (duplicate) {
+            tabsRef.current = tabsRef.current.filter((tab) => tab.id !== placeholder.id)
+            setTabs(tabsRef.current)
+            if (activeTabIdRef.current === placeholder.id) {
+              activeTabIdRef.current = duplicate.id
+              setActiveTabId(duplicate.id)
+            }
+            return
+          }
           replaceTab(placeholder.id, (tab) => ({
             ...tab,
             activity: 'idle',
@@ -388,7 +496,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       if (
         !savedTab ||
         savedTab.isComposing ||
-        savedTab.document.protectionReason ||
+        (savedTab.document.protectionReason && !savedTab.document.sourceMode) ||
         (expectedRevision !== undefined &&
           (savedTab.document.revision !== expectedRevision ||
             savedTab.document.path !== path ||
@@ -576,7 +684,8 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const operation = (async () => {
         if (!(await waitUntilStable(id))) return false
         const tab = getTab(id)
-        if (!tab || tab.isComposing || tab.document.protectionReason) return false
+        if (!tab || tab.isComposing || (tab.document.protectionReason && !tab.document.sourceMode))
+          return false
         const defaultPath = tab.document.path ?? `${untitledTitleRef.current}.md`
         const path = await pickMarkdownSavePath(defaultPath)
         return path && (await waitUntilStable(id)) ? saveToPath(originForTab(tab), path) : false
@@ -600,7 +709,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       if (picker && !(await picker)) return false
       if (!(await waitUntilStable(id))) return false
       const tab = getTab(id)
-      if (!tab || tab.document.protectionReason) return false
+      if (!tab || (tab.document.protectionReason && !tab.document.sourceMode)) return false
       return tab.document.path
         ? saveToPath(originForTab(tab), tab.document.path)
         : saveAsDocument(id)
@@ -641,7 +750,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       replaceTab(tabId, (tab) => ({ ...tab, activity: 'opening' }))
       try {
         const file = await recoverAndReadMarkdownFile(currentTab.document.path)
-        const inspected = inspectMarkdownDocument(file.markdown)
+        const inspected = await inspectMarkdownDocument(file.markdown)
         selfWritesRef.current.delete(tabId)
         replaceTab(tabId, (tab) => ({
           ...tab,
@@ -663,6 +772,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           },
           externalChange: null,
           notice: 'Reloaded external change.',
+          watchError: null,
           saveFeedback: 'idle',
         }))
       } catch (reason) {
@@ -709,12 +819,38 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           selfWritesRef.current.delete(id)
           return
         }
-        if (file.markdown === latestTab.document.persistedMarkdown) return
-        if (latestTab.document.isDirty || latestTab.isComposing) {
-          replaceTab(id, (tab) => ({ ...tab, externalChange: 'pending', notice: null }))
+        if (file.markdown === latestTab.document.persistedMarkdown) {
+          replaceTab(id, (tab) => ({ ...tab, watchError: null }))
           return
         }
-        const inspected = inspectMarkdownDocument(file.markdown)
+        if (latestTab.document.isDirty || latestTab.isComposing) {
+          replaceTab(id, (tab) => ({
+            ...tab,
+            externalChange: 'pending',
+            notice: null,
+            watchError: null,
+          }))
+          return
+        }
+        const inspected = await inspectMarkdownDocument(file.markdown)
+        if (watchReadsRef.current.get(id) !== read) return
+        const afterInspection = getTab(id)
+        if (
+          !afterInspection ||
+          afterInspection.document.id !== latestTab.document.id ||
+          afterInspection.document.path !== file.path
+        )
+          return
+        if (
+          afterInspection.document.revision !== latestTab.document.revision ||
+          afterInspection.document.isDirty ||
+          afterInspection.isComposing ||
+          afterInspection.activity === 'saving'
+        ) {
+          replaceTab(id, (tab) => ({ ...tab, externalChange: 'pending', watchError: null }))
+          return
+        }
+
         replaceTab(id, (tab) => ({
           ...tab,
           document: {
@@ -731,6 +867,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           },
           externalChange: null,
           notice: 'Reloaded external change.',
+          watchError: null,
           saveFeedback: 'idle',
         }))
       } catch (reason) {
@@ -744,9 +881,11 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     [getTab, replaceTab],
   )
 
-  const watchSignature = tabs
-    .map((tab) => `${tab.id}:${tab.document.path ?? ''}:${tab.activity === 'opening'}`)
-    .join('|')
+  const watchSignature =
+    watchRetry +
+    tabs
+      .map((tab) => `${tab.id}:${tab.document.path ?? ''}:${tab.activity === 'opening'}`)
+      .join('|')
   const autoSaveSignature = tabs
     .map((tab) =>
       [
@@ -755,6 +894,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         tab.document.isDirty,
         tab.document.revision,
         tab.document.protectionReason,
+        tab.document.sourceMode,
         tab.activity,
         tab.isComposing,
         tab.externalChange,
@@ -807,6 +947,23 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         })
     }
   }, [getTab, handleWatchedChange, replaceTab, watchSignature])
+  const retryWatch = useCallback(
+    async (id: number) => {
+      const tab = getTab(id)
+      if (!tab?.document.path) return
+      const watcher = watchersRef.current.get(id)
+      if (watcher) {
+        watcher.stopped = true
+        await watcher.stop?.()
+        watchersRef.current.delete(id)
+      }
+      replaceTab(id, (current) => ({ ...current, watchError: null }))
+      await handleWatchedChange(id, tab.document.path)
+      if (getTab(id)?.watchError) return
+      setWatchRetry((value) => value + 1)
+    },
+    [getTab, handleWatchedChange, replaceTab],
+  )
   useEffect(() => {
     const watchers = watchersRef.current
     return () => {
@@ -819,27 +976,52 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   }, [])
 
   useEffect(() => {
-    const timers = tabsRef.current.flatMap((tab) => {
+    const timers = autoSaveTimers.current
+    const keep = new Set<number>()
+    for (const tab of tabsRef.current) {
       const path = tab.document.path
       if (
         !path ||
         !tab.document.isDirty ||
-        tab.document.protectionReason ||
+        (tab.document.protectionReason && !tab.document.sourceMode) ||
         tab.activity !== 'idle' ||
         tab.isComposing ||
         tab.externalChange ||
         tab.saveError
       )
-        return []
+        continue
+      keep.add(tab.id)
+      const signature = JSON.stringify([
+        path,
+        tab.document.id,
+        tab.document.revision,
+        tab.document.sourceMode,
+      ])
+      if (timers.get(tab.id)?.signature === signature) continue
+      window.clearTimeout(timers.get(tab.id)?.timer)
       const origin = originForTab(tab)
       const revision = tab.document.revision
       const timer = window.setTimeout(() => {
+        timers.delete(tab.id)
         void saveToPath(origin, path, false, revision)
       }, 1000)
-      return [{ timer }]
-    })
-    return () => timers.forEach(({ timer }) => window.clearTimeout(timer))
+      timers.set(tab.id, { signature, timer })
+    }
+    for (const [id, entry] of timers) {
+      if (!keep.has(id)) {
+        window.clearTimeout(entry.timer)
+        timers.delete(id)
+      }
+    }
+    // A different tab's edits/save must never restart this document's deadline.
   }, [autoSaveSignature, originForTab, saveToPath])
+  useEffect(() => {
+    const timers = autoSaveTimers.current
+    return () => {
+      for (const { timer } of timers.values()) window.clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
 
   useEffect(() => {
     const timers = tabsRef.current.flatMap((tab) =>
@@ -1034,9 +1216,13 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     const { drafts, errors } = await readDrafts()
     for (const draft of drafts) {
       if (tabsRef.current.some((tab) => tab.document.recoveryId === draft.id)) continue
+      const inspected = await inspectMarkdownDocument(draft.markdown)
       appendTab({
         ...createUntitledDocument(),
-        markdown: draft.markdown,
+        markdown: inspected.body,
+        frontMatter: inspected.frontMatter,
+        protectionReason: inspected.protectionReason,
+        sourceMode: Boolean(inspected.protectionReason),
         isDirty: true,
         recoveryId: draft.id,
       })
@@ -1044,15 +1230,32 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     if (errors.length) throw new Error(errors.join('\n'))
   }, [appendTab])
 
+  const draftTimersRef = useRef(new Map<number, number>())
   const draftSignature = tabs
-    .map((tab) => `${tab.id}:${tab.document.revision}:${tab.document.path}:${tab.isComposing}`)
+    .map(
+      (tab) =>
+        `${tab.id}:${tab.document.revision}:${tab.document.path}:${tab.document.isDirty}:${tab.isComposing}`,
+    )
     .join('|')
   useEffect(() => {
-    const timers = tabsRef.current.flatMap((tab) => {
+    const timers = draftTimersRef.current
+    for (const [id, timer] of timers) {
+      const tab = getTab(id)
+      if (!tab || tab.document.path || !tab.document.isDirty || tab.isComposing) {
+        window.clearTimeout(timer)
+        timers.delete(id)
+      }
+    }
+    for (const tab of tabsRef.current) {
       const doc = tab.document
-      if (doc.path || !doc.recoveryId || !doc.isDirty || tab.isComposing) return []
-      return [
+      if (doc.path || !doc.recoveryId || !doc.isDirty || tab.isComposing || timers.has(tab.id))
+        continue
+      // A maximum snapshot interval, not an indefinitely restarted idle timer.
+      timers.set(
+        tab.id,
         window.setTimeout(() => {
+          timers.delete(tab.id)
+          if (flushersRef.current.get(tab.id)?.() === false) return
           const current = getTab(tab.id)
           if (
             !current ||
@@ -1060,21 +1263,29 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
             current.document.path ||
             current.isComposing ||
             !current.document.isDirty ||
-            current.document.recoveryId !== doc.recoveryId ||
-            current.document.revision !== doc.revision
+            current.document.recoveryId !== doc.recoveryId
           )
             return
-          void queueDraft(doc.recoveryId!, doc.markdown).catch((reason) =>
+          void queueDraft(
+            doc.recoveryId!,
+            composeMarkdownDocument(current.document.frontMatter, current.document.markdown),
+          ).catch((reason) =>
             replaceTab(tab.id, (current) => ({
               ...current,
               error: readableError(reason, 'Could not protect unsaved document.'),
             })),
           )
         }, 600),
-      ]
-    })
-    return () => timers.forEach(window.clearTimeout)
+      )
+    }
   }, [draftSignature, getTab, replaceTab])
+  useEffect(() => {
+    const timers = draftTimersRef.current
+    return () => {
+      for (const timer of timers.values()) window.clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? emptyDocumentTab,
@@ -1123,7 +1334,12 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
     saveDocument,
     selectTab,
     tabs,
+    updateSource,
+    setSourceMode,
+    getActiveTabId: () => activeTabIdRef.current,
     updateMarkdown,
+    markContentChanged,
+    retryWatch,
     updateComposition,
   }
 }

@@ -1,1 +1,1 @@
-export type PresentationMode = 'edit' | 'read'
+export type PresentationMode = 'edit' | 'read' | 'source'

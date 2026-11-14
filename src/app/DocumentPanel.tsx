@@ -1,5 +1,7 @@
-import { useCallback, useRef, useMemo, memo } from 'react'
-import { MilkdownEditor } from '../editor/milkdown/MilkdownEditor'
+import { SourceLoader } from './SourceLoader'
+import type { NavigationTarget } from '../file-system/documentLink'
+import { useCallback, useEffect, useRef, useMemo, memo } from 'react'
+import { EditorLoader } from './EditorLoader'
 import type { DocumentTab } from '../hooks/documentSessionModel'
 import type { InterfaceCopy } from './interfaceCopy'
 import type { PresentationMode } from './presentationMode'
@@ -8,10 +10,15 @@ import type { useDocumentSession } from '../hooks/useDocumentSession'
 import type { EditorComposition } from '../editor/milkdown/compositionSaveBoundary'
 
 type DocumentPanelProps = {
+  onNavigateLink: (id: number, href: string) => void
+  navigationTarget?: NavigationTarget
   active: boolean
   copy: InterfaceCopy
   actions: Pick<
     ReturnType<typeof useDocumentSession>,
+    | 'updateSource'
+    | 'markContentChanged'
+    | 'retryWatch'
     | 'updateMarkdown'
     | 'updateComposition'
     | 'registerFlush'
@@ -35,6 +42,8 @@ type DocumentPanelProps = {
 
 export const DocumentPanel = memo(function DocumentPanel({
   active,
+  onNavigateLink,
+  navigationTarget,
   copy,
   actions,
   onCloseOutline,
@@ -53,10 +62,29 @@ export const DocumentPanel = memo(function DocumentPanel({
     () => ({ tabId: tab.id, documentId: tab.document.id, path: tab.document.path }),
     [tab.id, tab.document.id, tab.document.path],
   )
-  const registerFlush = useCallback(
-    (flush: (() => boolean) | null) => actions.registerFlush(tab.id, flush),
-    [actions, tab.id],
-  )
+  const tabRef = useRef(tab)
+  tabRef.current = tab
+  const wysFlush = useRef<(() => boolean) | null>(null)
+  const sourceFlush = useRef<(() => boolean) | null>(null)
+  const sourceVisited = useRef(false)
+  const wysVisited = useRef(false)
+  if (active && documentIsSource(tab)) sourceVisited.current = true
+  if (active && !documentIsSource(tab) && !tab.document.protectionReason) wysVisited.current = true
+  const registerFlush = useCallback((flush: (() => boolean) | null) => {
+    wysFlush.current = flush
+  }, [])
+  const registerSourceFlush = useCallback((flush: (() => boolean) | null) => {
+    sourceFlush.current = flush
+  }, [])
+  useEffect(() => {
+    actions.registerFlush(tab.id, () => {
+      const current = tabRef.current
+      if (current.document.sourceMode) return sourceFlush.current?.() ?? false
+      if (current.document.protectionReason) return true
+      return wysFlush.current?.() ?? !current.document.isDirty
+    })
+    return () => actions.registerFlush(tab.id, null)
+  }, [actions, tab.id])
   const onMarkdownChange = useCallback(
     (markdown: string) => actions.updateMarkdown(origin, markdown),
     [actions, origin],
@@ -84,39 +112,72 @@ export const DocumentPanel = memo(function DocumentPanel({
     >
       {tab.activity === 'opening' ? (
         <div role="status">{copy.loadingDocument}</div>
-      ) : !visitedRef.current ? null : isProtected ? (
-        <section className="protected-document" aria-label={copy.protectedDocument}>
-          <div className="protected-document__notice" role="alert">
-            <strong>{copy.protectedDocumentDescription}</strong>
-            <span>{copy.protectionReason(document.protectionReason ?? '')}</span>
-          </div>
-          <pre className="protected-document__source">{`${document.frontMatter}${document.markdown}`}</pre>
-        </section>
-      ) : (
-        <DocumentEditorWorkspace
-          active={active}
-          ariaLabel={copy.editorLabel(title)}
-          copy={copy.editor}
-          editorId={String(tab.id)}
-          document={document}
-          documentPath={document.path}
-          onCloseOutline={() => onCloseOutline(tab.id)}
-          onRegisterFlush={registerFlush}
-          onMarkdownChange={onMarkdownChange}
-          onCompositionChange={onCompositionChange}
-          onPasteImage={onPasteImage}
-          outlineDrawerMount={outlineDrawerMount}
-          outlineInlineMount={outlineInlineMount}
-          contextualOverlayMount={contextualOverlayMount}
-          outlineLayout={outlineLayout}
-          outlineOpen={active && outlineOpen}
-          placeholder={copy.editor.startWriting}
-          presentationMode={presentationMode}
-        />
+      ) : !visitedRef.current ? null : (
+        <>
+          {sourceVisited.current ? (
+            <SourceLoader
+              key={`${document.id}:${document.editorVersion}`}
+              active={active && Boolean(document.sourceMode)}
+              text={`${document.frontMatter}${document.markdown}`}
+              label={copy.sourceDocument(title)}
+              findLabel={copy.editor.find}
+              loadingLabel={copy.loadingDocument}
+              retryLabel={`${copy.editor.editorLoadFailed} ${copy.tryAgain}`}
+              onChange={(source) => actions.updateSource(origin, source)}
+              onComposition={onCompositionChange}
+              onRegisterFlush={registerSourceFlush}
+            />
+          ) : null}
+          {isProtected && !document.sourceMode ? (
+            <section className="protected-document" aria-label={copy.protectedDocument}>
+              <div className="protected-document__notice" role="alert">
+                <strong>{copy.protectedDocumentDescription}</strong>
+                <span>{copy.protectionReason(document.protectionReason ?? '')}</span>
+              </div>
+              <pre className="protected-document__source">{`${document.frontMatter}${document.markdown}`}</pre>
+            </section>
+          ) : null}
+          {wysVisited.current && !isProtected ? (
+            <div className="document-view-host" hidden={Boolean(document.sourceMode)}>
+              <DocumentEditorWorkspace
+                onNavigateLink={(href) => onNavigateLink(tab.id, href)}
+                navigationTarget={navigationTarget}
+                active={active && !document.sourceMode}
+                ariaLabel={copy.editorLabel(title)}
+                copy={copy.editor}
+                editorId={String(tab.id)}
+                document={document}
+                documentPath={document.path}
+                onCloseOutline={() => onCloseOutline(tab.id)}
+                onRegisterFlush={registerFlush}
+                onContentChange={() => actions.markContentChanged(origin)}
+                onMarkdownChange={onMarkdownChange}
+                onCompositionChange={onCompositionChange}
+                onPasteImage={onPasteImage}
+                outlineDrawerMount={outlineDrawerMount}
+                outlineInlineMount={outlineInlineMount}
+                contextualOverlayMount={contextualOverlayMount}
+                outlineLayout={outlineLayout}
+                outlineOpen={active && outlineOpen}
+                placeholder={copy.editor.startWriting}
+                presentationMode={document.sourceMode ? 'read' : presentationMode}
+              />
+            </div>
+          ) : null}
+        </>
       )}
+      {tab.watchError ? (
+        <div className="document-monitor-warning" role="alert">
+          <strong>{copy.monitoringUnavailable}</strong>
+          <span>{tab.watchError}</span>
+          <button type="button" onClick={() => void actions.retryWatch(tab.id)}>
+            {copy.retryMonitoring}
+          </button>
+        </div>
+      ) : null}
       {notice ? (
         <div className="document-notice" role="status">
-          {notice}
+          {notice === 'source-required' ? copy.sourceRequired : notice}
         </div>
       ) : null}
       {externalChange ? (
@@ -158,6 +219,8 @@ export const DocumentPanel = memo(function DocumentPanel({
 })
 
 type DocumentEditorWorkspaceProps = {
+  onNavigateLink: (href: string) => void
+  navigationTarget?: NavigationTarget
   onRegisterFlush?: (flush: (() => boolean) | null) => void
   active: boolean
   ariaLabel: string
@@ -167,6 +230,7 @@ type DocumentEditorWorkspaceProps = {
   editorId: string
   onCloseOutline: () => void
   onCompositionChange: (state: EditorComposition) => void
+  onContentChange: () => void
   onMarkdownChange: (markdown: string) => void
   onPasteImage: (
     image: import('../file-system/nativeMarkdownFile').PastedImage,
@@ -181,6 +245,8 @@ type DocumentEditorWorkspaceProps = {
 }
 
 function DocumentEditorWorkspace({
+  onNavigateLink,
+  navigationTarget,
   onRegisterFlush,
   active,
   ariaLabel,
@@ -189,6 +255,7 @@ function DocumentEditorWorkspace({
   documentPath,
   editorId,
   onCloseOutline,
+  onContentChange,
   onMarkdownChange,
   onCompositionChange,
   onPasteImage,
@@ -208,7 +275,11 @@ function DocumentEditorWorkspace({
 
   return (
     <div className={`document-editor-workspace document-editor-workspace--${outlineLayout}`}>
-      <MilkdownEditor
+      <EditorLoader
+        onNavigateLink={onNavigateLink}
+        navigationTarget={navigationTarget}
+        loadingLabel={copy.startWriting}
+        retryLabel={`${copy.editorLoadFailed} ${copy.retry}`}
         key={`${document.id}:${document.editorVersion}`}
         active={active}
         ariaLabel={ariaLabel}
@@ -218,6 +289,7 @@ function DocumentEditorWorkspace({
         initialMarkdown={document.markdown}
         onCloseOutline={onCloseOutline}
         onRegisterFlush={onRegisterFlush}
+        onContentChange={onContentChange}
         onMarkdownChange={onMarkdownChange}
         onCompositionChange={onCompositionChange}
         onPasteImage={onPasteImage}
@@ -230,4 +302,8 @@ function DocumentEditorWorkspace({
       />
     </div>
   )
+}
+
+function documentIsSource(tab: DocumentTab) {
+  return Boolean(tab.document.sourceMode)
 }

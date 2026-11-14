@@ -3,7 +3,10 @@ import type { MutableRefObject } from 'react'
 import type { PresentationMode } from '../../app/presentationMode'
 import type { EditorCopy } from './editorCopy'
 
-type CodeBlockCopy = Pick<EditorCopy, 'codeBlock' | 'codeBlockLanguage' | 'plainText' | 'copy'>
+type CodeBlockCopy = Pick<
+  EditorCopy,
+  'codeBlock' | 'codeBlockLanguage' | 'plainText' | 'copy' | 'copied' | 'copyFailed'
+>
 
 const languageOptions = [
   { value: '', label: '' },
@@ -21,6 +24,25 @@ const languageOptions = [
   { value: 'typescript', label: 'TypeScript' },
 ]
 
+const aliases: Record<string, string> = {
+  js: 'javascript',
+  ts: 'typescript',
+  py: 'python',
+  rs: 'rust',
+  sh: 'bash',
+  shell: 'bash',
+  zsh: 'bash',
+  yml: 'yaml',
+  md: 'markdown',
+  html: 'html',
+  jsx: 'javascript',
+  tsx: 'typescript',
+}
+let openMenu: { card: HTMLElement; close: () => void } | null = null
+export function closeCodeBlockMenu(root: HTMLElement | null) {
+  if (root && openMenu && root.contains(openMenu.card)) openMenu.close()
+}
+
 export function createCodeBlockNodeView(
   copyRef: MutableRefObject<CodeBlockCopy>,
   presentationModeRef: MutableRefObject<PresentationMode>,
@@ -30,7 +52,9 @@ export function createCodeBlockNodeView(
     const header = document.createElement('header')
     const label = document.createElement('span')
     const languageTrigger = document.createElement('button')
-    const languageMenu = document.createElement('div')
+    let languageMenu: HTMLDivElement | null = null
+    let feedbackTimer: number | undefined
+    let destroyed = false
     const copyButton = document.createElement('button')
     // Safari/WKWebView can replace the nested <code> element while composing
     // inside a <pre>.  Keep the content DOM at the stable <pre> boundary so
@@ -45,23 +69,27 @@ export function createCodeBlockNodeView(
     languageTrigger.type = 'button'
     languageTrigger.setAttribute('aria-haspopup', 'listbox')
     languageTrigger.setAttribute('aria-expanded', 'false')
-    languageMenu.className = 'code-block-card__language-menu'
-    languageMenu.setAttribute('role', 'listbox')
-    languageMenu.hidden = true
     copyButton.className = 'code-block-card__copy'
     copyButton.type = 'button'
     contentDOM.className = 'code-block-card__content'
 
     const closeLanguageMenu = () => {
-      languageMenu.hidden = true
+      languageMenu?.remove()
+      languageMenu = null
+      if (openMenu?.card === card) openMenu = null
+      document.removeEventListener('pointerdown', closeMenuOnOutsidePress)
+      document.removeEventListener('keydown', closeMenuOnEscape)
       languageTrigger.setAttribute('aria-expanded', 'false')
     }
 
     const updateControls = (nextNode = node) => {
       const selected = String(nextNode.attrs.language ?? '')
-      const selectedOption =
-        languageOptions.find((option) => option.value === selected) ?? languageOptions[0]
-      const selectedLabel = selectedOption.value ? selectedOption.label : copyRef.current.plainText
+      const selectedOption = languageOptions.find(
+        (option) => option.value === (aliases[selected.toLowerCase()] ?? selected.toLowerCase()),
+      )
+      const selectedLabel = selected
+        ? (selectedOption?.label ?? selected)
+        : copyRef.current.plainText
       card.dataset.language = selected
       label.textContent = copyRef.current.codeBlock
       languageTrigger.textContent = selectedLabel
@@ -73,55 +101,117 @@ export function createCodeBlockNodeView(
       copyButton.setAttribute('aria-label', copyRef.current.copy)
       copyButton.title = copyRef.current.copy
 
-      for (const option of languageMenu.querySelectorAll<HTMLButtonElement>('[role="option"]')) {
+      for (const option of languageMenu?.querySelectorAll<HTMLButtonElement>('[role="option"]') ??
+        []) {
         option.setAttribute(
           'aria-selected',
-          String(option.dataset.language === selectedOption.value),
+          String(option.dataset.language === selectedOption?.value),
         )
       }
     }
 
-    for (const option of languageOptions) {
-      const optionButton = document.createElement('button')
-      const optionLabel = option.value ? option.label : copyRef.current.plainText
-      optionButton.type = 'button'
-      optionButton.dataset.language = option.value
-      optionButton.setAttribute('role', 'option')
-      optionButton.textContent = optionLabel
-      optionButton.addEventListener('click', () => {
-        if (presentationModeRef.current !== 'edit') return
-        const position = getPos()
-        if (typeof position === 'number') {
-          editorView.dispatch(
-            editorView.state.tr.setNodeAttribute(position, 'language', option.value),
-          )
-        }
+    const showLanguageMenu = (focus = false) => {
+      if (presentationModeRef.current !== 'edit' || !editorView.editable) return
+      if (languageMenu) {
         closeLanguageMenu()
+        return
+      }
+      openMenu?.close()
+      languageMenu = document.createElement('div')
+      languageMenu.className = 'code-block-card__language-menu'
+      languageMenu.setAttribute('role', 'listbox')
+      languageMenu.setAttribute('aria-label', copyRef.current.codeBlockLanguage)
+      for (const option of languageOptions) {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.dataset.language = option.value
+        button.setAttribute('role', 'option')
+        button.textContent = option.value ? option.label : copyRef.current.plainText
+        button.addEventListener('click', () => {
+          if (presentationModeRef.current !== 'edit' || !editorView.editable) return
+          const position = getPos()
+          if (typeof position === 'number')
+            editorView.dispatch(
+              editorView.state.tr.setNodeAttribute(position, 'language', option.value),
+            )
+          closeLanguageMenu()
+          languageTrigger.focus()
+        })
+        languageMenu.append(button)
+      }
+      languageMenu.addEventListener('keydown', (event) => {
+        const buttons = [...languageMenu!.querySelectorAll<HTMLButtonElement>('button')]
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+        const next =
+          event.key === 'ArrowDown'
+            ? (index + 1) % buttons.length
+            : event.key === 'ArrowUp'
+              ? (index - 1 + buttons.length) % buttons.length
+              : event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? buttons.length - 1
+                  : -1
+        if (next >= 0) {
+          event.preventDefault()
+          buttons[next].focus()
+        }
+        if (event.key === 'Tab') closeLanguageMenu()
       })
-      languageMenu.append(optionButton)
+      header.append(languageMenu)
+      openMenu = { card, close: closeLanguageMenu }
+      languageTrigger.setAttribute('aria-expanded', 'true')
+      document.addEventListener('pointerdown', closeMenuOnOutsidePress)
+      document.addEventListener('keydown', closeMenuOnEscape)
+      updateControls()
+      if (focus)
+        (
+          languageMenu.querySelector<HTMLButtonElement>('[aria-selected="true"]') ??
+          languageMenu.querySelector<HTMLButtonElement>('button')
+        )?.focus()
     }
-
-    languageTrigger.addEventListener('click', () => {
-      if (presentationModeRef.current !== 'edit') return
-      const isOpening = languageMenu.hidden
-      languageMenu.hidden = !isOpening
-      languageTrigger.setAttribute('aria-expanded', String(isOpening))
+    languageTrigger.addEventListener('click', () => showLanguageMenu())
+    languageTrigger.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        showLanguageMenu(true)
+      }
     })
-    copyButton.addEventListener(
-      'click',
-      () => void navigator.clipboard?.writeText(node.textContent),
-    )
+    copyButton.addEventListener('click', () => {
+      const operation = navigator.clipboard
+        ? navigator.clipboard.writeText(node.textContent)
+        : Promise.reject(new Error('Clipboard unavailable'))
+      void operation.then(
+        () => feedback(copyRef.current.copied),
+        () => feedback(copyRef.current.copyFailed),
+      )
+    })
+    const feedback = (message: string) => {
+      if (destroyed) return
+      window.clearTimeout(feedbackTimer)
+      copyButton.textContent = message
+      copyButton.setAttribute('aria-label', message)
+      copyButton.setAttribute('role', 'status')
+      feedbackTimer = window.setTimeout(() => {
+        copyButton.textContent = ''
+        copyButton.removeAttribute('role')
+        updateControls()
+      }, 2400)
+    }
 
     const closeMenuOnOutsidePress = (event: PointerEvent) => {
       if (event.target instanceof Node && !card.contains(event.target)) closeLanguageMenu()
     }
     const closeMenuOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeLanguageMenu()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        closeLanguageMenu()
+        languageTrigger.focus()
+      }
     }
-    document.addEventListener('pointerdown', closeMenuOnOutsidePress)
-    document.addEventListener('keydown', closeMenuOnEscape)
 
-    header.append(label, languageTrigger, copyButton, languageMenu)
+    header.append(label, languageTrigger, copyButton)
     card.append(header, contentDOM)
     updateControls()
 
@@ -139,8 +229,9 @@ export function createCodeBlockNodeView(
       ignoreMutation: (mutation) => !contentDOM.contains(mutation.target),
       stopEvent: (event) => event.target instanceof Node && header.contains(event.target),
       destroy: () => {
-        document.removeEventListener('pointerdown', closeMenuOnOutsidePress)
-        document.removeEventListener('keydown', closeMenuOnEscape)
+        destroyed = true
+        window.clearTimeout(feedbackTimer)
+        closeLanguageMenu()
       },
     }
   }

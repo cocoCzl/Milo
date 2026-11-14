@@ -1,3 +1,7 @@
+import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { QuickOpen } from '../components/QuickOpen'
+import { resolveDocumentLink, type NavigationTarget } from '../file-system/documentLink'
+import { openExternalLink } from '../file-system/externalLink'
 import { listenForNativeClose, createNativeCloseHandler } from '../hooks/nativeClose'
 import {
   FileText,
@@ -72,6 +76,9 @@ export function App() {
   const copy = useMemo(() => interfaceCopy(locale), [locale])
   const session = useDocumentSession(copy.untitled)
   const {
+    updateSource,
+    markContentChanged,
+    retryWatch,
     updateMarkdown,
     updateComposition,
     registerFlush,
@@ -84,6 +91,9 @@ export function App() {
   } = session
   const panelActions = useMemo(
     () => ({
+      updateSource,
+      markContentChanged,
+      retryWatch,
       updateMarkdown,
       updateComposition,
       registerFlush,
@@ -95,6 +105,9 @@ export function App() {
       retrySave,
     }),
     [
+      updateSource,
+      markContentChanged,
+      retryWatch,
       updateMarkdown,
       updateComposition,
       registerFlush,
@@ -136,6 +149,23 @@ export function App() {
     }
   }, [nativeClose])
   const colorScheme = useEffectiveColorScheme(settings.appearance)
+  const [fileActionError, setFileActionError] = useState<string | null>(null)
+  const [fileActionNotice, setFileActionNotice] = useState<string | null>(null)
+  useEffect(() => {
+    if (!fileActionNotice) return
+    const timer = window.setTimeout(() => setFileActionNotice(null), 2400)
+    return () => window.clearTimeout(timer)
+  }, [fileActionNotice])
+  const [quickOpen, setQuickOpen] = useState(false)
+  const [navigationTarget, setNavigationTarget] = useState<{
+    tabId: number
+    target: NavigationTarget
+  } | null>(null)
+  const [navigationHistory, setNavigationHistory] = useState<
+    { tabId: number; path: string | null; scrollTop: number }[]
+  >([])
+  const navigationToken = useRef(0)
+  const quickReturnFocus = useRef<HTMLElement | null>(null)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [folderTree, setFolderTree] = useState<MarkdownTreeNode | null>(null)
   const [folderError, setFolderError] = useState<string | null>(null)
@@ -180,12 +210,21 @@ export function App() {
       document.querySelector<HTMLElement>('.close-confirmation button:last-child')?.focus()
   }, [session.closingTabId])
   const activeTabId = session.activeTabId
+  useEffect(() => {
+    document
+      .querySelector<HTMLElement>(`[aria-controls="document-panel-${activeTabId}"]`)
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [activeTabId])
   const activeTab =
     activeTabId === null ? null : (session.tabs.find((tab) => tab.id === activeTabId) ?? null)
   const hasActiveDocument = activeTabId !== null
-  const activePresentationMode =
-    activeTabId === null ? 'edit' : (presentationModes[activeTabId] ?? 'edit')
-  const activeDocumentIsProtected = session.document.protectionReason !== null
+  const activePresentationMode = session.document.sourceMode
+    ? 'source'
+    : activeTabId === null
+      ? 'edit'
+      : (presentationModes[activeTabId] ?? 'edit')
+  const activeDocumentIsProtected =
+    session.document.protectionReason !== null && !session.document.sourceMode
   const sidebarAvailable = !sidebarResponsiveHidden
   const sidebarVisible = settings.sidebarVisible && sidebarAvailable
   const activeOutlineOpen =
@@ -517,8 +556,84 @@ export function App() {
     })
   }
 
+  const navigateLink = useCallback(
+    async (id: number, href: string) => {
+      const tab = session.tabs.find((tab) => tab.id === id)
+      if (!tab) return
+      const link = resolveDocumentLink(href, tab.document.path)
+      if (!link) return
+      if (link.kind === 'external') {
+        await openExternalLink(link.url)
+        return
+      }
+      const location = {
+        tabId: id,
+        path: tab.document.path,
+        scrollTop: documentStageRef.current?.scrollTop ?? 0,
+      }
+      if (link.path && !(await session.openDocumentAtPath(link.path))) return
+      setNavigationHistory((history) => [...history.slice(-49), location])
+      // A canonicalized native read may change the spelling of a relative path.
+      const targetId = link.path ? session.getActiveTabId() : tab.id
+      if (targetId !== null)
+        setNavigationTarget({
+          tabId: targetId,
+          target: { token: ++navigationToken.current, anchor: link.anchor },
+        })
+    },
+    [session],
+  )
+  const navigateBack = async () => {
+    const previous = navigationHistory.at(-1)
+    if (!previous) return
+    if (session.tabs.some((tab) => tab.id === previous.tabId)) session.selectTab(previous.tabId)
+    else if (!previous.path || !(await session.openDocumentAtPath(previous.path))) return
+    setNavigationHistory((history) => history.slice(0, -1))
+    const id = session.tabs.some((tab) => tab.id === previous.tabId)
+      ? previous.tabId
+      : session.getActiveTabId()
+    if (id !== null)
+      setNavigationTarget({
+        tabId: id,
+        target: { token: ++navigationToken.current, scrollTop: previous.scrollTop },
+      })
+  }
+  const openQuick = () => {
+    if (!settings.currentFolder) {
+      void chooseCurrentFolder()
+      return
+    }
+    quickReturnFocus.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setQuickOpen(true)
+  }
+  useEffect(() => {
+    const shortcuts = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229 || preferencesOpen || session.closePending)
+        return
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'p') {
+        event.preventDefault()
+        openQuick()
+      }
+      if (event.ctrlKey && event.key === 'Tab' && session.tabs.length) {
+        event.preventDefault()
+        const index = session.tabs.findIndex((tab) => tab.id === session.activeTabId)
+        session.selectTab(
+          session.tabs[
+            (index + (event.shiftKey ? -1 : 1) + session.tabs.length) % session.tabs.length
+          ].id,
+        )
+      }
+    }
+    window.addEventListener('keydown', shortcuts)
+    return () => window.removeEventListener('keydown', shortcuts)
+  })
+
   useNativeCommandListener((command) => {
     switch (command) {
+      case 'quick-open':
+        openQuick()
+        break
       case 'new-document':
         createNewDocument()
         break
@@ -640,11 +755,38 @@ export function App() {
       lang={locale}
       style={appStyle}
     >
+      {quickOpen && settings.currentFolder ? (
+        <QuickOpen
+          folder={settings.currentFolder}
+          label={copy.quickOpen}
+          placeholder={copy.quickOpenHint}
+          loading={copy.loadingDocument}
+          limited={copy.quickOpenLimited}
+          retry={copy.retryAction}
+          noResults={copy.quickOpenEmpty}
+          onOpen={session.openDocumentAtPath}
+          onClose={() => {
+            setQuickOpen(false)
+            queueMicrotask(() => quickReturnFocus.current?.focus())
+          }}
+        />
+      ) : null}
       <header
         inert={session.closePending || Boolean(closingTab)}
         className="application-bar window-bar"
       >
         <div className="application-bar__tabs">
+          {navigationHistory.length ? (
+            <button
+              className="navigation-back"
+              type="button"
+              aria-label={copy.navigateBack}
+              title={copy.navigateBack}
+              onClick={() => void navigateBack()}
+            >
+              ←
+            </button>
+          ) : null}
           <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
             {session.tabs.map((tab) => (
               <div
@@ -658,6 +800,32 @@ export function App() {
                   aria-controls={`document-panel-${tab.id}`}
                   title={tab.document.path ?? copy.untitled}
                   onClick={() => selectTab(tab.id)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'ArrowRight' ||
+                      event.key === 'ArrowLeft' ||
+                      event.key === 'Home' ||
+                      event.key === 'End'
+                    ) {
+                      event.preventDefault()
+                      const index = session.tabs.findIndex((item) => item.id === tab.id)
+                      const target =
+                        event.key === 'Home'
+                          ? 0
+                          : event.key === 'End'
+                            ? session.tabs.length - 1
+                            : (index +
+                                (event.key === 'ArrowRight' ? 1 : -1) +
+                                session.tabs.length) %
+                              session.tabs.length
+                      selectTab(session.tabs[target].id)
+                      document
+                        .querySelector<HTMLButtonElement>(
+                          `[aria-controls="document-panel-${session.tabs[target].id}"]`,
+                        )
+                        ?.focus()
+                    }
+                  }}
                 >
                   <FileText
                     aria-hidden="true"
@@ -668,7 +836,24 @@ export function App() {
                   <span className="document-tab__dirty" aria-hidden="true">
                     {tab.document.isDirty ? '•' : ''}
                   </span>
-                  <span className="document-tab__title">{displayDocumentTitle(tab, copy)}</span>
+                  <span className="document-tab__title">
+                    {displayDocumentTitle(tab, copy)}
+                    {session.tabs.some(
+                      (other) => other.id !== tab.id && other.document.title === tab.document.title,
+                    ) && tab.document.path ? (
+                      <small className="document-tab__path">
+                        {tab.document.path.split('/').slice(-2, -1)[0]}
+                      </small>
+                    ) : null}
+                  </span>
+                  {tab.saveError || tab.externalChange ? (
+                    <span
+                      className="document-tab__warning"
+                      aria-label={tab.saveError ? copy.saveFailed : copy.externalChange}
+                    >
+                      !
+                    </span>
+                  ) : null}
                 </button>
                 <button
                   className="document-tab__close"
@@ -697,7 +882,8 @@ export function App() {
               folder={settings.currentFolder}
               onSave={saveActiveDocument}
               saveDisabled={
-                activeTab.activity !== 'idle' || activeTab.document.protectionReason !== null
+                activeTab.activity !== 'idle' ||
+                (activeTab.document.protectionReason !== null && !activeTab.document.sourceMode)
               }
               tab={activeTab}
             />
@@ -705,13 +891,25 @@ export function App() {
 
           <div className="application-bar__group application-bar__group--primary">
             <ModeSwitch
-              disabled={!hasActiveDocument || activeDocumentIsProtected}
+              disabled={!hasActiveDocument}
+              sourceLabel={copy.source}
               editLabel={copy.edit}
               mode={activePresentationMode}
               readLabel={copy.read}
               onChange={(mode) => {
-                if (activeTabId !== null)
-                  setPresentationModes((current) => ({ ...current, [activeTabId]: mode }))
+                if (activeTabId === null) return
+                const id = activeTabId
+                if (Boolean(activeTab?.document.sourceMode) === (mode === 'source')) {
+                  setPresentationModes((current) => ({ ...current, [id]: mode }))
+                  return
+                }
+                void session.setSourceMode(id, mode === 'source').then((changed) => {
+                  if (changed)
+                    setPresentationModes((current) => ({
+                      ...current,
+                      [id]: mode === 'source' ? 'edit' : mode,
+                    }))
+                })
               }}
             />
           </div>
@@ -767,6 +965,34 @@ export function App() {
           </div>
           <div className="preferences-menu application-bar__group application-bar__group--overflow">
             <ApplicationMoreMenu
+              fileActions={
+                activeTab?.document.path
+                  ? [
+                      {
+                        label: copy.revealInFinder,
+                        onSelect: () => {
+                          const path = activeTab.document.path!
+                          void revealItemInDir(path).catch((reason) =>
+                            setFileActionError(`${copy.revealInFinder}: ${String(reason)}`),
+                          )
+                        },
+                      },
+                      {
+                        label: copy.copyFilePath,
+                        onSelect: () => {
+                          const path = activeTab.document.path!
+                          void (
+                            navigator.clipboard
+                              ? navigator.clipboard.writeText(path)
+                              : Promise.reject(new Error(copy.editor.copyFailed))
+                          )
+                            .then(() => setFileActionNotice(copy.editor.copied))
+                            .catch(() => setFileActionError(copy.editor.copyFailed))
+                        },
+                      },
+                    ]
+                  : []
+              }
               dismissed={focusMode}
               labels={{
                 more: copy.moreActions,
@@ -872,6 +1098,10 @@ export function App() {
             ) : null}
             {session.tabs.map((tab) => (
               <DocumentPanel
+                onNavigateLink={(id, href) => void navigateLink(id, href)}
+                navigationTarget={
+                  navigationTarget?.tabId === tab.id ? navigationTarget.target : undefined
+                }
                 key={tab.id}
                 tab={tab}
                 actions={panelActions}
@@ -880,7 +1110,9 @@ export function App() {
                 active={tab.id === session.activeTabId}
                 outlineLayout={focusMode || !activeOutlineOpen ? 'drawer' : outlineLayout}
                 outlineOpen={tab.id === activeTabId && activeOutlineOpen}
-                presentationMode={presentationModes[tab.id] ?? 'edit'}
+                presentationMode={
+                  tab.document.sourceMode ? 'source' : (presentationModes[tab.id] ?? 'edit')
+                }
                 onCloseOutline={closePanelOutline}
                 outlineDrawerMount={outlineDrawerMount}
                 outlineInlineMount={outlineInlineMount}
@@ -955,6 +1187,19 @@ export function App() {
         returnFocusRef={preferencesReturnFocusRef}
         theme={colorScheme}
       />
+      {fileActionNotice ? (
+        <div className="document-notice" role="status">
+          {fileActionNotice}
+        </div>
+      ) : null}
+      {fileActionError ? (
+        <div className="document-error" role="alert">
+          <span>{fileActionError}</span>
+          <button type="button" onClick={() => setFileActionError(null)}>
+            {copy.editor.cancel}
+          </button>
+        </div>
+      ) : null}
       {session.openError ? (
         <div className="document-error" role="alert">
           {session.openError}

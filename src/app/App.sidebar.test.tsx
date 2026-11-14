@@ -23,8 +23,8 @@ vi.mock('../file-system/nativeMarkdownFile', async (importOriginal) => ({
   browseMarkdownFolder: mocks.browse,
   recoverAndReadMarkdownFile: mocks.read,
 }))
-vi.mock('../editor/milkdown/MilkdownEditor', () => ({
-  MilkdownEditor: ({
+vi.mock('./EditorLoader', () => ({
+  EditorLoader: ({
     ariaLabel,
     initialMarkdown,
   }: {

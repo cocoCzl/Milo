@@ -178,7 +178,7 @@ function normalizeSettings(settings: ApplicationSettings): ApplicationSettings {
     recentFolders: merged.recentFolders.slice(0, 8),
     startupSession: {
       activeDocumentPath: merged.startupSession?.activeDocumentPath ?? null,
-      openDocumentPaths: merged.startupSession?.openDocumentPaths?.slice(0, 12) ?? [],
+      openDocumentPaths: merged.startupSession?.openDocumentPaths?.slice(0, 64) ?? [],
     },
   }
 }

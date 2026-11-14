@@ -20,7 +20,8 @@ describe('document find', () => {
     const paragraph = schema.nodes.paragraph.create(null, [
       schema.text('中文 Hel'),
       schema.text('lo', [schema.marks.strong.create()]),
-      schema.text(' hello'),
+      schema.text(' '),
+      schema.text('hello', [schema.marks.strong.create()]),
     ])
     const doc = schema.nodes.doc.create(null, paragraph)
     expect(findMatches(doc, 'HELLO')).toEqual([
@@ -114,4 +115,68 @@ describe('document find', () => {
     rerender(<MilkdownEditor initialMarkdown="正文 正文" active />)
     expect(container.querySelector('.ProseMirror')).toBe(editor)
   })
+})
+
+it('replaces across inline marks in one undo step, never across paragraphs, and respects read-only', async () => {
+  const { EditorView } = await import('@milkdown/prose/view')
+  const { history, undo, redo } = await import('@milkdown/prose/history')
+  const { replaceFindMatches } = await import('./documentFind')
+  const paragraph = schema.nodes.paragraph.create(null, [
+    schema.text('Hel'),
+    schema.text('lo', [schema.marks.strong.create()]),
+    schema.text(' '),
+    schema.text('hello', [schema.marks.strong.create()]),
+  ])
+  const doc = schema.nodes.doc.create(null, [
+    paragraph,
+    schema.nodes.paragraph.create(null, schema.text('hello')),
+  ])
+  const host = document.body.appendChild(document.createElement('div'))
+  // Minimal schema serialization for a real ProseMirror view.
+  const liveSchema = new Schema({
+    nodes: {
+      doc: { content: 'paragraph+' },
+      paragraph: { content: 'text*', toDOM: () => ['p', 0] },
+      text: {},
+    },
+    marks: { strong: { toDOM: () => ['strong', 0] } },
+  })
+  const view = new EditorView(host, {
+    state: EditorState.create({
+      schema: liveSchema,
+      doc: liveSchema.nodeFromJSON(doc.toJSON()),
+      plugins: [history(), createDocumentFind(() => undefined)],
+    }),
+  })
+  try {
+    setFindQuery(view, 'hello')
+    expect(replaceFindMatches(view, '中文', true)).toBe(true)
+    expect(view.state.doc.textContent).toBe('中文 中文中文')
+    expect(view.dom.querySelector('strong')?.textContent).toBe('中文')
+    expect(undo(view.state, view.dispatch)).toBe(true)
+    expect(view.state.doc.textContent).toBe('Hello hellohello')
+    expect(redo(view.state, view.dispatch)).toBe(true)
+    setFindQuery(view, '中文中文')
+    expect(replaceFindMatches(view, 'bad', true)).toBe(false)
+    view.setProps({ editable: () => false })
+    setFindQuery(view, '中文')
+    expect(replaceFindMatches(view, 'bad', true)).toBe(false)
+    expect(view.state.doc.textContent).toBe('中文 中文中文')
+  } finally {
+    view.destroy()
+    host.remove()
+  }
+})
+
+it('bounds decorations for many literal matches while retaining match navigation', () => {
+  const doc = schema.nodes.doc.create(
+    null,
+    schema.nodes.paragraph.create(null, schema.text('a '.repeat(3000))),
+  )
+  const matches = findMatches(doc, 'a')
+  const state = EditorState.create({ schema, doc, plugins: [createDocumentFind(() => undefined)] })
+  const next = state.apply(state.tr.setMeta(findKey, { query: 'a', matches, current: 1500 }))
+  expect(findKey.getState(next)?.matches).toHaveLength(3000)
+  expect(findKey.getState(next)?.decorations.find()).toHaveLength(500)
+  expect(findMatches(doc, 'A', true)).toHaveLength(0)
 })

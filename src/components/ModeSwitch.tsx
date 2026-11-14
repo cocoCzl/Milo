@@ -5,6 +5,7 @@ type ModeSwitchProps = {
   editLabel: string
   mode: PresentationMode
   onChange: (mode: PresentationMode) => void
+  sourceLabel?: string
   readLabel: string
 }
 
@@ -14,6 +15,7 @@ export function ModeSwitch({
   mode,
   onChange,
   readLabel,
+  sourceLabel,
 }: ModeSwitchProps) {
   return (
     <div className="mode-switch" aria-label={`${editLabel} / ${readLabel}`} role="group">
@@ -33,6 +35,16 @@ export function ModeSwitch({
       >
         {readLabel}
       </button>
+      {sourceLabel ? (
+        <button
+          aria-pressed={mode === 'source'}
+          disabled={disabled}
+          type="button"
+          onClick={() => onChange('source')}
+        >
+          {sourceLabel}
+        </button>
+      ) : null}
     </div>
   )
 }

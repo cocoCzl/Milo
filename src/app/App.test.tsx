@@ -41,8 +41,8 @@ import { App } from './App'
 import * as nativeFiles from '../file-system/nativeMarkdownFile'
 import type { EditorComposition } from '../editor/milkdown/compositionSaveBoundary'
 
-vi.mock('../editor/milkdown/MilkdownEditor', () => ({
-  MilkdownEditor: ({
+vi.mock('./EditorLoader', () => ({
+  EditorLoader: ({
     active = true,
     ariaLabel = 'Untitled Markdown document',
     editorId = 'standalone',

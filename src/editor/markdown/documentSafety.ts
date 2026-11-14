@@ -13,43 +13,15 @@ export type MarkdownDocumentBoundary = {
   protectionReason: string | null
 }
 
-const markdownParser = unified().use(remarkParse).use(remarkGfm)
-const frontMatterOpening = /^---[\t ]*(?:\r?\n|$)/
-const frontMatterClosing = /^(?:---|\.\.\.)[\t ]*(?:\r?\n|$)/gm
+import { splitFrontMatter } from './documentBoundary'
+export { composeMarkdownDocument, splitFrontMatter } from './documentBoundary'
 
+const markdownParser = unified().use(remarkParse).use(remarkGfm)
 export function inspectMarkdownDocument(markdown: string): MarkdownDocumentBoundary {
   const { frontMatter, body } = splitFrontMatter(markdown)
   const protectionReason = findProtectionReason(body)
 
   return { frontMatter, body, protectionReason }
-}
-
-export function composeMarkdownDocument(frontMatter: string, body: string): string {
-  return `${frontMatter}${body}`
-}
-
-function splitFrontMatter(
-  markdown: string,
-): Pick<MarkdownDocumentBoundary, 'frontMatter' | 'body'> {
-  const opening = frontMatterOpening.exec(markdown)
-
-  if (!opening) {
-    return { frontMatter: '', body: markdown }
-  }
-
-  frontMatterClosing.lastIndex = opening[0].length
-  const closing = frontMatterClosing.exec(markdown)
-
-  if (!closing) {
-    return { frontMatter: '', body: markdown }
-  }
-
-  const boundary = closing.index + closing[0].length
-
-  return {
-    frontMatter: markdown.slice(0, boundary),
-    body: markdown.slice(boundary),
-  }
 }
 
 function findProtectionReason(markdown: string): string | null {

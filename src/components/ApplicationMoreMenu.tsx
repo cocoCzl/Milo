@@ -2,6 +2,7 @@ import { Ellipsis, FolderOpen, FolderTree, Save, Settings2 } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 type ApplicationMoreMenuProps = {
+  fileActions?: { label: string; onSelect: () => void }[]
   dismissed?: boolean
   labels: {
     more: string
@@ -33,6 +34,7 @@ type MenuActionProps = {
 
 export function ApplicationMoreMenu({
   dismissed = false,
+  fileActions = [],
   labels,
   onOpen,
   onOpenFolder,
@@ -186,6 +188,18 @@ export function ApplicationMoreMenu({
           >
             {labels.settings}
           </MenuAction>
+          {fileActions.map((action, index) => (
+            <MenuAction
+              key={action.label}
+              icon={<FolderOpen aria-hidden="true" size={15} />}
+              onSelect={() => select(action.onSelect)}
+              setRef={(element) => {
+                itemRefs.current[4 + index] = element
+              }}
+            >
+              {action.label}
+            </MenuAction>
+          ))}
         </div>
       ) : null}
     </div>

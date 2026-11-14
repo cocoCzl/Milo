@@ -14,7 +14,7 @@ import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset
 import { lift } from '@milkdown/prose/commands'
 import { TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
 import type { CmdKey } from '@milkdown/core'
-import { isExternalHttpUrl } from '../../file-system/externalLink'
+import { isSupportedLink } from '../../file-system/documentLink'
 import type { BlockTarget } from './blockControls'
 
 export type EditorBlockKind =
@@ -144,7 +144,7 @@ export function createEditorCommands(runner: EditorCommandRunner) {
       runner.runProse((state, dispatch) => {
         const link = state.schema.marks.link
         const { from, to } = state.selection
-        if (!link || from === to || !isExternalHttpUrl(href)) return false
+        if (!link || from === to || !isSupportedLink(href)) return false
         let existingAttrs: Record<string, unknown> = {}
         state.doc.nodesBetween(from, to, (node) => {
           const mark = link.isInSet(node.marks)
@@ -160,7 +160,7 @@ export function createEditorCommands(runner: EditorCommandRunner) {
     insertLink: (text: string, href: string, selection?: EditorSelectionSnapshot) =>
       runner.runProse((state, dispatch) => {
         const link = state.schema.marks.link
-        if (!link || !state.selection.empty || !text || !isExternalHttpUrl(href)) return false
+        if (!link || !state.selection.empty || !text || !isSupportedLink(href)) return false
         dispatch?.(
           state.tr.replaceSelectionWith(state.schema.text(text, [link.create({ href })]), false),
         )
@@ -173,7 +173,7 @@ export function createEditorCommands(runner: EditorCommandRunner) {
         if (
           !link ||
           from === to ||
-          !isExternalHttpUrl(href) ||
+          !isSupportedLink(href) ||
           !state.doc.rangeHasMark(from, to, link)
         )
           return false

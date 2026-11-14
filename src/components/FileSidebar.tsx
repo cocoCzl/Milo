@@ -21,6 +21,7 @@ type FileSidebarProps = {
     showExcluded: string
     loadMore: string
     retry: string
+    refresh?: string
     loadingFolder: string
     folderWidth: string
     emptyRecent: string
@@ -284,7 +285,7 @@ function fileName(path: string) {
 }
 
 type TreeProps = {
-  copy: Pick<FileSidebarProps['copy'], 'loadMore' | 'retry'>
+  copy: Pick<FileSidebarProps['copy'], 'loadMore' | 'retry' | 'refresh'>
   activeFile: string | null
   depth: number
   node: MarkdownTreeNode
@@ -302,15 +303,16 @@ function DirectoryListing({
   reload = false,
 }: TreeProps & { reload?: boolean }) {
   const [page, setPage] = useState(node)
+  const [refreshVersion, setRefreshVersion] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const live = useRef(true)
   useEffect(() => {
     live.current = true
     let cancelled = false
-    if (reload) {
+    if (reload || refreshVersion) {
       setLoading(true)
-      void browseMarkdownFolder(node.path, showExcluded)
+      void browseMarkdownFolder(node.path, showExcluded, ...(refreshVersion ? [0] : []))
         .then((result) => {
           if (!cancelled) setPage(result)
         })
@@ -320,12 +322,12 @@ function DirectoryListing({
         .finally(() => {
           if (!cancelled) setLoading(false)
         })
-    }
+    } else setPage(node)
     return () => {
       cancelled = true
       live.current = false
     }
-  }, [node.path, reload, showExcluded])
+  }, [node, reload, showExcluded, refreshVersion])
   const more = async () => {
     if (loading) return
     setLoading(true)
@@ -342,6 +344,16 @@ function DirectoryListing({
   }
   return (
     <>
+      <button
+        className="file-sidebar__refresh"
+        type="button"
+        onClick={() => {
+          setError(null)
+          setRefreshVersion((n) => n + 1)
+        }}
+      >
+        {copy.refresh ?? 'Refresh folder'}
+      </button>
       {page.children.map((child) => (
         <TreeBranch
           copy={copy}
@@ -357,7 +369,13 @@ function DirectoryListing({
       {error ? (
         <p role="alert">
           {error}
-          <button type="button" onClick={() => void more()}>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setRefreshVersion((n) => n + 1)
+            }}
+          >
             {copy.retry}
           </button>
         </p>

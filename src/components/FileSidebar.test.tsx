@@ -208,7 +208,7 @@ describe('FileSidebar', () => {
       (button) => button.getAttribute('aria-label') ?? button.textContent,
     )
     expect(buttons).toEqual([
-      ...(folder ? ['Change folder', 'one.md'] : ['Choose folder…']),
+      ...(folder ? ['Change folder', 'Refresh folder', 'one.md'] : ['Choose folder…']),
       'Clear',
       'one.md',
       'Remove one.md from recent',
