@@ -41,6 +41,11 @@ const englishCopy = {
   revealInFinder: 'Show in Finder',
   copyFilePath: 'Copy file path',
   source: 'Source',
+  sourceHelp:
+    'Whole file, including Front Matter. Source undo is separate. Returning after text changes starts a new visual undo history; a copy of the version before Source edits stays available in this tab.',
+  sourceCheckpoint: 'Copy version before last Source edits',
+  sourceFindHelp: 'Exact, case-sensitive text; includes line breaks and Markdown syntax.',
+  quickOpenKeys: '↑ ↓ Select · Enter Open · Esc Close',
   sourceRequired: 'This syntax requires Source mode. Continue editing the original source.',
   sourceDocument: (title: string) => `${title} Markdown source (whole file)`,
   read: 'Read',
@@ -227,6 +232,11 @@ const chineseCopy = {
   revealInFinder: '在 Finder 中显示',
   copyFilePath: '复制文件路径',
   source: '源码',
+  sourceHelp:
+    '编辑完整文件（包括 Front Matter）。源码撤销独立；修改后返回编辑模式会建立新的可视撤销历史。源码编辑前的版本可在此标签中复制恢复。',
+  sourceCheckpoint: '复制上次源码编辑前的版本',
+  sourceFindHelp: '精确匹配，区分大小写；包含换行与 Markdown 标记。',
+  quickOpenKeys: '↑ ↓ 选择 · Enter 打开 · Esc 关闭',
   sourceRequired: '源码包含暂不支持的语法，请继续在源码模式中编辑。',
   sourceDocument: (title: string) => `${title} Markdown 源码（完整文件）`,
   read: '阅读',

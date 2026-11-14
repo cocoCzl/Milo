@@ -3952,10 +3952,10 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   width: 100%;
   min-height: calc(100vh - 180px);
   padding: 24px;
-  resize: vertical;
+  resize: none;
   color: var(--text-primary);
   caret-color: var(--accent);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--surface-editor);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -4017,4 +4017,62 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
 }
 .file-sidebar__refresh:hover {
   background: var(--bg-hover);
+}
+
+/* Writing tools share the document palette and remain usable at UI zoom. */
+.quick-open__hint {
+  flex: 0 0 auto;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--ui-font-sm);
+}
+.quick-open [role="option"] strong,
+.quick-open [role="option"] small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-open [role="option"]:focus-visible,
+.quick-open input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.source-editor__help,
+.source-find__help {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: var(--ui-font-sm);
+  line-height: 1.6;
+}
+.source-editor__checkpoint {
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  background: var(--bg-control);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+.source-editor textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.source-find {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.source-find input {
+  flex: 1 1 180px;
+  font: inherit;
+}
+.source-find button {
+  min-height: 32px;
+  padding: 4px 8px;
+  font: inherit;
+}
+.source-find__help {
+  flex-basis: 100%;
+  margin: 0;
 }

@@ -230,7 +230,17 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         : await inspectMarkdownDocument(
             composeMarkdownDocument(tab.document.frontMatter, tab.document.markdown),
           )
-      if (getTab(id)?.document.revision !== tab.document.revision || getTab(id)?.isComposing)
+      const latest = getTab(id)
+      if (
+        !latest ||
+        latest.document.id !== tab.document.id ||
+        latest.document.path !== tab.document.path ||
+        latest.document.revision !== tab.document.revision ||
+        latest.document.sourceMode !== tab.document.sourceMode ||
+        latest.activity !== 'idle' ||
+        latest.externalChange ||
+        latest.isComposing
+      )
         return false
       if (inspected?.protectionReason) {
         replaceTab(id, (current) => ({
@@ -239,22 +249,27 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
         }))
         return false
       }
+      const source = composeMarkdownDocument(tab.document.frontMatter, tab.document.markdown)
+      const changedSource = !sourceMode && source !== tab.document.sourceEntryText
       replaceTab(id, (current) => ({
         ...current,
         notice: null,
         document: {
           ...current.document,
           sourceMode,
+          sourceEntryText: sourceMode ? source : current.document.sourceEntryText,
+          sourceHistoryCheckpoint: changedSource
+            ? current.document.sourceEntryText
+            : current.document.sourceHistoryCheckpoint,
           sourceEntryRevision: sourceMode
             ? current.document.revision
             : current.document.sourceEntryRevision,
           protectionReason: inspected
             ? inspected.protectionReason
             : current.document.protectionReason,
-          editorVersion:
-            !sourceMode && current.document.revision !== current.document.sourceEntryRevision
-              ? current.document.editorVersion + 1
-              : current.document.editorVersion,
+          editorVersion: changedSource
+            ? current.document.editorVersion + 1
+            : current.document.editorVersion,
         },
       }))
       return true

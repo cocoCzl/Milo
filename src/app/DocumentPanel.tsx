@@ -90,7 +90,9 @@ export const DocumentPanel = memo(function DocumentPanel({
     [actions, origin],
   )
   const onCompositionChange = useCallback(
-    (state: EditorComposition) => actions.updateComposition(origin, state),
+    (state: EditorComposition) => {
+      if (!tabRef.current.document.sourceMode) actions.updateComposition(origin, state)
+    },
     [actions, origin],
   )
   const onPasteImage = useCallback(
@@ -121,10 +123,17 @@ export const DocumentPanel = memo(function DocumentPanel({
               text={`${document.frontMatter}${document.markdown}`}
               label={copy.sourceDocument(title)}
               findLabel={copy.editor.find}
+              copy={copy.editor}
+              help={copy.sourceHelp}
+              findHelp={copy.sourceFindHelp}
+              checkpoint={document.sourceHistoryCheckpoint}
+              checkpointLabel={copy.sourceCheckpoint}
               loadingLabel={copy.loadingDocument}
               retryLabel={`${copy.editor.editorLoadFailed} ${copy.tryAgain}`}
               onChange={(source) => actions.updateSource(origin, source)}
-              onComposition={onCompositionChange}
+              onComposition={(state) => {
+                if (tabRef.current.document.sourceMode) actions.updateComposition(origin, state)
+              }}
               onRegisterFlush={registerSourceFlush}
             />
           ) : null}

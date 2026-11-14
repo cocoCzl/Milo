@@ -1891,6 +1891,36 @@ describe('useDocumentSession', () => {
     expect(session.result.current.watchError).toBeNull()
     expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
   })
+  it('preserves visual history after Source edits are reverted to the exact entry text', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    const version = session.result.current.document.editorVersion
+    await act(async () => {
+      await session.result.current.setSourceMode(id, true)
+    })
+    act(() => session.result.current.updateSource(originFor(session, id), '# Changed\n'))
+    act(() => session.result.current.updateSource(originFor(session, id), '# Before\n'))
+    await act(async () => {
+      expect(await session.result.current.setSourceMode(id, false)).toBe(true)
+    })
+    expect(session.result.current.document.editorVersion).toBe(version)
+    expect(session.result.current.document.isDirty).toBe(false)
+  })
+  it('keeps a read-only recovery checkpoint when actual Source changes start a new visual history', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    const version = session.result.current.document.editorVersion
+    await act(async () => {
+      await session.result.current.setSourceMode(id, true)
+    })
+    act(() => session.result.current.updateSource(originFor(session, id), '# Changed\n'))
+    await act(async () => {
+      expect(await session.result.current.setSourceMode(id, false)).toBe(true)
+    })
+    expect(session.result.current.document.editorVersion).toBe(version + 1)
+    expect(session.result.current.document.sourceHistoryCheckpoint).toBe('# Before\n')
+    expect(session.result.current.document.markdown).toBe('# Changed\n')
+  })
   it('keeps a Source edit made while safety inspection is returning and rejects the obsolete mode switch', async () => {
     const session = await openSavedDocument()
     const id = session.result.current.activeTabId!

@@ -50,6 +50,14 @@ try {
     await source.waitFor()
     assert.equal(await source.inputValue(), unchanged)
     assert.equal(await page.evaluate(() => window.__miloOutlineTest.writes.length), writesBefore)
+    // Source changes create an explicit visual-history boundary and retain a
+    // read-only previous-source checkpoint in the same tab.
+    const changedSource = '# 源码修改\n\nalpha **alpha** ALPHA.\n'
+    await source.fill(changedSource)
+    await page.getByRole('button', { name: '编辑', exact: true }).click()
+    await page.locator('.document-panel:not([hidden]) .ProseMirror').waitFor()
+    await page.getByRole('button', { name: '源码', exact: true }).click()
+    await page.getByRole('button', { name: '复制上次源码编辑前的版本' }).waitFor()
     const raw = '---\ntitle: source test\n---\n\n# 原文\n\n<div>原始 HTML</div>\n'
     await source.fill(raw)
     await page.keyboard.press('Meta+s')

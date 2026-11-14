@@ -38,6 +38,9 @@ export const emptyDocumentTab: DocumentTab = {
 export type DocumentSession = {
   sourceMode?: boolean
   sourceEntryRevision?: number
+  sourceEntryText?: string
+  // Read-only, in-session recovery checkpoint; never a second editable owner.
+  sourceHistoryCheckpoint?: string
   recoveryId?: string
   id: number
   path: string | null

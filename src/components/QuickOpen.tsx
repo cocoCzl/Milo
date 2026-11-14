@@ -14,6 +14,9 @@ export function QuickOpen({
   limited,
   retry,
   noResults,
+  rootLabel,
+  keyboardHint,
+  openFailed,
   onClose,
   onOpen,
 }: {
@@ -24,6 +27,9 @@ export function QuickOpen({
   limited: string
   retry: string
   noResults: string
+  rootLabel: string
+  keyboardHint: string
+  openFailed: string
   onClose: () => void
   onOpen: (path: string) => Promise<boolean>
 }) {
@@ -40,6 +46,7 @@ export function QuickOpen({
     setError(null)
     void collectFolderFiles(folder, controller.signal)
       .then((result) => {
+        if (controller.signal.aborted) return
         setFiles(result.files)
         setTruncated(result.truncated)
         setBusy(false)
@@ -55,7 +62,7 @@ export function QuickOpen({
   const matches = useMemo(() => filterFolderFiles(files, query), [files, query])
   const open = async (path: string) => {
     if (await onOpen(path)) onClose()
-    else setError(path)
+    else setError(`${openFailed}: ${path}`)
   }
   useEffect(() => {
     document.getElementById(`quick-file-${current}`)?.scrollIntoView?.({ block: 'nearest' })
@@ -124,10 +131,15 @@ export function QuickOpen({
                 onClick={() => void open(file.path)}
               >
                 <strong>{file.name}</strong>
-                <small>{file.relativePath}</small>
+                <small>
+                  {file.relativePath.includes('/')
+                    ? file.relativePath.slice(0, file.relativePath.lastIndexOf('/'))
+                    : rootLabel}
+                </small>
               </button>
             ))}
           </div>
+          <p className="quick-open__hint">{keyboardHint}</p>
           <Dialog.Close className="quick-open__close" aria-label="Escape">
             ×
           </Dialog.Close>

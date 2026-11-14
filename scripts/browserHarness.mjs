@@ -132,7 +132,8 @@ async function open({
             test.profiles.push(args.record)
             return null
           }
-          if (cmd === 'browse_markdown_folder')
+          if (cmd === 'browse_markdown_folder') {
+            if (test.browseError) throw new Error('Synthetic folder read failure')
             return {
               path: args.path,
               name: args.path.split('/').at(-1),
@@ -147,6 +148,7 @@ async function open({
                   children: [],
                 })),
             }
+          }
           if (cmd === 'read_draft_recovery') return { drafts: [], errors: [] }
           if (
             cmd === 'write_draft_recovery' ||
@@ -166,6 +168,7 @@ async function open({
             }
           }
           if (cmd.startsWith('write_markdown_document')) {
+            if (test.writeError) throw new Error('Synthetic disk write failure')
             files.set(args.request.path, args.request.markdown)
             test.writes.push(args.request)
             return args.request

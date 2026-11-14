@@ -1,5 +1,6 @@
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { QuickOpen } from '../components/QuickOpen'
+import { emitRuntimeSnapshot } from '../diagnostics/openProfile'
 import { resolveDocumentLink, type NavigationTarget } from '../file-system/documentLink'
 import { openExternalLink } from '../file-system/externalLink'
 import { listenForNativeClose, createNativeCloseHandler } from '../hooks/nativeClose'
@@ -200,6 +201,30 @@ export function App() {
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
   const [recoveryError, setRecoveryError] = useState<string | null>(null)
   const draftsRecoveredRef = useRef(false)
+  useEffect(() => {
+    if (import.meta.env.VITE_MILO_PROFILE !== '1') return
+    const snapshot = (event: KeyboardEvent) => {
+      if (
+        event.metaKey &&
+        event.altKey &&
+        event.shiftKey &&
+        event.code === 'KeyD' &&
+        !event.isComposing
+      ) {
+        event.preventDefault()
+        void emitRuntimeSnapshot('manual').catch(console.error)
+      }
+    }
+    window.addEventListener('keydown', snapshot)
+    return () => window.removeEventListener('keydown', snapshot)
+  }, [])
+  useEffect(() => {
+    if (import.meta.env.VITE_MILO_PROFILE !== '1' || !startupSessionRestored) return
+    const frame = requestAnimationFrame(() => {
+      void emitRuntimeSnapshot('session-restored').catch(console.error)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [startupSessionRestored])
   useEffect(() => {
     if (!startupSessionRestored || draftsRecoveredRef.current) return
     draftsRecoveredRef.current = true
@@ -764,6 +789,9 @@ export function App() {
           limited={copy.quickOpenLimited}
           retry={copy.retryAction}
           noResults={copy.quickOpenEmpty}
+          rootLabel={copy.sidebar.currentFolder}
+          keyboardHint={copy.quickOpenKeys}
+          openFailed={copy.editor.linkOpenFailed}
           onOpen={session.openDocumentAtPath}
           onClose={() => {
             setQuickOpen(false)

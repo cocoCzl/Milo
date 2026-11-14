@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EditorComposition } from '../milkdown/compositionSaveBoundary'
+import { defaultEditorCopy, type EditorCopy } from '../milkdown/editorCopy'
 
 // Native textarea: no second parser, renderer, dependency, or editable model.
 // It owns the source while active; every stable publication uses the ordinary
@@ -9,6 +10,11 @@ export function SourceEditor({
   text,
   label,
   findLabel,
+  copy = defaultEditorCopy,
+  help,
+  findHelp,
+  checkpoint,
+  checkpointLabel,
   onChange,
   onComposition,
   onRegisterFlush,
@@ -17,6 +23,11 @@ export function SourceEditor({
   text: string
   label: string
   findLabel: string
+  copy?: EditorCopy
+  help?: string
+  findHelp?: string
+  checkpoint?: string
+  checkpointLabel?: string
   onChange: (text: string) => void
   onComposition: (state: EditorComposition) => void
   onRegisterFlush: (flush: (() => boolean) | null) => void
@@ -29,6 +40,7 @@ export function SourceEditor({
   callbacks.current = { onChange, onComposition }
   const timer = useRef<number | undefined>(undefined)
   const [query, setQuery] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
   const flush = useRef<() => boolean>(() => false)
   flush.current = () => {
     if (composing.current || pending.current || !input.current) return false
@@ -68,7 +80,13 @@ export function SourceEditor({
       setQuery('')
     }
     const key = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f' && !event.isComposing)
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'f' &&
+        !event.isComposing &&
+        !composing.current &&
+        !pending.current
+      )
         find(event)
     }
     window.addEventListener('milo:find', find)
@@ -97,11 +115,16 @@ export function SourceEditor({
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(sample, 20)
   }
-  const findNext = () => {
-    if (!query || !input.current) return
+  const findNext = (backward = false) => {
+    if (!query || !input.current || composing.current || pending.current) return
     const field = input.current
-    const index = field.value.indexOf(query, field.selectionEnd)
-    const found = index < 0 ? field.value.indexOf(query) : index
+    const index = backward
+      ? field.selectionStart === 0
+        ? -1
+        : field.value.lastIndexOf(query, field.selectionStart - 1)
+      : field.value.indexOf(query, field.selectionEnd)
+    const found =
+      index < 0 ? (backward ? field.value.lastIndexOf(query) : field.value.indexOf(query)) : index
     if (found >= 0) {
       field.focus()
       field.setSelectionRange(found, found + query.length)
@@ -109,6 +132,22 @@ export function SourceEditor({
   }
   return (
     <div className="source-editor" hidden={!active}>
+      {help ? <p className="source-editor__help">{help}</p> : null}
+      {checkpoint !== undefined ? (
+        <button
+          className="source-editor__checkpoint"
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(checkpoint).then(
+              () => setFeedback(copy.copied),
+              () => setFeedback(copy.copyFailed),
+            )
+          }}
+        >
+          {checkpointLabel}
+        </button>
+      ) : null}
+      {feedback ? <p role="status">{feedback}</p> : null}
       {query !== null ? (
         <div className="source-find" role="search">
           <input
@@ -117,10 +156,13 @@ export function SourceEditor({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing || event.keyCode === 229) return
+              if (event.nativeEvent.isComposing || event.keyCode === 229) {
+                if (event.key === 'Escape') event.stopPropagation()
+                return
+              }
               if (event.key === 'Enter') {
                 event.preventDefault()
-                findNext()
+                findNext(event.shiftKey)
               }
               if (event.key === 'Escape') {
                 event.stopPropagation()
@@ -129,12 +171,15 @@ export function SourceEditor({
               }
             }}
           />
-          <button type="button" onClick={findNext}>
+          <button type="button" aria-label={copy.findPrevious} onClick={() => findNext(true)}>
+            ↑
+          </button>
+          <button type="button" aria-label={copy.findNext} onClick={() => findNext()}>
             ↓
           </button>
           <button
             type="button"
-            aria-label="Escape"
+            aria-label={copy.closeFind}
             onClick={() => {
               setQuery(null)
               input.current?.focus()
@@ -142,6 +187,7 @@ export function SourceEditor({
           >
             ×
           </button>
+          {findHelp ? <small className="source-find__help">{findHelp}</small> : null}
         </div>
       ) : null}
       <textarea
