@@ -1983,6 +1983,36 @@ describe('useDocumentSession', () => {
     expect(session.result.current.tabs).toHaveLength(1)
     expect(session.result.current.document.path).toBe(path)
   })
+
+  it('keeps the canonical Save As identity when reopening through a different entry point', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId
+    const canonical = '/private/tmp/copied.md'
+    mocks.pickMarkdownSavePath.mockResolvedValueOnce('/tmp/copied.md')
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => ({
+      ...document,
+      path: canonical,
+    }))
+    await act(async () => {
+      expect(await session.result.current.saveAsDocument()).toBe(true)
+    })
+    expect(session.result.current.document.path).toBe(canonical)
+    mocks.readMarkdownFile.mockResolvedValueOnce({
+      path: canonical,
+      markdown: '# Before\n',
+      lineEnding: 'lf',
+      hasBom: false,
+    })
+    await act(async () => {
+      await session.result.current.openDocumentAtPath('/tmp/copied.md')
+      await session.result.current.openDocumentAtPath(canonical)
+    })
+    expect(session.result.current.tabs).toHaveLength(1)
+    expect(session.result.current.activeTabId).toBe(id)
+    await waitFor(() =>
+      expect(mocks.watchMarkdownFile).toHaveBeenCalledWith(canonical, expect.any(Function)),
+    )
+  })
   it('does not postpone one document autosave when another tab is edited', async () => {
     mocks.readMarkdownFile.mockImplementation(async (requestedPath) => ({
       path: requestedPath,

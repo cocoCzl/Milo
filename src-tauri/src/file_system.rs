@@ -232,6 +232,12 @@ fn write_markdown_document_impl(
 
     write_atomically(&path, &bytes)?;
 
+    // Save dialogs can return /tmp while reads resolve /private/tmp (and
+    // similarly for symlinked parent directories). Publish one file identity
+    // only after creation, so opening the saved file reuses its existing tab.
+    let path = fs::canonicalize(&path)
+        .map_err(|error| format!("Could not resolve saved Markdown file: {error}"))?;
+
     Ok(MarkdownDocument {
         path: path.to_string_lossy().into_owned(),
         markdown: request.markdown,
@@ -319,6 +325,8 @@ fn write_markdown_document_safe_v2_impl(
             }
         }
 
+        let path = fs::canonicalize(&path)
+            .map_err(|error| format!("Could not resolve saved Markdown file: {error}"))?;
         Ok(MarkdownDocument {
             path: path.to_string_lossy().into_owned(),
             markdown: request.markdown,
@@ -756,6 +764,46 @@ mod tests {
 
         assert_eq!(fs::read_to_string(&destination).unwrap(), "After");
         fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn saved_documents_return_the_same_canonical_identity_as_reads() {
+        let directory = std::env::temp_dir().join(format!(
+            "milo-save-identity-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(directory.join("child")).unwrap();
+        let alias = directory.join("child/../note.md");
+        let request = super::SafeMarkdownWriteRequest {
+            path: alias.to_string_lossy().into_owned(),
+            markdown: "# Created\n".into(),
+            line_ending: super::LineEnding::Lf,
+            has_bom: false,
+            expected_markdown: None,
+            expected_line_ending: None,
+            expected_has_bom: None,
+            failure_point: None,
+        };
+        let saved = super::write_markdown_document_safe_v2_impl(request).unwrap();
+        let read = super::read_markdown_document_impl(alias.clone()).unwrap();
+        assert_eq!(saved.path, read.path);
+        let ordinary = super::write_markdown_document_impl(
+            alias.clone(),
+            super::MarkdownWriteRequest {
+                path: alias.to_string_lossy().into_owned(),
+                markdown: "# Updated\n".into(),
+                line_ending: super::LineEnding::Lf,
+                has_bom: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(ordinary.path, read.path);
+        assert_eq!(fs::read_to_string(alias).unwrap(), "# Updated\n");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[cfg(target_os = "macos")]
