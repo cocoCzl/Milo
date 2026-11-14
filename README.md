@@ -39,7 +39,7 @@ Remote image URLs are never requested until you choose to load a particular imag
 - Editor: Milkdown, ProseMirror, Remark, and GFM
 - Native services: Tauri dialogs, file watching, JSON application settings, and system menus
 
-Mermaid, KaTeX, Shiki, export, and cross-document content search/replacement remain deferred. Source mode loads on demand, includes Front Matter, and uses the same safe-save/conflict/recovery pipeline. Unchanged mode switches preserve the original text. Editing Source then returning to WYSIWYG starts a new visual-editor undo history; unsupported raw HTML stays in Source. Other decoding/protection errors remain protected. WYSIWYG edits still normalize Markdown formatting; full-file lossless editing is not claimed. See the [implementation and validation record](docs/EDITOR_OPTIMIZATION.md).
+Mermaid, KaTeX, Shiki, export, and cross-document content search/replacement remain deferred. Source mode loads on demand, includes Front Matter, and uses the same safe-save/conflict/recovery pipeline. Unchanged mode switches preserve the original text. Editing Source then returning to WYSIWYG starts a new visual-editor undo history; Source explains this boundary and offers a copyable pre-edit checkpoint during that session. Exactly reverting the Source text preserves visual history. Unsupported raw HTML stays in Source. Other decoding/protection errors remain protected. WYSIWYG edits still normalize Markdown formatting; full-file lossless editing is not claimed. See the [implementation and validation record](docs/EDITOR_OPTIMIZATION.md).
 
 ## Download and install
 
