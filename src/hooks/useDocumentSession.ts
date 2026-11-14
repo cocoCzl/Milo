@@ -612,26 +612,29 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
           path: savedFile.path,
           markdown: serializedMarkdown,
         })
-        replaceTab(origin.tabId, (tab) => ({
-          ...tab,
-          activity: 'idle',
-          document: {
-            ...tab.document,
-            path: savedFile.path,
-            title: titleFromPath(savedFile.path),
-            lineEnding: savedFile.lineEnding,
-            hasBom: savedFile.hasBom,
-            isDirty: tab.isComposing || tab.document.markdown !== savedSnapshot.markdown,
-            persistedMarkdown: serializedMarkdown,
-          },
-          externalChange: null,
-          notice: null,
-          saveFeedback:
-            tab.isComposing || tab.document.markdown !== savedSnapshot.markdown
-              ? 'pending'
-              : 'saved',
-          saveError: null,
-        }))
+        replaceTab(origin.tabId, (tab) => {
+          const isDirty =
+            tab.isComposing ||
+            composeMarkdownDocument(tab.document.frontMatter, tab.document.markdown) !==
+              serializedMarkdown
+          return {
+            ...tab,
+            activity: 'idle',
+            document: {
+              ...tab.document,
+              path: savedFile.path,
+              title: titleFromPath(savedFile.path),
+              lineEnding: savedFile.lineEnding,
+              hasBom: savedFile.hasBom,
+              isDirty,
+              persistedMarkdown: serializedMarkdown,
+            },
+            externalChange: null,
+            notice: null,
+            saveFeedback: isDirty ? 'pending' : 'saved',
+            saveError: null,
+          }
+        })
         return (
           !savedSnapshot.recoveryId || (await clearRecoveryCopy(origin, savedSnapshot.recoveryId))
         )

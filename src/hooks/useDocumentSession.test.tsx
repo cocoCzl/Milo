@@ -1979,4 +1979,40 @@ describe('useDocumentSession', () => {
       false,
     )
   })
+  it('keeps a Front Matter-only Source edit dirty when an older save completes', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    await act(async () => {
+      await session.result.current.setSourceMode(id, true)
+    })
+    const origin = originFor(session, id)
+    act(() => session.result.current.updateSource(origin, '---\ntitle: first\n---\n\n# Body\n'))
+    let release!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fileOnDisk = document.markdown
+      return document
+    })
+    let saving!: Promise<boolean>
+    act(() => {
+      saving = session.result.current.saveDocument()
+    })
+    await waitFor(() => expect(release).toBeTypeOf('function'))
+    act(() => session.result.current.updateSource(origin, '---\ntitle: newer\n---\n\n# Body\n'))
+    await act(async () => {
+      release()
+      await saving
+    })
+    expect(fileOnDisk).toContain('title: first')
+    expect(session.result.current.document.frontMatter).toContain('title: newer')
+    expect(session.result.current.document.isDirty).toBe(true)
+    expect(session.result.current.saveFeedback).toBe('pending')
+    await act(async () => {
+      expect(await session.result.current.saveDocument()).toBe(true)
+    })
+    expect(fileOnDisk).toContain('title: newer')
+    expect(session.result.current.document.isDirty).toBe(false)
+  })
 })
