@@ -24,24 +24,27 @@ fn directory(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn write_draft_recovery(
+pub async fn write_draft_recovery(
     app: AppHandle,
     id: String,
     markdown: Option<String>,
 ) -> Result<(), String> {
-    let directory = directory(&app)?;
-    let path = draft_path(&directory, &id)?;
-    if let Some(markdown) = markdown {
-        fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-        let bytes = serde_json::to_vec(&Draft { id, markdown }).map_err(|e| e.to_string())?;
-        crate::file_system::write_atomically(&path, &bytes)
-    } else {
-        match fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e.to_string()),
+    crate::disk_job::run(crate::disk_job::Lane::Drafts, move || {
+        let directory = directory(&app)?;
+        let path = draft_path(&directory, &id)?;
+        if let Some(markdown) = markdown {
+            fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+            let bytes = serde_json::to_vec(&Draft { id, markdown }).map_err(|e| e.to_string())?;
+            crate::file_system::write_atomically(&path, &bytes)
+        } else {
+            match fs::remove_file(path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e.to_string()),
+            }
         }
-    }
+    })
+    .await
 }
 
 #[derive(Default, Serialize)]
@@ -86,8 +89,11 @@ fn read_copies(directory: &std::path::Path) -> Result<RecoveryCopies, String> {
 }
 
 #[tauri::command]
-pub fn read_draft_recovery(app: AppHandle) -> Result<RecoveryCopies, String> {
-    read_copies(&directory(&app)?)
+pub async fn read_draft_recovery(app: AppHandle) -> Result<RecoveryCopies, String> {
+    crate::disk_job::run(crate::disk_job::Lane::Drafts, move || {
+        read_copies(&directory(&app)?)
+    })
+    .await
 }
 
 #[cfg(test)]

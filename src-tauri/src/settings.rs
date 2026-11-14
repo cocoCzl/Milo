@@ -132,7 +132,7 @@ impl ApplicationSettings {
         self.startup_session
             .open_document_paths
             .retain(|path| is_markdown_document_path(path));
-        self.startup_session.open_document_paths.truncate(12);
+        self.startup_session.open_document_paths.truncate(64);
         if self
             .startup_session
             .active_document_path
@@ -146,18 +146,24 @@ impl ApplicationSettings {
 }
 
 #[tauri::command]
-pub fn load_application_settings(app: AppHandle) -> Result<ApplicationSettings, String> {
-    read_settings(&settings_path(&app)?)
+pub async fn load_application_settings(app: AppHandle) -> Result<ApplicationSettings, String> {
+    crate::disk_job::run(crate::disk_job::Lane::Settings, move || {
+        read_settings(&settings_path(&app)?)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_application_settings(
+pub async fn save_application_settings(
     app: AppHandle,
     settings: ApplicationSettings,
 ) -> Result<ApplicationSettings, String> {
-    let settings = settings.normalized();
-    write_settings(&settings_path(&app)?, &settings)?;
-    Ok(settings)
+    crate::disk_job::run(crate::disk_job::Lane::Settings, move || {
+        let settings = settings.normalized();
+        write_settings(&settings_path(&app)?, &settings)?;
+        Ok(settings)
+    })
+    .await
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -239,6 +245,20 @@ mod tests {
         fs,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn retains_twenty_session_paths_independently_of_recent_files() {
+        let mut settings = ApplicationSettings::default();
+        settings.startup_session.open_document_paths =
+            (0..20).map(|i| format!("/tmp/tab-{i}.md")).collect();
+        settings.startup_session.active_document_path = Some("/tmp/tab-19.md".into());
+        let settings = settings.normalized();
+        assert_eq!(settings.startup_session.open_document_paths.len(), 20);
+        assert_eq!(
+            settings.startup_session.active_document_path.as_deref(),
+            Some("/tmp/tab-19.md")
+        );
+    }
 
     #[test]
     fn settings_round_trip_outside_document_directories() {

@@ -1,3 +1,4 @@
+mod disk_job;
 mod draft_recovery;
 mod file_open;
 mod file_system;
@@ -101,6 +102,7 @@ pub fn run() {
                     "CmdOrCtrl+N",
                 )?)
                 .item(&menu_item(app, "open-document", "Open…", "CmdOrCtrl+O")?)
+                .item(&menu_item(app, "quick-open", "Quick Open…", "CmdOrCtrl+P")?)
                 .item(&menu_item(app, "save-document", "Save", "CmdOrCtrl+S")?)
                 .item(&menu_item(app, "save-as", "Save As…", "CmdOrCtrl+Shift+S")?)
                 .item(&PredefinedMenuItem::close_window(
@@ -190,6 +192,7 @@ pub fn run() {
             file_system::recover_markdown_document_safe_v2,
             file_system::browse_markdown_folder,
             file_system::write_image_asset,
+            file_system::write_image_asset_binary,
             settings::load_application_settings,
             settings::save_application_settings,
             initial_launch_markdown_file

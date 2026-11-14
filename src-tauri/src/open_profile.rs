@@ -25,6 +25,7 @@ pub fn record(_app: &AppHandle, _value: serde_json::Value) -> Result<(), String>
 pub fn measure<T>(app: &AppHandle, path: &str, stage: &str, operation: impl FnOnce() -> T) -> T {
     #[cfg(feature = "diagnostics")]
     {
+        let _ = path;
         let epoch_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -35,7 +36,7 @@ pub fn measure<T>(app: &AppHandle, path: &str, stage: &str, operation: impl FnOn
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         let _ = record(
             app,
-            serde_json::json!({ "kind": "native", "stage": stage, "path": path, "epochMs": epoch_ms, "ms": ms }),
+            serde_json::json!({ "kind": "native", "stage": stage, "epochMs": epoch_ms, "ms": ms }),
         );
         result
     }
@@ -47,6 +48,9 @@ pub fn measure<T>(app: &AppHandle, path: &str, stage: &str, operation: impl FnOn
 }
 
 #[tauri::command]
-pub fn record_open_profile(app: AppHandle, record: serde_json::Value) -> Result<(), String> {
-    self::record(&app, record)
+pub async fn record_open_profile(app: AppHandle, record: serde_json::Value) -> Result<(), String> {
+    crate::disk_job::run(crate::disk_job::Lane::Settings, move || {
+        self::record(&app, record)
+    })
+    .await
 }

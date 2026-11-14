@@ -46,7 +46,7 @@ pub struct MarkdownDocument {
     has_bom: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownTreeNode {
     pub path: String,
@@ -101,10 +101,50 @@ const DEFAULT_EXCLUDED: &[&str] = &[
 const DIRECTORY_PAGE_SIZE: usize = 200;
 
 #[tauri::command]
-pub fn write_image_asset(app: AppHandle, request: ImageAssetRequest) -> Result<ImageAsset, String> {
-    let document_path = markdown_path(request.document_path.clone())?;
-    allow_document_directory(&app, &document_path)?;
-    write_image_asset_impl(request)
+pub async fn write_image_asset(
+    app: AppHandle,
+    request: ImageAssetRequest,
+) -> Result<ImageAsset, String> {
+    crate::disk_job::run(crate::disk_job::Lane::Documents, move || {
+        let document_path = markdown_path(request.document_path.clone())?;
+        allow_document_directory(&app, &document_path)?;
+        write_image_asset_impl(request)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn write_image_asset_binary(
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> Result<ImageAsset, String> {
+    let document_path = request
+        .headers()
+        .get("x-milo-document")
+        .and_then(|h| h.to_str().ok())
+        .ok_or("Missing image document")?
+        .to_owned();
+    let document_path: String = serde_json::from_str(&document_path).map_err(|e| e.to_string())?;
+    let mime_type = request
+        .headers()
+        .get("x-milo-mime")
+        .and_then(|h| h.to_str().ok())
+        .ok_or("Missing image type")?
+        .to_owned();
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+        _ => return Err("Expected binary image bytes".into()),
+    };
+    crate::disk_job::run(crate::disk_job::Lane::Documents, move || {
+        let path = markdown_path(document_path.clone())?;
+        allow_document_directory(&app, &path)?;
+        write_image_asset_impl(ImageAssetRequest {
+            document_path,
+            mime_type,
+            bytes,
+        })
+    })
+    .await
 }
 
 fn write_image_asset_impl(request: ImageAssetRequest) -> Result<ImageAsset, String> {
@@ -142,15 +182,23 @@ fn write_image_asset_impl(request: ImageAssetRequest) -> Result<ImageAsset, Stri
 }
 
 #[tauri::command]
-pub fn read_markdown_document(app: AppHandle, path: String) -> Result<MarkdownDocument, String> {
-    crate::open_profile::measure(&app, &path, "read+scope+decode", || {
-        let path = markdown_path(path.clone())?;
-        allow_document_directory(&app, &path)?;
-        read_markdown_document_impl(path)
+pub async fn read_markdown_document(
+    app: AppHandle,
+    path: String,
+) -> Result<MarkdownDocument, String> {
+    crate::disk_job::run(crate::disk_job::Lane::Documents, move || {
+        crate::open_profile::measure(&app, &path, "read+scope+decode", || {
+            let path = markdown_path(path.clone())?;
+            allow_document_directory(&app, &path)?;
+            read_markdown_document_impl(path)
+        })
     })
+    .await
 }
 
 fn read_markdown_document_impl(path: PathBuf) -> Result<MarkdownDocument, String> {
+    let path = fs::canonicalize(&path)
+        .map_err(|error| format!("Could not resolve Markdown file: {error}"))?;
     let bytes =
         fs::read(&path).map_err(|error| format!("Could not read Markdown file: {error}"))?;
     let (markdown, has_bom, line_ending) = decode_markdown(&bytes)?;
@@ -164,13 +212,16 @@ fn read_markdown_document_impl(path: PathBuf) -> Result<MarkdownDocument, String
 }
 
 #[tauri::command]
-pub fn write_markdown_document(
+pub async fn write_markdown_document(
     app: AppHandle,
     request: MarkdownWriteRequest,
 ) -> Result<MarkdownDocument, String> {
-    let path = markdown_path(request.path.clone())?;
-    allow_document_directory(&app, &path)?;
-    write_markdown_document_impl(path, request)
+    crate::disk_job::run(crate::disk_job::Lane::Documents, move || {
+        let path = markdown_path(request.path.clone())?;
+        allow_document_directory(&app, &path)?;
+        write_markdown_document_impl(path, request)
+    })
+    .await
 }
 
 fn write_markdown_document_impl(
@@ -192,16 +243,22 @@ fn write_markdown_document_impl(
 /// Production macOS writer. It never falls back to inode-replacing atomic
 /// rename: failures are surfaced so recovery semantics remain unambiguous.
 #[tauri::command]
-pub fn write_markdown_document_safe_v2(
+pub async fn write_markdown_document_safe_v2(
     app: AppHandle,
     request: SafeMarkdownWriteRequest,
 ) -> Result<MarkdownDocument, String> {
-    #[cfg(target_os = "macos")]
-    {
-        let path = markdown_path(request.path.clone())?;
-        allow_document_directory(&app, &path)?;
-    }
-    write_markdown_document_safe_v2_impl(request)
+    crate::disk_job::run(crate::disk_job::Lane::Documents, move || {
+        #[cfg(target_os = "macos")]
+        {
+            let path = markdown_path(request.path.clone())?;
+            allow_document_directory(&app, &path)?;
+        }
+        let profile_path = request.path.clone();
+        crate::open_profile::measure(&app, &profile_path, "safe-save-transaction", || {
+            write_markdown_document_safe_v2_impl(request)
+        })
+    })
+    .await
 }
 
 fn write_markdown_document_safe_v2_impl(
@@ -278,10 +335,16 @@ fn write_markdown_document_safe_v2_impl(
 }
 
 #[tauri::command]
-pub fn recover_markdown_document_safe_v2(app: AppHandle, path: String) -> Result<String, String> {
-    crate::open_profile::measure(&app, &path, "safe-save-recovery", || {
-        recover_markdown_impl(path.clone())
+pub async fn recover_markdown_document_safe_v2(
+    app: AppHandle,
+    path: String,
+) -> Result<String, String> {
+    crate::disk_job::run(crate::disk_job::Lane::Documents, move || {
+        crate::open_profile::measure(&app, &path, "safe-save-recovery", || {
+            recover_markdown_impl(path.clone())
+        })
     })
+    .await
 }
 
 fn recover_markdown_impl(path: String) -> Result<String, String> {
@@ -382,11 +445,44 @@ fn markdown_path(path: String) -> Result<PathBuf, String> {
     }
 }
 
+#[derive(Clone)]
+struct DirectorySnapshot {
+    modified: SystemTime,
+    created: std::time::Instant,
+    children: Vec<MarkdownTreeNode>,
+}
+type DirectoryCache = std::collections::HashMap<(PathBuf, Vec<String>), DirectorySnapshot>;
+fn directory_cache() -> &'static std::sync::Mutex<DirectoryCache> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<DirectoryCache>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(DirectoryCache::new()))
+}
+
 fn read_markdown_directory(
     path: &Path,
     excluded: &[String],
     offset: usize,
 ) -> Result<MarkdownTreeNode, String> {
+    let modified = fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_err(|e| format!("Could not inspect this folder: {e}"))?;
+    let key = (path.to_path_buf(), excluded.to_vec());
+    if offset > 0 {
+        if let Some(snapshot) = directory_cache()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(&key)
+        {
+            if snapshot.modified != modified {
+                return Err(
+                    "Folder changed. Refresh the folder before loading more entries.".into(),
+                );
+            }
+            if snapshot.created.elapsed() < std::time::Duration::from_secs(30) {
+                return Ok(directory_page(path, &snapshot.children, offset));
+            }
+        }
+    }
     let mut children = Vec::new();
     let entries =
         fs::read_dir(path).map_err(|error| format!("Could not read this folder: {error}"))?;
@@ -427,14 +523,33 @@ fn read_markdown_directory(
             .cmp(&left.is_directory)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
-    let total = children.len();
-    let children = children
-        .into_iter()
-        .skip(offset)
-        .take(DIRECTORY_PAGE_SIZE)
-        .collect();
-    Ok(MarkdownTreeNode {
-        next_offset: (offset + DIRECTORY_PAGE_SIZE < total).then_some(offset + DIRECTORY_PAGE_SIZE),
+    if children.len() <= 10000 {
+        let mut cache = directory_cache().lock().map_err(|e| e.to_string())?;
+        if cache.len() >= 8 {
+            if let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, value)| value.created)
+                .map(|(key, _)| key.clone())
+            {
+                cache.remove(&oldest);
+            }
+        }
+        cache.insert(
+            key,
+            DirectorySnapshot {
+                modified,
+                created: std::time::Instant::now(),
+                children: children.clone(),
+            },
+        );
+    }
+    Ok(directory_page(path, &children, offset))
+}
+
+fn directory_page(path: &Path, children: &[MarkdownTreeNode], offset: usize) -> MarkdownTreeNode {
+    MarkdownTreeNode {
+        next_offset: (offset + DIRECTORY_PAGE_SIZE < children.len())
+            .then_some(offset + DIRECTORY_PAGE_SIZE),
         path: path.to_string_lossy().into_owned(),
         name: path
             .file_name()
@@ -442,8 +557,13 @@ fn read_markdown_directory(
             .to_string_lossy()
             .into_owned(),
         is_directory: true,
-        children,
-    })
+        children: children
+            .iter()
+            .skip(offset)
+            .take(DIRECTORY_PAGE_SIZE)
+            .cloned()
+            .collect(),
+    }
 }
 
 fn is_markdown_path(path: &Path) -> bool {
@@ -677,6 +797,60 @@ mod tests {
         fs::remove_dir_all(directory).unwrap();
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn ordered_alias_writes_keep_inode_and_reject_a_stale_expected_revision() {
+        use super::{write_markdown_document_safe_v2_impl, SafeMarkdownWriteRequest};
+        use crate::disk_job::{run, Lane};
+        use std::os::unix::fs::MetadataExt;
+        let directory = std::env::temp_dir().join(format!(
+            "milo-ordered-save-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(directory.join("child")).unwrap();
+        let path = directory.join("note.md");
+        fs::write(&path, "old").unwrap();
+        let inode = fs::metadata(&path).unwrap().ino();
+        let request =
+            |target: std::path::PathBuf, text: &str, expected: &str| SafeMarkdownWriteRequest {
+                path: target.to_string_lossy().into_owned(),
+                markdown: text.into(),
+                line_ending: LineEnding::Lf,
+                has_bom: false,
+                expected_markdown: Some(expected.into()),
+                expected_line_ending: Some(LineEnding::Lf),
+                expected_has_bom: Some(false),
+                failure_point: None,
+            };
+        let first = request(path.clone(), "new", "old");
+        let stale = request(directory.join("child/../note.md"), "stale", "old");
+        tauri::async_runtime::block_on(async {
+            run(Lane::Documents, move || {
+                write_markdown_document_safe_v2_impl(first)
+            })
+            .await
+            .unwrap();
+            let failure = run(Lane::Documents, move || {
+                write_markdown_document_safe_v2_impl(stale)
+            })
+            .await
+            .unwrap_err();
+            assert!(failure.contains("external change conflict"));
+        });
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(fs::metadata(&path).unwrap().ino(), inode);
+        assert_eq!(
+            super::read_markdown_document_impl(directory.join("child/../note.md"))
+                .unwrap()
+                .path,
+            path.canonicalize().unwrap().to_string_lossy()
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     fn lazily_lists_one_directory_and_excludes_generated_directories() {
         let directory = std::env::temp_dir().join(format!(
@@ -734,6 +908,18 @@ mod tests {
             read_markdown_directory(&directory, &excluded, second.next_offset.unwrap()).unwrap();
         assert_eq!(third.children.len(), 50);
         assert_eq!(third.next_offset, None);
+        fs::write(directory.join("new.md"), "# Added").unwrap();
+        // Force a distinct directory mtime even on coarse filesystems.
+        let now = SystemTime::now() + std::time::Duration::from_secs(2);
+        fs::File::open(&directory)
+            .unwrap()
+            .set_modified(now)
+            .unwrap();
+        assert!(read_markdown_directory(&directory, &excluded, 200)
+            .unwrap_err()
+            .contains("Folder changed"));
+        let fresh = read_markdown_directory(&directory, &excluded, 0).unwrap();
+        assert_eq!(fresh.children.len(), 200);
         assert!(read_markdown_directory(&directory.join("missing"), &excluded, 0).is_err());
         fs::remove_dir_all(directory).unwrap();
     }

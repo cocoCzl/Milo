@@ -6,22 +6,48 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "opener:allow-reveal-item-in-dir",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "http://*" }, { "url": "https://*" }]
+      "allow": [
+        {
+          "url": "http://*"
+        },
+        {
+          "url": "https://*"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-watch",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "$DOCUMENT/**" },
-        { "path": "$DOWNLOAD/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$PICTURE/**" },
-        { "path": "$VIDEO/**" },
-        { "path": "$MUSIC/**" },
-        { "path": "$PUBLIC/**" },
-        { "path": "$TEMP/**" }
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$PICTURE/**"
+        },
+        {
+          "path": "$VIDEO/**"
+        },
+        {
+          "path": "$MUSIC/**"
+        },
+        {
+          "path": "$PUBLIC/**"
+        },
+        {
+          "path": "$TEMP/**"
+        }
       ]
     }
   ]
