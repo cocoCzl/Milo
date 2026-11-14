@@ -6,6 +6,8 @@ mod file_system;
 mod macos_safe_save;
 #[cfg(target_os = "macos")]
 mod macos_termination;
+#[cfg(feature = "native-test")]
+mod native_test;
 mod open_profile;
 mod settings;
 

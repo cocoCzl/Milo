@@ -259,6 +259,8 @@ pub async fn write_markdown_document_safe_v2(
             let path = markdown_path(request.path.clone())?;
             allow_document_directory(&app, &path)?;
         }
+        #[cfg(feature = "native-test")]
+        crate::native_test::before_save()?;
         let profile_path = request.path.clone();
         crate::open_profile::measure(&app, &profile_path, "safe-save-transaction", || {
             write_markdown_document_safe_v2_impl(request)
