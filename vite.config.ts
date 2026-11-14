@@ -46,6 +46,10 @@ export default defineConfig({
     },
   },
   test: {
+    // Keep browser globals and their timers in the same jsdom realm. The
+    // default threads pool uses Node timers: Milkdown's resolved timer cleanup
+    // can then run after jsdom has removed removeEventListener from that realm.
+    pool: 'vmThreads',
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: true,
