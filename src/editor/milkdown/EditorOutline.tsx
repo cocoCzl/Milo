@@ -94,6 +94,7 @@ export function EditorOutline({
         <span>{label}</span>
         {onPreferencesChange ? (
           <select
+            tabIndex={0}
             aria-label={depthLabel}
             value={preferences.depth}
             onChange={(event) =>
@@ -109,6 +110,7 @@ export function EditorOutline({
         ) : null}
         {onClose ? (
           <button
+            tabIndex={0}
             aria-label={closeLabel}
             className="editor-outline__close"
             type="button"
@@ -128,6 +130,7 @@ export function EditorOutline({
               >
                 {branches.has(heading.key) && onPreferencesChange ? (
                   <button
+                    tabIndex={0}
                     className="editor-outline__fold"
                     type="button"
                     aria-label={`${preferences.collapsed.has(heading.key) ? expandLabel : collapseLabel}: ${heading.text}`}
@@ -143,6 +146,9 @@ export function EditorOutline({
                   </button>
                 ) : null}
                 <button
+                  // WebKit's macOS default Tab policy skips native buttons
+                  // unless their keyboard focusability is explicit.
+                  tabIndex={0}
                   aria-current={heading.pos === activePosition ? 'location' : undefined}
                   className={`editor-outline__item editor-outline__item--level-${Math.min(Math.max(heading.level, 1), 6)}${heading.pos === activePosition ? ' editor-outline__item--active' : ''}`}
                   data-heading-id={heading.id}

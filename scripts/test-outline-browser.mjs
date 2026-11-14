@@ -219,6 +219,41 @@ try {
     true,
   )
   assert.equal((await metrics(page)).stageScrollTop, 0)
+  // Reverse traversal must follow the same visible controls, without changing
+  // the article's current heading. Explicit tabindex supports macOS WebKit's
+  // default policy as well as full keyboard access; no OS setting is changed.
+  const currentBeforeFocus = await page
+    .locator('[aria-current="location"]')
+    .getAttribute('data-heading-key')
+  for (let i = 1; i < count; i++) await page.keyboard.press('Shift+Tab')
+  assert(
+    await page
+      .locator('.editor-outline__item')
+      .first()
+      .evaluate((el) => el === document.activeElement),
+  )
+  assert.equal(
+    await page.locator('[aria-current="location"]').getAttribute('data-heading-key'),
+    currentBeforeFocus,
+  )
+  assert.equal((await metrics(page)).stageScrollTop, 0)
+  const rootFold = page.locator('.editor-outline__fold').first()
+  await rootFold.focus()
+  await page.keyboard.press('Enter')
+  assert.equal(await page.locator('.editor-outline__item').count(), 1)
+  await page.keyboard.press('Tab')
+  assert(
+    await page
+      .locator('.editor-outline__item')
+      .first()
+      .evaluate((el) => el === document.activeElement),
+  )
+  await page.keyboard.press('Shift+Tab')
+  assert(await rootFold.evaluate((el) => el === document.activeElement))
+  await page.keyboard.press('Enter')
+  await page.locator('.editor-outline__item').first().focus()
+  // Restore the last focus position used by the scrolling checks below.
+  for (let i = 1; i < count; i++) await page.keyboard.press('Tab')
   // Same-position rerenders, Read/Edit and current-item-in-view must preserve
   // manual browsing. A subsequent article scroll must reveal the new current.
   const manual = (await metrics(page)).bodyScrollTop
