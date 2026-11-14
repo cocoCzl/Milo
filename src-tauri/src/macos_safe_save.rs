@@ -378,19 +378,26 @@ fn save_inode_preserving_impl(
         );
     }
 
-    recovery.phase = RecoveryPhase::CommitStarted;
-    publish_marker_update(&marker_temporary, &marker, &recovery)?;
-
-    let mut original_file = OpenOptions::new()
-        .write(true)
-        .open(target)
-        .map_err(|error| format!("Could not open the Safe Save original for commit: {error}"))?;
+    // An open failure cannot have modified the original. Never publish
+    // CommitStarted before acquiring the writable handle: a later external
+    // edit would otherwise look like our interrupted in-place write.
+    let mut original_file = match OpenOptions::new().write(true).open(target) {
+        Ok(file) => file,
+        Err(error) => {
+            cleanup_recovery_artifacts(target, &backup, &marker)?;
+            return Err(format!(
+                "Could not open the Safe Save original for commit: {error}"
+            ));
+        }
+    };
     let opened_metadata = original_file
         .metadata()
         .map_err(|error| format!("Could not inspect the opened Safe Save target: {error}"))?;
     if opened_metadata.dev() != recovery.device_id || opened_metadata.ino() != recovery.inode {
         return Err("Safe Save target identity changed while opening for commit.".to_owned());
     }
+    recovery.phase = RecoveryPhase::CommitStarted;
+    publish_marker_update(&marker_temporary, &marker, &recovery)?;
     original_file
         .set_len(0)
         .map_err(|error| format!("Could not truncate the Safe Save original: {error}"))?;
@@ -766,6 +773,36 @@ mod tests {
         assert_eq!(fs::read(&target).unwrap(), b"Externally changed");
         assert!(!backup_path(&target).unwrap().exists());
         assert!(!marker_path(&target).unwrap().exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn denied_commit_open_cannot_roll_back_a_later_external_edit() {
+        let (directory, target) = fixture("denied-open-external-edit");
+        let mut permissions = fs::metadata(&target).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&target, permissions).unwrap();
+        let error = save_inode_preserving_if_unchanged(&target, NEW, OLD, None).unwrap_err();
+        assert!(error.contains("Could not open the Safe Save original for commit"));
+        assert_eq!(fs::read(&target).unwrap(), OLD);
+
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+        let external = b"External edit after a failed save must survive recovery.\n";
+        fs::write(&target, external).unwrap();
+        // No commit began: recovery must never interpret external bytes as
+        // Milo's partial write, restore OLD, and let a retry overwrite them.
+        assert_eq!(
+            recover_inode_preserving(&target).unwrap(),
+            RecoveryOutcome::Clean
+        );
+        assert_eq!(fs::read(&target).unwrap(), external);
+        assert!(!backup_path(&target).unwrap().exists());
+        assert!(!marker_path(&target).unwrap().exists());
+        assert!(save_inode_preserving_if_unchanged(&target, NEW, OLD, None)
+            .unwrap_err()
+            .contains("external change"));
+        assert_eq!(fs::read(&target).unwrap(), external);
         fs::remove_dir_all(directory).unwrap();
     }
 
