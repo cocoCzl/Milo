@@ -39,6 +39,7 @@ export function createImageNodeView(
       if (!currentImage) return
       currentImage.onload = null
       currentImage.onerror = null
+      currentImage.removeAttribute('src')
       currentImage = null
     }
 
@@ -129,6 +130,7 @@ export function createImageNodeView(
       destroy: () => {
         generation += 1
         clearCurrentImage()
+        root.replaceChildren()
       },
     }
   }
@@ -160,23 +162,32 @@ function createRemoteImageView(node: Parameters<NodeViewConstructor>[0], copy: I
   }
 
   syncRuntimeAttributes()
-  button.addEventListener('click', () => {
+  const clearImage = () => {
+    if (!currentImage) return
+    currentImage.onload = null
+    currentImage.onerror = null
+    currentImage.removeAttribute('src')
+    currentImage = null
+  }
+  const loadImage = () => {
+    clearImage()
     button.disabled = true
     button.textContent = copy.loadingImage
     const image = document.createElement('img')
     currentImage = image
     syncRuntimeAttributes()
-    image.addEventListener('load', () => {
+    image.onload = () => {
       if (currentImage !== image) return
       container.replaceChildren(image)
-    })
-    image.addEventListener('error', () => {
+    }
+    image.onerror = () => {
       if (currentImage !== image) return
       button.disabled = false
       button.textContent = copy.loadImageError
-    })
+    }
     image.src = String(currentNode.attrs.src ?? '')
-  })
+  }
+  button.addEventListener('click', loadImage)
   container.append(button)
   return {
     dom: container,
@@ -193,7 +204,9 @@ function createRemoteImageView(node: Parameters<NodeViewConstructor>[0], copy: I
     },
     ignoreMutation: () => true,
     destroy: () => {
-      currentImage = null
+      clearImage()
+      button.removeEventListener('click', loadImage)
+      container.replaceChildren()
     },
   }
 }

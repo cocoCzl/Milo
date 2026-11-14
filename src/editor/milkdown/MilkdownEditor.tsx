@@ -26,7 +26,6 @@ import {
   type CmdKey,
 } from '@milkdown/core'
 import { history } from '@milkdown/plugin-history'
-import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { commonmark } from '@milkdown/preset-commonmark'
 import {
   addColAfterCommand,
@@ -220,6 +219,8 @@ export function MilkdownEditor({
   const editorCopy = useMemo(() => ({ ...defaultEditorCopy, ...copy }), [copy])
   const editorRootRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Editor | null>(null)
+  const activeRef = useRef(active)
+  activeRef.current = active
   const initialMarkdownRef = useRef(initialMarkdown)
   const ariaLabelRef = useRef(ariaLabel)
   const copyRef = useRef(editorCopy)
@@ -352,6 +353,21 @@ export function MilkdownEditor({
           new Plugin({
             view: (view) => ({
               update: (_view, previous) => {
+                if (
+                  !disposed &&
+                  activeRef.current &&
+                  !previous.selection.eq(view.state.selection)
+                ) {
+                  queueMicrotask(() => {
+                    if (disposed || !activeRef.current || view.isDestroyed) return
+                    if (!view.state.selection.empty) setBlockMenuTarget(null)
+                    // Keep selection UI independent of document publication.
+                    // No listener plugin serializer or 200 ms task is needed.
+                    const heading = headingAtSelection(view.state, headingsByPositionRef.current)
+                    if (heading !== null) setActiveHeadingPosition(heading)
+                    setContextMenu(null)
+                  })
+                }
                 if (disposed || !originalDoc || previous.doc === view.state.doc) return
                 onContentChangeRef.current?.()
                 window.clearTimeout(publishTimer)
@@ -416,30 +432,6 @@ export function MilkdownEditor({
           ],
           ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
         ])
-        ctx.get(listenerCtx).selectionUpdated((selectionCtx) => {
-          if (disposed) {
-            return
-          }
-
-          const editorView = selectionCtx.get(editorViewCtx)
-          if (!editorView.state) return
-          queueMicrotask(() => {
-            if (disposed) return
-            const currentView = selectionCtx.get(editorViewCtx)
-            if (!disposed && currentView.state) {
-              if (!currentView.state.selection.empty) setBlockMenuTarget(null)
-              // Selection is only a secondary signal.  It closes the small
-              // click-to-scroll race in edit mode; scrolling itself remains
-              // the source of truth whenever the user moves the document.
-              const selectedHeading = headingAtSelection(
-                currentView.state,
-                headingsByPositionRef.current,
-              )
-              if (selectedHeading !== null) setActiveHeadingPosition(selectedHeading)
-            }
-          })
-          setContextMenu(null)
-        })
       })
       .use(commonmark)
       .use(miloSafariCompositionHardbreakSchema)
@@ -452,7 +444,6 @@ export function MilkdownEditor({
       .use(miloEmptyTableCellSerializer)
       .use(miloPrism)
       .use(history)
-      .use(listener)
 
     if (profile) editor.use(createOpenProfilePlugin(profile))
     editorRef.current = editor

@@ -15,6 +15,40 @@ import {
 afterEach(cleanup)
 
 describe('MilkdownEditor images', () => {
+  it('releases local image requests and runtime handlers when its view is destroyed', () => {
+    const { view } = localImageNodeViewTestHarness('diagram.png')
+    const root = view.dom as HTMLElement
+    const image = root.querySelector('img')!
+    view.destroy?.()
+    expect(image.onload).toBeNull()
+    expect(image.onerror).toBeNull()
+    expect(image.hasAttribute('src')).toBe(false)
+    expect(root.childElementCount).toBe(0)
+  })
+  it('releases remote image requests and its load control on destruction without reloading', () => {
+    const created: HTMLImageElement[] = []
+    const create = document.createElement.bind(document)
+    const spy = vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+      const element = create(tag)
+      if (tag === 'img') created.push(element as HTMLImageElement)
+      return element
+    }) as typeof document.createElement)
+    try {
+      const { view } = localImageNodeViewTestHarness('https://images.example.test/a.png')
+      const button = (view.dom as HTMLElement).querySelector('button')!
+      fireEvent.click(button)
+      const image = created.at(-1)!
+      view.destroy?.()
+      expect(image.onload).toBeNull()
+      expect(image.onerror).toBeNull()
+      expect(image.hasAttribute('src')).toBe(false)
+      button.disabled = false
+      fireEvent.click(button)
+      expect(created).toHaveLength(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
   it('keeps remote images unloaded until the author explicitly requests one', async () => {
     const { container, getByRole } = render(
       <MilkdownEditor initialMarkdown="![A remote illustration](https://images.example.test/quiet.png)" />,

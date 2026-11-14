@@ -78,6 +78,12 @@ struct LaunchMarkdownFile(Option<String>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(feature = "diagnostics")]
+    let run_epoch_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+        * 1000.0;
     let app = tauri::Builder::default()
         .manage(CloseCoordinator::default())
         .manage(file_open::OpenQueue::default())
@@ -91,7 +97,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
+        .setup(move |app| {
+            #[cfg(feature = "diagnostics")]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = open_profile::record(
+                        &handle,
+                        serde_json::json!({
+                            "kind": "process-run", "epochMs": run_epoch_ms
+                        }),
+                    );
+                });
+            }
             #[cfg(target_os = "macos")]
             macos_termination::install(app.handle()).map_err(std::io::Error::other)?;
             let file = SubmenuBuilder::new(app, "File")

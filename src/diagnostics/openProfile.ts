@@ -96,6 +96,35 @@ export function bindProfileDocument(doc: Node, profile: OpenProfile) {
 
 export type RuntimeMetric = { count: number; totalMs: number; maxMs: number; recentMs: number[] }
 const runtimeMetrics: Record<string, RuntimeMetric> = {}
+// Explicit snapshots, never a polling timer or global listener per editor.
+// Counts are scoped to Milo's DOM; no text, selection, filenames or paths.
+export async function emitRuntimeSnapshot(reason: string) {
+  if (!profileEnabled()) return
+  const count = (selector: string) => document.querySelectorAll(selector).length
+  await invoke('record_open_profile', {
+    record: {
+      kind: 'snapshot',
+      reason,
+      epochMs: Date.now(),
+      timeOrigin: performance.timeOrigin,
+      nowMs: performance.now(),
+      build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
+      counts: {
+        tabs: count('.document-tab'),
+        views: count('.ProseMirror'),
+        elements: count('*'),
+        visibleViews: count(
+          '.document-panel:not([hidden]) .document-view-host:not([hidden]) .ProseMirror',
+        ),
+        sourceViews: count('.source-editor textarea'),
+        localImages: count('.local-image-view img[src]'),
+        remoteImages: count('.remote-image-view img[src]'),
+        languageMenus: count('.code-block-language-menu'),
+      },
+      metrics: structuredClone(runtimeMetrics),
+    },
+  })
+}
 if (profileEnabled())
   (globalThis as typeof globalThis & { __miloMetrics?: typeof runtimeMetrics }).__miloMetrics =
     runtimeMetrics
