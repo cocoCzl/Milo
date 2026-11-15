@@ -25,3 +25,5 @@ src-tauri/gen/
 # Local verification artifacts (keep test evidence outside the repository)
 /docs/verification/
 /docs/OPTIMIZATION_*.md
+
+.tmp/

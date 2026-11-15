@@ -2,7 +2,9 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { samples, describeSample } from './performanceSamples.mjs'
-const output = resolve(process.argv[2] || '/private/tmp/milo-native-review')
+const output = resolve(
+  process.argv[2] || process.env.MILO_FIXTURES_DIR || '.tmp/milo-native-review',
+)
 const writeFixture = (path, data) => writeFile(path, data, { flag: 'wx' })
 await mkdir(`${output}/tabs`, { recursive: true })
 await mkdir(`${output}/assets`, { recursive: true })

@@ -41,7 +41,7 @@ Pasting rich text converts only formatting with a direct Markdown representation
 _Avoid_: HTML paste, rich-text import
 
 **Front Matter**:
-YAML metadata at the beginning of a Markdown document. Milo preserves it byte-for-byte while editing the document body in the MVP, without metadata controls in WYSIWYG; unreleased whole-file Source mode also allows explicit metadata edits.
+YAML metadata at the beginning of a Markdown document. Milo preserves it byte-for-byte while editing the document body in the MVP, without metadata controls in WYSIWYG; whole-file Source mode also allows explicit metadata edits.
 _Avoid_: document properties, editor metadata
 
 **Protected Document**:
@@ -61,7 +61,7 @@ An image referenced by an HTTP(S) Markdown URL. Milo does not load it automatica
 _Avoid_: embedded cloud image, automatic external resource
 
 **External Link**:
-A non-local URL in a Markdown document. It opens through the operating system's default browser, never within Milo's editor surface. Edit uses Command/Control-click; unreleased Read mode also accepts an ordinary click.
+A non-local URL in a Markdown document. It opens through the operating system's default browser, never within Milo's editor surface. Edit uses Command/Control-click; Read mode also accepts an ordinary click.
 _Avoid_: embedded web view, normal-click navigation
 
 **Supported Text File**:
@@ -174,7 +174,7 @@ _Avoid_: sync conflict, merge
 The CommonMark dialect with GitHub Flavored Markdown extensions for tables, task lists, and strikethrough. Content edited by Milo is serialized in this normalized dialect; unsupported syntax is preserved when reliable preservation is possible and otherwise must not be silently lost.
 _Avoid_: arbitrary Markdown, private document format
 
-## Writing optimization (unreleased)
+## Writing optimization
 
 Native window close and application quit share a sequential all-tab coordinator. macOS window close hides the window after approval; quit exits the process. Repeated requests are coalesced, a cancelled request returns focus to the affected tab, and in-flight writes, failures and unsettled composition remain protected. Cocoa termination is intercepted on the existing application delegate because the predefined Quit action bypassed Tauri's ExitRequested in a disposable native test.
 
@@ -186,4 +186,4 @@ Local navigation resolves relative `.md`/`.markdown`, percent-encoded paths and 
 
 Disk jobs serialize whole document transactions (including recovery/image writes) in one cancellation-safe lane to cover path aliases; settings and recovery drafts use separate lanes. This prioritizes consistency over parallel file throughput. Frontend saves retain original document/revision identities. Independent per-tab autosave timers prevent other tabs from postponing a pending save. Directory pages reuse a bounded 30-second cache; offset zero/Refresh rescans, and changed directory metadata rejects stale continuation.
 
-The [optimization work record](docs/EDITOR_OPTIMIZATION.md) records implementation status, reproducible synthetic samples, measured resource counts, and remaining native acceptance. Milkdown views/history are still retained after a visit. View eviction and lossless block preservation are not implemented: destroying a Milkdown instance also destroys the current plugin/history lifecycle, and reference definitions resolve across block boundaries.
+The [editor status](docs/EDITOR_STATUS.md) records implementation status, reproducible synthetic samples, measured resource counts, and remaining native acceptance. Milkdown views/history are still retained after a visit. View eviction and lossless block preservation are not implemented: destroying a Milkdown instance also destroys the current plugin/history lifecycle, and reference definitions resolve across block boundaries.

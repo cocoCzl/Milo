@@ -2,119 +2,68 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Milo is a free, local-first Markdown editor for macOS. It opens a Markdown file and lets you write naturally in a focused WYSIWYG surface—without an account, cloud service, backend, or content database.
+Milo is a local-first Markdown editor for macOS. It opens ordinary Markdown files in a focused WYSIWYG editor while keeping those files portable and authoritative.
 
-Your Markdown files remain the source of truth. They stay portable across VS Code, Vim, Obsidian, Typora, Git, and other Markdown tools.
+The repository currently tracks the 0.3.0 code line. The GitHub v0.3.0 Pre-release is a historical build; current `master` may contain later editor and reliability work.
 
-Milo 0.3.0 is the first public beta, available as a [GitHub Pre-release](https://github.com/cocoCzl/Milo/releases/tag/v0.3.0).
+## Features
 
-## What Milo is for
-
-- Focused, Typora-like Markdown writing instead of a source-and-preview split.
-- Local files first: open, edit, save, and organize ordinary `.md` or `.markdown` files.
-- A quiet desktop interface with system appearance, light/dark mode, document zoom, a persistent document outline, sidebar hiding, and Focus Mode.
-- A small, privacy-respecting app: no sign-in, telemetry, automatic cloud sync, or network requirement for core writing.
-
-## MVP capabilities
-
-- WYSIWYG CommonMark and GFM editing: headings, emphasis, blockquotes, lists, task lists, tables, links, images, code blocks with language selection and copy, and undo/redo.
-- Native Open, Save, Save As, recent files, Current Folder browsing and switching, tabs, startup-session restoration, and external-change protection.
-- Byte-preserved YAML Front Matter, UTF-8/BOM and LF/CRLF preservation, protected read-only handling for unsupported documents, and inode-preserving safe save with crash recovery on macOS.
+- CommonMark and GFM editing with headings, emphasis, quotes, lists, task lists, tables, links, images and code blocks.
+- Edit, Read and whole-file Source modes with on-demand editor loading.
+- Native Open, Save, Save As, recent files, folder browsing, tabs and session restoration.
+- Safe saving with conflict checks, recovery copies, Front Matter, UTF-8 BOM and LF/CRLF handling.
+- Relative Markdown links, anchors, Back navigation, document find/replace and folder-scoped Quick Open.
+- Outline navigation, themes, independent document/interface zoom, Focus Mode and accessible keyboard controls.
 - Image paste into a document-adjacent `assets/` folder using relative Markdown links.
-- Remote images load only after an explicit action; external links use command-click in Edit (unreleased Read mode also accepts a plain click).
-- macOS menus, keyboard shortcuts, accessibility labels, reduced-motion support, and a restrained writing surface.
+- Remote images load only after an explicit action; core writing has no account, telemetry or cloud dependency.
 
-The development branch also includes protected native window close/quit, local unnamed-document recovery, lazy tab and folder loading, a compact top bar, collapsible Outline levels and **Cmd+F document find** in Edit and Read. It now also includes relative Markdown links and anchors with Back navigation, find/replace, Cmd+P search inside the selected folder, Finder/path actions, and an on-demand whole-file Source mode. Disk transactions run on ordered blocking workers; Home no longer preloads Milkdown. These changes are unreleased; the linked 0.3.0 binary does not include them. Remaining native IME and performance acceptance gaps are listed in [Known issues](docs/KNOWN_ISSUES.md).
+## Files and privacy
 
-## Privacy and data model
+Markdown files remain the source of truth. Preferences, recent paths, session metadata and recovery copies stay outside document folders. Milo does not use a database, account system, telemetry service or automatic cloud sync. Use disposable or backed-up files when testing pre-release builds.
 
-Saved Markdown files remain the authoritative documents. Application preferences, recent paths and session metadata live outside document folders. In the current development source, unnamed dirty documents also get independent local recovery JSON copies of stable content (sampled on a bounded 600 ms timer; unsettled composition is excluded); these are removed after successful first save or explicit discard. Snapshots can lag edits and cannot guarantee recovery before the first snapshot or after disk failure. No database or cloud copy is used.
+WYSIWYG editing can normalize parts of Markdown formatting. Source mode preserves the complete file, including Front Matter, for content that should not be converted safely. Cross-mode undo is not unified yet; see [Known issues](docs/KNOWN_ISSUES.md).
 
-Remote image URLs are never requested until you choose to load a particular image. Milo does not ship an embedded browser, account system, analytics service, or backend API.
+## Platform and download
 
-## Technology
+Milo targets macOS 13 or later. The v0.3.0 public Pre-release provides a Universal DMG for Apple Silicon and Intel. It is ad-hoc signed and not notarized.
 
-- Desktop: Tauri 2 and Rust
-- Interface: React, TypeScript, Vite, CSS Variables, and Lucide icons
-- Editor: Milkdown, ProseMirror, Remark, and GFM
-- Native services: Tauri dialogs, file watching, JSON application settings, and system menus
+Download the DMG and checksum from [GitHub Releases](https://github.com/cocoCzl/Milo/releases), verify with `shasum -a 256 -c`, then move Milo to Applications. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** after checking the source and checksum. Do not disable Gatekeeper globally.
 
-Mermaid, KaTeX, Shiki, export, and cross-document content search/replacement remain deferred. Source mode loads on demand, includes Front Matter, and uses the same safe-save/conflict/recovery pipeline. Unchanged mode switches preserve the original text. Editing Source then returning to WYSIWYG starts a new visual-editor undo history; Source explains this boundary and offers a copyable pre-edit checkpoint during that session. Exactly reverting the Source text preserves visual history. Unsupported raw HTML stays in Source. Other decoding/protection errors remain protected. WYSIWYG edits still normalize Markdown formatting; full-file lossless editing is not claimed. See the [implementation and validation record](docs/EDITOR_OPTIMIZATION.md).
+Native coverage is strongest on Apple Silicon. The current performance budget is not signed off, and some IME, Dock and window-transition cases remain unresolved; see [Known issues](docs/KNOWN_ISSUES.md) and [Editor status](docs/EDITOR_STATUS.md).
 
-## Download and install
+## Development
 
-Users need **macOS 13 or later**. Node.js, Rust and source build tools are unnecessary. The Universal DMG contains both Apple Silicon (arm64) and Intel (x86_64) architectures.
-
-1. Select **v0.3.0 / Pre-release** on [GitHub Releases](https://github.com/cocoCzl/Milo/releases). Download `Milo_0.3.0_universal.dmg` and its `.sha256` file. In the download directory, verify with `shasum -a 256 -c Milo_0.3.0_universal.dmg.sha256`.
-2. Open the DMG, drag Milo to Applications, eject the disk image, then open Milo from Applications.
-3. Milo is **ad-hoc signed**, without a Developer ID identity signature or Apple notarization. macOS may block the first opening. After checking the source and checksum, try opening it once, then go to **System Settings → Privacy & Security → Open Anyway** for Milo and follow the system prompts. Wording varies by macOS version; see [Apple's instructions](https://support.apple.com/en-us/102445).
-
-Passing ad-hoc signature integrity checks does not imply Apple certification or Gatekeeper trust. Do not disable Gatekeeper globally or remove quarantine from the entire download directory. The release attachment was downloaded in Chrome with quarantine retained and its checksum verified. The maintainer confirmed manually installing it, allowing it through the system prompts and opening a document on arm64 / macOS 27.0.1. This confirms that installation path on one host, not every prompt or all application features; other macOS versions may differ.
-
-Hardware coverage: Apple Silicon (arm64), macOS 27.0.1 (26A434). Intel and macOS 13–26 have not been tested on hardware. Native Chinese IME Auto Save, Command-S and normal document close passed disk/reopen checks on the installed release; immediate app-switch and minimize/restore transition timing remains incompletely observed. The maintainer accepts these gaps and the incomplete performance budget for this 0.3.0 Pre-release only; cold-start/file-open latency remains unmeasured. This is not a test pass. See [Known issues](docs/KNOWN_ISSUES.md). Use disposable or backed-up documents for beta testing.
-
-Report problems through [GitHub Issues](https://github.com/cocoCzl/Milo/issues), including app version, macOS version, chip, reproduction steps and relevant screenshots. Avoid sharing private documents.
-
-## Development requirements
-
-Source development requires Node.js 24, Rust stable, Xcode Command Line Tools and both macOS Rust targets.
-
-## Local development
+Requirements: Node.js 24, stable Rust, Xcode Command Line Tools and the macOS Rust targets.
 
 ```sh
 npm ci
 npm run tauri -- dev
 ```
 
-The command starts Vite and the native Milo window. No account, server, database, or network connection is needed after dependencies are installed.
-
-## Quality checks
+## Checks
 
 ```sh
 npm run format:check
 npm run typecheck
-npm run test
 npm run lint -- --max-warnings=0
+npm test
 npm run build
-npx playwright install --with-deps chromium
-# Start `npm run dev -- --host 127.0.0.1` in another terminal:
 npm run test:browser
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml --locked
-npm run tauri -- build --debug
 ```
 
-## Build a universal macOS artifact
-
-```sh
-./scripts/build-macos-universal.sh
-```
-
-The output is a universal DMG under `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`. This explicitly creates an ad-hoc signed, unnotarized beta, verifies signature integrity, architectures, versions, minimum OS and package size, then generates a `.sha256` file. No Apple account, certificate or Secrets are required.
-
-## Project layout
-
-```text
-src/
-  app/            Application composition
-  components/     Small presentational components
-  editor/         Milkdown editor and Markdown boundary
-  file-system/    Native file, image, link, and launch boundaries
-  hooks/          Document session and native-event coordination
-  settings/       JSON-backed application preferences
-  styles/         Typography-first visual system
-src-tauri/        Rust commands, macOS menu, packaging, and native services
-docs/             UI contracts, known issues, and release runbooks
-```
+Browser checks use simulated native IPC. Native release packaging follows [RELEASE.md](docs/RELEASE.md).
 
 ## Documentation
 
-- [UI design and editor invariants](docs/UI_DESIGN.md)
+- [Editor status and measurements](docs/EDITOR_STATUS.md)
 - [Known issues](docs/KNOWN_ISSUES.md)
-- [Release runbook](docs/RELEASE.md): beta packaging, verification and release steps.
-- [发布说明（简体中文）](docs/RELEASE.zh-CN.md)：测试版打包、验证与发布步骤。
+- [UI design constraints](docs/UI_DESIGN.md)
+- [Release runbook](docs/RELEASE.md)
+- [发布说明（简体中文）](docs/RELEASE.zh-CN.md)
 
 ## License
 
-Milo is licensed under [GPL-3.0](LICENSE). Redistributed modified versions must remain available under the GPL with corresponding source code.
+Milo is licensed under [GPL-3.0](LICENSE).

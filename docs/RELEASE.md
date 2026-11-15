@@ -63,10 +63,10 @@ Automation creates drafts with `draft: true`, `prerelease: true`, `make_latest: 
 
 Before publication compare the existing remote tag and both attachments against the recorded identity; stop on any mismatch. Update the release body without replacing assets. After publication check anonymous page access and download the public assets to verify SHA-256. Documentation-only commits do not alter the tagged application; this final handoff runs only documentation checks, as explicitly requested.
 
-## Verification after writing optimization (unreleased)
+## Verification after current source changes
 
 The 0.3.0 exception and documentation-only handoff above apply only to that historical publication. Subsequent source changes require the complete CI gate, pinned Playwright browser installation and the original performance budgets. Keep generated evidence outside the repository. Record acceptance limits in [Known issues](KNOWN_ISSUES.md); do not promote browser development timings or old IME checks to native acceptance. For disposable native checks, `npm run tauri -- build --bundles app --config '{"identifier":"io.github.milo.validation"}'` creates a genuine Tauri Release app with separate app-data; do not run it over the user's real session. That arm64 test build is not a Universal DMG release. No release was produced by this optimization task.
 
-## Unreleased editor optimization acceptance
+## Current editor status
 
-The current source adds whole-file Source mode, local Markdown navigation, replacements and folder Quick Open, plus ordered asynchronous disk transactions and lazy editor/menu loading. See [EDITOR_OPTIMIZATION.md](EDITOR_OPTIMIZATION.md) for exact implemented behavior and current evidence. An isolated arm64 `.app` build, browser tests or historical 0.3.0 exceptions do not satisfy Universal packaging, native IME/window lifecycle or native performance gates. All existing save/recovery/privacy and release approval requirements remain in force.
+The current source adds whole-file Source mode, local Markdown navigation, replacements and folder Quick Open, plus ordered asynchronous disk transactions and lazy editor/menu loading. See [EDITOR_STATUS.md](EDITOR_STATUS.md) for exact implemented behavior and current evidence. An isolated arm64 `.app` build, browser tests or historical 0.3.0 exceptions do not satisfy Universal packaging, native IME/window lifecycle or native performance gates. All existing save/recovery/privacy and release approval requirements remain in force.

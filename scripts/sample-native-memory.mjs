@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 
 const [mode, baselineFile, appPath, outputPrefix] = process.argv.slice(2)
 const processes = () =>
@@ -22,8 +23,9 @@ if (mode === 'baseline') {
 } else {
   if (!appPath || !outputPrefix) throw new Error('Missing app or output prefix')
   const app = await realpath(appPath)
-  if (!app.startsWith('/private/tmp/') || !app.endsWith('.app'))
-    throw new Error('Only an explicitly named disposable .app under /private/tmp is accepted')
+  const tempRoot = await realpath(tmpdir())
+  if (!app.startsWith(`${tempRoot}/`) || !app.endsWith('.app'))
+    throw new Error(`Only an explicitly named disposable .app under ${tempRoot} is accepted`)
   const before = JSON.parse(await readFile(baselineFile, 'utf8'))
   const current = processes()
   const main = Object.keys(current).filter((pid) => current[pid] === `${app}/Contents/MacOS/milo`)

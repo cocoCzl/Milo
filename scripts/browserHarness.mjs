@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
 import { chromium, webkit } from 'playwright'
-const output = process.env.MILO_OUTLINE_ARTIFACTS || '/private/tmp/milo-outline-regression'
+const output = process.env.MILO_OUTLINE_ARTIFACTS || '.tmp/milo-outline-regression'
 const url = process.env.MILO_TEST_URL || 'http://127.0.0.1:1420'
 const markdown = await readFile(
   new URL('../tests/fixtures/outline-long.md', import.meta.url),
