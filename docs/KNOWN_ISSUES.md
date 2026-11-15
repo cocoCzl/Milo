@@ -72,3 +72,5 @@ At some soft-wrap boundaries, WebKit can paint the caret in an unexpected visual
 ### 2026-11-15 measurement follow-up
 
 The source now has an opt-in, clock-calibrated diagnostics path and a repeatable disposable-process footprint sampler. Five `lib-run-entry → home-controls-ready` samples and repeated 1 MB open/input samples are recorded in `docs/EDITOR_INPUT_MEMORY.md`; these are stage and model timings, not click-to-pixel latency. Normal Release 20-tab restored-only footprint remains 200.87–208.65 MB in the 1280×820 scenario and 184.03–184.34 MB at 720×520; the 200 MB budget is not signed off. WebContent allocation categories and one-factor window/view experiments do not yet justify a safe EditorView eviction or CSS change. System Open dialog success was reproduced with confirmed file-row selection; no product filter change was needed.
+
+本轮补充了 30 次普通与结构密集输入的原始序列、min/median/nearest-rank P95/max；该 P95 只描述单轮样本，跨轮稳定 P95 仍未测量。1 MB 安全扫描与 Milkdown 解析已分阶段重复测量，但两者 AST/生命周期不同，尚无安全复用接口，因此没有进行解析缓存或保护语义改写。像素响应和点击应用到首次可输入仍未测量，候选中 s/q 仍未归因。
