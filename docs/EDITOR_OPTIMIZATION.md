@@ -1,5 +1,7 @@
 # Editor optimization work record (unreleased)
 
+**Latest targeted follow-up:** [Input recovery and memory](EDITOR_INPUT_MEMORY.md) records c96808c: positive-signal input recovery, Source close-cancel focus, shared native directory watchers, normal Release memory comparison, and unresolved startup/memory gates. Bounded view caching and cross-mode undo remain incomplete.
+
 **Follow-up:** development now takes place directly on `master`, without additional branches/worktrees. The sections below preserve the first-round evidence at `0eb90d3`; they are not the latest acceptance matrix. See [the current native acceptance record](EDITOR_ACCEPTANCE.md) for subsequent fixes, Release build identities, native disk checks, process-memory measurements and remaining manual cases. In particular, the WebKit Outline failure below has been fixed and both browser engines now pass the full suite.
 
 Baseline: `be11529a2f30224b178a22ea2ffd1885d9bc9a01`, clean `master`; work branch `optimize/local-editor`. No AGENTS.md was present in the repository/ancestor scope. README, CONTEXT, UI_DESIGN, KNOWN_ISSUES, release runbook and current code were reviewed before implementation.
