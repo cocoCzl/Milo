@@ -42,5 +42,12 @@ it('profiles the real initialization without parsing again or publishing a conte
   expect(profile.marks['view-dom-built']).toBeGreaterThanOrEqual(
     profile.marks['plugin-state-init-end'],
   )
+  expect(profile.marks['accepts-input-after-commit']).toBeGreaterThanOrEqual(
+    profile.marks['milkdown-create-end'],
+  )
+  expect(mocks.invoke).toHaveBeenCalledWith(
+    'record_open_profile',
+    expect.objectContaining({ record: expect.objectContaining({ phase: 'interactive' }) }),
+  )
   expect(change).not.toHaveBeenCalled()
 })

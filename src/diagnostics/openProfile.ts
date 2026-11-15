@@ -1,5 +1,5 @@
 // Opt-in local measurement only. Ordinary builds retain helpers but record nothing.
-import { invoke } from '@tauri-apps/api/core'
+import { recordProfile } from './profileClock'
 import type { Node } from '@milkdown/prose/model'
 import { watchResourceCounts } from '../file-system/nativeFileWatcher'
 
@@ -13,8 +13,6 @@ export type OpenProfile = {
   entries: Entry[]
   marks: Record<string, number>
   bytes?: number
-  inputStart?: number
-  inputRecorded?: boolean
 }
 const pending = new Map<string, OpenProfile>()
 const documents = new WeakMap<Node, OpenProfile>()
@@ -77,17 +75,15 @@ export function markProfile(profile: OpenProfile | undefined, stage: string) {
 export function emitProfile(profile: OpenProfile | undefined, phase: string) {
   if (!profile) return
   // No content or keystrokes. Errors in optional diagnostics never prevent opening.
-  void invoke('record_open_profile', {
-    record: {
-      kind: 'frontend',
-      phase,
-      source: profile.source,
-      epochMs: profile.epochMs,
-      bytes: profile.bytes,
-      entries: [...profile.entries],
-      marks: { ...profile.marks },
-      build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
-    },
+  void recordProfile({
+    kind: 'frontend',
+    phase,
+    source: profile.source,
+    startedMs: profile.started,
+    epochMs: profile.epochMs,
+    bytes: profile.bytes,
+    entries: [...profile.entries],
+    marks: { ...profile.marks },
   }).catch(() => console.error('Milo open profile could not be recorded'))
 }
 
@@ -110,36 +106,34 @@ export function registerEditorResourceProbe(id: string, read: () => Record<strin
 export async function emitRuntimeSnapshot(reason: string) {
   if (!profileEnabled()) return
   const count = (selector: string) => document.querySelectorAll(selector).length
-  await invoke('record_open_profile', {
-    record: {
-      kind: 'snapshot',
-      reason,
-      epochMs: Date.now(),
-      timeOrigin: performance.timeOrigin,
-      nowMs: performance.now(),
-      build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
-      counts: {
-        watches: watchResourceCounts(),
-        tabs: count('.document-tab'),
-        views: count('.ProseMirror'),
-        elements: count('*'),
-        visibleViews: count(
-          '.document-panel:not([hidden]) .document-view-host:not([hidden]) .ProseMirror',
-        ),
-        sourceViews: count('.source-editor textarea'),
-        localImages: count('.local-image-view img[src]'),
-        remoteImages: count('.remote-image-view img[src]'),
-        languageMenus: count('.code-block-language-menu'),
-      },
-      metrics: structuredClone(runtimeMetrics),
-      editors: [...editorProbes].map(([id, read]) => ({ id, ...read() })),
+  await recordProfile({
+    kind: 'snapshot',
+    reason,
+    epochMs: Date.now(),
+    timeOrigin: performance.timeOrigin,
+    nowMs: performance.now(),
+    build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
+    counts: {
+      watches: watchResourceCounts(),
+      tabs: count('.document-tab'),
+      views: count('.ProseMirror'),
+      elements: count('*'),
+      visibleViews: count(
+        '.document-panel:not([hidden]) .document-view-host:not([hidden]) .ProseMirror',
+      ),
+      sourceViews: count('.source-editor textarea'),
+      localImages: count('.local-image-view img[src]'),
+      remoteImages: count('.remote-image-view img[src]'),
+      languageMenus: count('.code-block-language-menu'),
     },
+    metrics: structuredClone(runtimeMetrics),
+    editors: [...editorProbes].map(([id, read]) => ({ id, ...read() })),
   })
 }
 if (profileEnabled())
   (globalThis as typeof globalThis & { __miloMetrics?: typeof runtimeMetrics }).__miloMetrics =
     runtimeMetrics
-function recordRuntime(stage: string, ms: number) {
+export function recordRuntime(stage: string, ms: number) {
   const metric = (runtimeMetrics[stage] ??= { count: 0, totalMs: 0, maxMs: 0, recentMs: [] })
   metric.count++
   metric.totalMs += ms

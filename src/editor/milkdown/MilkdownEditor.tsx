@@ -1,3 +1,4 @@
+import { markLifecycle } from '../../diagnostics/profileClock'
 import { isSupportedLink, type NavigationTarget } from '../../file-system/documentLink'
 import { createOpenProfilePlugin } from '../../diagnostics/editorOpenProfile'
 import {
@@ -7,6 +8,7 @@ import {
   profileMeasure,
   emitProfile,
   registerEditorResourceProbe,
+  type OpenProfile,
 } from '../../diagnostics/openProfile'
 import {
   replaceFindMatches,
@@ -245,6 +247,7 @@ export function MilkdownEditor({
     current: -1,
   })
   const [isReady, setIsReady] = useState(false)
+  const openProfileRef = useRef<OpenProfile | undefined>(undefined)
   const [outlinePreferences, setOutlinePreferences] = useState(() => {
     const stored = Number(localStorage.getItem('milo-outline-depth') ?? 3)
     return {
@@ -296,6 +299,7 @@ export function MilkdownEditor({
     }
 
     const profile = takeOpenProfile(documentPathRef.current)
+    openProfileRef.current = profile
     markProfile(profile, 'editor-effect-start')
     let disposed = false
     let publishTimer: number | undefined
@@ -531,7 +535,6 @@ export function MilkdownEditor({
 
   useEffect(() => {
     if (!isReady) return
-
     editorRef.current?.action((ctx) => {
       const editorView = ctx.get(editorViewCtx)
       editorView.setProps({
@@ -539,6 +542,14 @@ export function MilkdownEditor({
         editable: () => presentationModeRef.current === 'edit',
       })
       editorView.dom.setAttribute('aria-readonly', String(presentationMode === 'read'))
+      if (activeRef.current && presentationMode === 'edit') {
+        markLifecycle('editor-accepts-input')
+        const profile = openProfileRef.current
+        if (profile && profile.marks['accepts-input-after-commit'] === undefined) {
+          markProfile(profile, 'accepts-input-after-commit')
+          emitProfile(profile, 'interactive')
+        }
+      }
     })
     editorRootRef.current
       ?.querySelectorAll<HTMLButtonElement>('.code-block-card__language-trigger')

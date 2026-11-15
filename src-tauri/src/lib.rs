@@ -80,12 +80,7 @@ struct LaunchMarkdownFile(Option<String>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(feature = "diagnostics")]
-    let run_epoch_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-        * 1000.0;
+    open_profile::start_process_clock();
     let app = tauri::Builder::default()
         .manage(CloseCoordinator::default())
         .manage(file_open::OpenQueue::default())
@@ -107,7 +102,7 @@ pub fn run() {
                     let _ = open_profile::record(
                         &handle,
                         serde_json::json!({
-                            "kind": "process-run", "epochMs": run_epoch_ms
+                            "kind": "process-run", "origin": "lib-run-entry", "atMs": 0
                         }),
                     );
                 });
@@ -199,6 +194,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_profile::record_open_profile,
+            open_profile::profile_clock,
             close_coordinator_ready,
             cancel_close,
             complete_close,

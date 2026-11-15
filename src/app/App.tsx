@@ -1,6 +1,7 @@
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { QuickOpen } from '../components/QuickOpen'
 import { emitRuntimeSnapshot } from '../diagnostics/openProfile'
+import { markLifecycle } from '../diagnostics/profileClock'
 import { installInputTrace } from '../diagnostics/inputTrace'
 import { resolveDocumentLink, type NavigationTarget } from '../file-system/documentLink'
 import { openExternalLink } from '../file-system/externalLink'
@@ -220,6 +221,11 @@ export function App() {
     window.addEventListener('keydown', snapshot)
     return () => window.removeEventListener('keydown', snapshot)
   }, [])
+  useEffect(() => {
+    if (import.meta.env.VITE_MILO_PROFILE !== '1' || !startupSessionRestored) return
+    markLifecycle('session-restored')
+    if (session.tabs.length === 0) markLifecycle('home-controls-ready')
+  }, [startupSessionRestored, session.tabs.length])
   useEffect(() => {
     if (import.meta.env.VITE_MILO_PROFILE !== '1' || !startupSessionRestored) return
     const frame = requestAnimationFrame(() => {

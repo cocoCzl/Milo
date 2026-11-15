@@ -1,3 +1,4 @@
+import { createInputResponseProbe } from './inputResponseProbe'
 import type { MilkdownPlugin } from '@milkdown/ctx'
 import { createTimer } from '@milkdown/ctx'
 import { editorStateOptionsCtx, editorStateTimerCtx, ParserReady, parserCtx } from '@milkdown/core'
@@ -6,7 +7,7 @@ import {
   bindProfileDocument,
   profileMeasure,
   markProfile,
-  emitProfile,
+  recordRuntime,
   type OpenProfile,
 } from './openProfile'
 
@@ -21,6 +22,7 @@ export function createOpenProfilePlugin(profile: OpenProfile): MilkdownPlugin {
         if (doc) bindProfileDocument(doc, profile)
         return doc
       })
+      const input = createInputResponseProbe(() => performance.now(), recordRuntime)
       ctx.update(editorStateOptionsCtx, (override) => (options) => {
         const configured = override(options)
         markProfile(profile, 'plugin-state-init-start')
@@ -41,29 +43,35 @@ export function createOpenProfilePlugin(profile: OpenProfile): MilkdownPlugin {
                 return {}
               },
               props: {
-                handleKeyDown: (_view, event) => {
-                  if (event.isTrusted && !profile.inputRecorded)
-                    profile.inputStart = performance.now()
-                  return false
+                handleDOMEvents: {
+                  keydown: (_view, event) => {
+                    input.keydown(event)
+                    return false
+                  },
+                  keyup: () => {
+                    input.reset()
+                    return false
+                  },
+                  beforeinput: (_view, event) => {
+                    input.beforeinput(event)
+                    return false
+                  },
+                  compositionstart: () => {
+                    input.reset()
+                    return false
+                  },
+                  blur: () => {
+                    input.reset()
+                    return false
+                  },
                 },
               },
             }),
             new Plugin({
               view: () => ({
                 update: (view, previous) => {
-                  if (
-                    profile.inputStart !== undefined &&
-                    !profile.inputRecorded &&
-                    previous.doc !== view.state.doc
-                  ) {
-                    profile.inputRecorded = true
-                    profile.entries.push({
-                      stage: 'trusted-key-to-model-change',
-                      ms: performance.now() - profile.inputStart,
-                      endMs: performance.now() - profile.started,
-                    })
-                    emitProfile(profile, 'input-probe')
-                  }
+                  if (previous.doc === view.state.doc) return
+                  input.modelChanged()
                 },
               }),
             }),

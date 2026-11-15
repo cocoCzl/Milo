@@ -1,8 +1,11 @@
+import { beginProfilePage } from './diagnostics/profileClock'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './app/App'
 import './styles/global.css'
+
+beginProfilePage()
 
 const root = document.getElementById('root')
 

@@ -2,6 +2,39 @@
 use tauri::AppHandle;
 
 #[cfg(feature = "diagnostics")]
+static ENTRY: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+#[cfg(feature = "diagnostics")]
+static EVENTS: std::sync::Mutex<Vec<serde_json::Value>> = std::sync::Mutex::new(Vec::new());
+#[cfg(feature = "diagnostics")]
+static DROPPED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn start_process_clock() {
+    #[cfg(feature = "diagnostics")]
+    ENTRY.get_or_init(std::time::Instant::now);
+}
+
+#[cfg(feature = "diagnostics")]
+fn elapsed_ms() -> f64 {
+    ENTRY
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs_f64()
+        * 1000.0
+}
+
+#[tauri::command]
+pub fn profile_clock() -> Result<serde_json::Value, String> {
+    #[cfg(feature = "diagnostics")]
+    {
+        Ok(serde_json::json!({"nativeMs": elapsed_ms(), "pid": std::process::id()}))
+    }
+    #[cfg(not(feature = "diagnostics"))]
+    {
+        Err("Local profiling is disabled in this build.".into())
+    }
+}
+
+#[cfg(feature = "diagnostics")]
 pub fn record(app: &AppHandle, value: serde_json::Value) -> Result<(), String> {
     use tauri::Manager;
     let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -32,27 +65,27 @@ pub fn record(_app: &AppHandle, _value: serde_json::Value) -> Result<(), String>
     Err("Local open profiling is disabled in this build.".into())
 }
 
-pub fn measure<T>(app: &AppHandle, path: &str, stage: &str, operation: impl FnOnce() -> T) -> T {
+pub fn measure<T>(_app: &AppHandle, path: &str, stage: &str, operation: impl FnOnce() -> T) -> T {
     #[cfg(feature = "diagnostics")]
     {
         let _ = path;
-        let epoch_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64()
-            * 1000.0;
+        let at_ms = elapsed_ms();
         let start = std::time::Instant::now();
         let result = operation();
         let ms = start.elapsed().as_secs_f64() * 1000.0;
-        let _ = record(
-            app,
-            serde_json::json!({ "kind": "native", "stage": stage, "epochMs": epoch_ms, "ms": ms }),
-        );
+        if let Ok(mut events) = EVENTS.lock() {
+            if events.len() < 512 {
+                events
+                    .push(serde_json::json!({"kind":"native", "stage":stage,"atMs":at_ms,"ms":ms}));
+            } else {
+                DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         result
     }
     #[cfg(not(feature = "diagnostics"))]
     {
-        let _ = (app, path, stage);
+        let _ = (_app, path, stage);
         operation()
     }
 }
@@ -60,6 +93,17 @@ pub fn measure<T>(app: &AppHandle, path: &str, stage: &str, operation: impl FnOn
 #[tauri::command]
 pub async fn record_open_profile(app: AppHandle, record: serde_json::Value) -> Result<(), String> {
     crate::disk_job::run(crate::disk_job::Lane::Settings, move || {
+        #[cfg(feature = "diagnostics")]
+        {
+            let batch = std::mem::take(&mut *EVENTS.lock().map_err(|e| e.to_string())?);
+            let dropped = DROPPED.swap(0, std::sync::atomic::Ordering::Relaxed);
+            if !batch.is_empty() || dropped > 0 {
+                self::record(
+                    &app,
+                    serde_json::json!({"kind":"native-batch","events":batch,"dropped":dropped}),
+                )?;
+            }
+        }
         self::record(&app, record)
     })
     .await
