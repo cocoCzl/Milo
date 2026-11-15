@@ -68,3 +68,7 @@ At some soft-wrap boundaries, WebKit can paint the caret in an unexpected visual
 
 - Native Recent-file read failures now show an explicit error without creating an unrelated empty tab (unreleased); retain retry/removal access.
 - Consider optional macOS native-window integration separately.
+
+### 2026-11-15 measurement follow-up
+
+The source now has an opt-in, clock-calibrated diagnostics path and a repeatable disposable-process footprint sampler. Five `lib-run-entry → home-controls-ready` samples and repeated 1 MB open/input samples are recorded in `docs/EDITOR_INPUT_MEMORY.md`; these are stage and model timings, not click-to-pixel latency. Normal Release 20-tab restored-only footprint remains 200.87–208.65 MB in the 1280×820 scenario and 184.03–184.34 MB at 720×520; the 200 MB budget is not signed off. WebContent allocation categories and one-factor window/view experiments do not yet justify a safe EditorView eviction or CSS change. System Open dialog success was reproduced with confirmed file-row selection; no product filter change was needed.

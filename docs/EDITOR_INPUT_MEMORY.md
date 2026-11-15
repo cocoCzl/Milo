@@ -133,3 +133,19 @@ Milkdown 7.22.1的具体所有权约束：`core/src/internal-plugin/editor-view.
 仍为产品待办：旧INPUT-STABLE-RECOVERY原生根因；20标签／1 MB内存预算；细分堆与图形成本；安全有界view策略；源码统一撤销。仍为测量／工具边界：正常包启动和输入／显示时延；候选快捷键上游归因；独立Dock、最小化与切应用观察。没有发现必须让用户授权的新系统权限，**本轮无需用户操作**，也不把未解决项标为通过或要求用户接手整套矩阵。
 
 原生截图：`R/fixed-source-preedit.png`、`R/diagnostic-twenty-tabs.png`；浏览器截图：`R/{chromium,webkit}-writing/tools-*.png`。均标明来源，无新UI重构。记录与KNOWN_ISSUES及实现说明同步；未完成能力不因已记录而算完成。需要回退时在保留后续工作、确认干净工作区后按 `git revert c96808c`、`git revert fb39f57` 顺序创建反向提交，勿reset／重写历史；文档提交可单独反向处理。
+
+## 2026-11-15 可重复测量与内存归因续验
+
+本轮提交 `2c7e700` 增加了仅在 `VITE_MILO_PROFILE=1` 且 Rust `diagnostics` feature 开启时工作的测量链路。Rust 在 `lib-run-entry` 建立单调时钟；前端通过五次 `profile_clock` IPC 取最小往返样本，记录 offset 与不确定度后再换算页面阶段。正常构建不调用时钟或写入诊断记录。`record_open_profile` 批量写入内存中的 native 事件，最多 512 条并报告 dropped 数；输入探针只记录受信任非组合键／beforeinput 到 ProseMirror 模型变化的耗时，不采集正文。`scripts/summarize-native-profile.mjs` 会拒绝缺失校准或 build 身份不符的记录；`scripts/sample-native-memory.mjs` 只接受 `/private/tmp` 下明确命名的隔离 `.app`，并要求启动前 PID 基线和恰好一个 Milo 加三个新 WebKit 进程。
+
+诊断 arm64 Release 包 `Measure-Milo.app` 的源码身份为 `2c7e70086a1c2500f8df74f7f3b65bae1d8f2841`，可执行文件 SHA-256 为 `5a9a1cb70d3ed940301ef36030d603d83c176db5db9e961948f584db55648d59`。合成 `plain-1mb.md` 为 1,001,442 bytes、963 个 Markdown AST 节点、481 段落；`structured-1mb.md` 为 1,000,215 bytes、6,976 节点（465 标题、465 代码块、465 表格）。五次新进程 `lib-run-entry → home-controls-ready` 原始样本为 410.45、346.63、325.22、342.44、324.98 ms；它们表示进程入口到会话恢复后首页控件提交，不表示点击图标、像素显示或首次真实输入。
+
+同一诊断进程的 1 MB 普通文档打开记录中，普通样本阶段为 recovery+read+IPC 10–16 ms、安全解析 134 ms、Milkdown 解析 112 ms、首个强制布局记录为 0 ms；另一轮普通 1 MB 打开为 10 ms、216 ms、212 ms（同一进程缓存和系统状态不同，不能合并成 P95）。结构样本为 10 ms、216 ms、212 ms、代码高亮 13 ms。像素响应和点击到可输入仍未测量。普通文档连续 30 次真实 Space 键的 keydown→模型为 5–18 ms（中位数 5 ms），beforeinput→模型为 4–17 ms（中位数 4 ms）；结构样本后 30 次分别为 11–20 ms（中位数 13 ms）和 9–16 ms（中位数 11 ms）。样本不足以签署 P50/P95。一次保存记录的 safe-save transaction 为 49 ms，safe-save IPC 聚合为 59 ms；全文序列化在不同阶段为 11–26 ms。正常 Release 同样完成 30 次 Space 输入，磁盘尾部恰有 30 个空格，说明这次输入和安全保存落盘一致；这不是中文 IME 验收。
+
+内存实验使用未插桩 arm64 Release、16 GB Apple Silicon、macOS 27.2.1，footprint 的 `physical footprint` 十进制 MB；Milo、WebContent、GPU、Networking 分进程记录，IOSurface 共享页不手工重复相加。正常宽窗口 1280×820 恢复 20 篇但只访问首篇两轮总 footprint 为 200.87、208.65 MB；窄窗口 720×520 两轮为 184.34、184.03 MB。宽窗口单标签两轮为 188.53、189.27 MB。宽窗口在同一进程访问全部 20 个视图后为 225.92 MB，WebContent 从 98.58 增至 115.23 MB，GPU 仅从 70.12 增至 70.62 MB。全部关闭后为 139.71 MB（WebContent 87.69、GPU 14.53 MB）。因此预算 200 MB 在宽窗口 20 标签场景仍未达标；窗口尺寸对照不能归因到单条 CSS，GPU 中约 51.5 MB 的 `Owned physical footprint (unmapped) (graphics)` 在宽窄样本均存在。
+
+`heap --noContent` 对专用 WebContent 进程取得了分配分类：约 59.5 MB 位于 WebKit Malloc，约 0.20 MB JSC DFG JIT、0.19 MB Baseline JIT；大量 WebKit Malloc 仍是 non-object，不能安全映射为某个 ProseMirror 历史或插件。可见视图从 1 增至 20 的增量主要在 WebContent；GPU 增量很小。1 MB 文档连续打开三轮峰值为 284.32、306.68、258.61 MB，正常关闭平台为 145.87、150.97、151.41 MB，未见本三轮连续线性增长，但样本不足以证明长期无泄漏。没有把驱逐视图、禁用硬件加速、强制 GC 或清空历史作为“优化”。
+
+系统打开对话框问题在未修改产品过滤器的正常 Release 包中重新核对：实际选中文件行并确认 Open 按钮 enabled 后，小文件、1 MB、中文空格大写 `.MD`、`.markdown` 和 `/tmp` alias 均成功打开或复用标签。此前按钮禁用归因到自动化输入／焦点／文件行选择未被确认；没有证据支持放宽 `md`／`markdown` 过滤器。
+
+Chromium 本轮脚本受当前 macOS Playwright Chromium 沙箱 Mach port 权限阻塞，未把失败写成产品回归；既有 Chromium/WebKit写作工具记录仍有效。最终正常前端测试为 52 文件／455 项，TypeScript、ESLint、Prettier、生产构建通过；默认 Rust fmt、Clippy、tests 及 diagnostics Clippy/tests 通过。原生截图和所有 JSON、footprint、vmmap、heap 日志均保存在 `/private/tmp/milo-measure-20261115`，未提交。
