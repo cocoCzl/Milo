@@ -6,6 +6,7 @@ import {
   markProfile,
   profileMeasure,
   emitProfile,
+  registerEditorResourceProbe,
 } from '../../diagnostics/openProfile'
 import {
   replaceFindMatches,
@@ -26,6 +27,7 @@ import {
   type CmdKey,
 } from '@milkdown/core'
 import { history } from '@milkdown/plugin-history'
+import { undoDepth, redoDepth } from '@milkdown/prose/history'
 import { commonmark } from '@milkdown/preset-commonmark'
 import {
   addColAfterCommand,
@@ -447,6 +449,7 @@ export function MilkdownEditor({
 
     if (profile) editor.use(createOpenProfilePlugin(profile))
     editorRef.current = editor
+    let stopResourceProbe = () => {}
     markProfile(profile, 'milkdown-create-start')
     void editor
       .create()
@@ -456,6 +459,21 @@ export function MilkdownEditor({
           void editor.destroy()
           return
         }
+
+        stopResourceProbe = registerEditorResourceProbe(editorId, () =>
+          editor.action((ctx) => {
+            const state = ctx.get(editorViewCtx).state
+            return {
+              docSize: state.doc.content.size,
+              undoDepth: undoDepth(state),
+              redoDepth: redoDepth(state),
+              plugins: state.plugins.length,
+              serializedChars: serialized.length,
+              initialChars: initialMarkdownRef.current.length,
+              composing: Number(hasPendingComposition(ctx.get(editorViewCtx))),
+            }
+          }),
+        )
 
         const proseMirror = editorRoot.querySelector<HTMLElement>('.ProseMirror')
 
@@ -491,6 +509,7 @@ export function MilkdownEditor({
 
     return () => {
       disposed = true
+      stopResourceProbe()
       window.clearTimeout(publishTimer)
       window.clearTimeout(maxPublishTimer)
       onRegisterFlushRef.current?.(null)
@@ -498,7 +517,7 @@ export function MilkdownEditor({
       editorRef.current = null
       void editor.destroy()
     }
-  }, [creationAttempt])
+  }, [creationAttempt, editorId])
 
   useEffect(() => {
     editorRootRef.current

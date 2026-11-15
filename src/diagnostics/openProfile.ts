@@ -1,6 +1,7 @@
 // Opt-in local measurement only. Ordinary builds retain helpers but record nothing.
 import { invoke } from '@tauri-apps/api/core'
 import type { Node } from '@milkdown/prose/model'
+import { watchResourceCounts } from '../file-system/nativeFileWatcher'
 
 const profileEnabled = () => import.meta.env.VITE_MILO_PROFILE === '1'
 type Entry = { stage: string; ms: number; endMs: number }
@@ -96,6 +97,14 @@ export function bindProfileDocument(doc: Node, profile: OpenProfile) {
 
 export type RuntimeMetric = { count: number; totalMs: number; maxMs: number; recentMs: number[] }
 const runtimeMetrics: Record<string, RuntimeMetric> = {}
+const editorProbes = new Map<string, () => Record<string, number>>()
+export function registerEditorResourceProbe(id: string, read: () => Record<string, number>) {
+  if (!profileEnabled()) return () => undefined
+  editorProbes.set(id, read)
+  return () => {
+    if (editorProbes.get(id) === read) editorProbes.delete(id)
+  }
+}
 // Explicit snapshots, never a polling timer or global listener per editor.
 // Counts are scoped to Milo's DOM; no text, selection, filenames or paths.
 export async function emitRuntimeSnapshot(reason: string) {
@@ -110,6 +119,7 @@ export async function emitRuntimeSnapshot(reason: string) {
       nowMs: performance.now(),
       build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
       counts: {
+        watches: watchResourceCounts(),
         tabs: count('.document-tab'),
         views: count('.ProseMirror'),
         elements: count('*'),
@@ -122,6 +132,7 @@ export async function emitRuntimeSnapshot(reason: string) {
         languageMenus: count('.code-block-language-menu'),
       },
       metrics: structuredClone(runtimeMetrics),
+      editors: [...editorProbes].map(([id, read]) => ({ id, ...read() })),
     },
   })
 }
