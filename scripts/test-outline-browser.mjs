@@ -162,7 +162,9 @@ try {
     await wheel(page, -100000)
     await wheel(page, -1000)
     const back = await metrics(page)
-    assert.equal(back.bodyScrollTop, 0)
+    // Native wheel delivery can leave a one-pixel residual at the scroll
+    // boundary on macOS Chromium. Treat that rounding residue as the top.
+    assert(Math.abs(back.bodyScrollTop) <= 1, 'outline did not return to its top')
     assert.equal(back.stageScrollTop, 0)
     await wheel(page, 100000)
     await last.click()
