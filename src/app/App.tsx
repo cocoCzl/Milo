@@ -1,6 +1,7 @@
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { QuickOpen } from '../components/QuickOpen'
 import { emitRuntimeSnapshot } from '../diagnostics/openProfile'
+import { installInputTrace } from '../diagnostics/inputTrace'
 import { resolveDocumentLink, type NavigationTarget } from '../file-system/documentLink'
 import { openExternalLink } from '../file-system/externalLink'
 import { listenForNativeClose, createNativeCloseHandler } from '../hooks/nativeClose'
@@ -58,6 +59,7 @@ type DocumentViewState = {
 const SIDEBAR_RESPONSIVE_QUERY = '(max-width: 900px)'
 
 export function App() {
+  useEffect(installInputTrace, [])
   const {
     isLoading,
     flushSettings,

@@ -2,6 +2,7 @@ import { isTauri } from '@tauri-apps/api/core'
 import { useEffect, useRef } from 'react'
 
 import { subscribeUntilCleanup } from './nativeSubscription'
+import { traceInput } from '../diagnostics/inputTrace'
 
 export function useNativeCommandListener(onCommand: (command: string) => void) {
   const onCommandRef = useRef(onCommand)
@@ -9,6 +10,9 @@ export function useNativeCommandListener(onCommand: (command: string) => void) {
 
   useEffect(() => {
     if (!isTauri()) return
-    return subscribeUntilCleanup('milo://command', (payload) => onCommandRef.current(payload))
+    return subscribeUntilCleanup('milo://command', (payload) => {
+      traceInput('native:command', { command: payload })
+      onCommandRef.current(payload)
+    })
   }, [])
 }

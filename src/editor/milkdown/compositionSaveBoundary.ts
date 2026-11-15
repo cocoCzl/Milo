@@ -1,5 +1,7 @@
 import { Plugin } from '@milkdown/prose/state'
 import type { EditorView } from '@milkdown/prose/view'
+import { traceInput } from '../../diagnostics/inputTrace'
+import { isNonCompositionInput } from '../inputBoundary'
 
 export type EditorComposition = { phase: 'composing' } | { phase: 'settled'; markdown: string }
 
@@ -36,12 +38,14 @@ export function createCompositionSaveBoundary(
     previousDoc = view.state.doc
     previousGeneration = generation
     if (stableSamples >= 2) {
+      traceInput('wys:settled', { composing: view.composing, generation })
       ending = false
       pendingViews.delete(view)
       notify({ phase: 'settled', markdown: serialize(view) })
     } else timer = window.setTimeout(() => settle(view), 20)
   }
   const start = (view: EditorView) => {
+    traceInput('wys:start', { composing: view.composing, ending, pending: pendingViews.has(view) })
     cancel()
     ending = false
     changed()
@@ -58,6 +62,11 @@ export function createCompositionSaveBoundary(
         compositionstart: start,
         compositionupdate: start,
         compositionend: (view) => {
+          traceInput('wys:end', {
+            composing: view.composing,
+            ending,
+            pending: pendingViews.has(view),
+          })
           if (pendingViews.has(view)) {
             ending = true
             changed()
@@ -66,8 +75,41 @@ export function createCompositionSaveBoundary(
           }
           return false
         },
-        input: () => {
+        input: (view, event) => {
+          traceInput('wys:input', {
+            composing: view.composing,
+            ending,
+            pending: pendingViews.has(view),
+            inputComposing: (event as InputEvent).isComposing,
+          })
           changed()
+          if (
+            pendingViews.has(view) &&
+            !ending &&
+            !view.composing &&
+            isNonCompositionInput(event as InputEvent)
+          ) {
+            traceInput('wys:reconcile-ended-input')
+            ending = true
+            cancel()
+            timer = window.setTimeout(() => settle(view), 20)
+          }
+          return false
+        },
+        focus: (view) => {
+          traceInput('wys:focus', {
+            composing: view.composing,
+            ending,
+            pending: pendingViews.has(view),
+          })
+          return false
+        },
+        blur: (view) => {
+          traceInput('wys:blur', {
+            composing: view.composing,
+            ending,
+            pending: pendingViews.has(view),
+          })
           return false
         },
       },

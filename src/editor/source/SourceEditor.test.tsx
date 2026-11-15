@@ -5,6 +5,47 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
 })
+it('recovers a missed source compositionend only on explicit non-composition input', async () => {
+  vi.useFakeTimers()
+  const change = vi.fn(),
+    composition = vi.fn()
+  let flush: (() => boolean) | null = null
+  const view = render(
+    <SourceEditor
+      active
+      text="Before"
+      label="Source"
+      findLabel="Find"
+      onChange={change}
+      onComposition={composition}
+      onRegisterFlush={(fn) => {
+        flush = fn
+      }}
+    />,
+  )
+  const field = view.getByRole('textbox')
+  fireEvent.compositionStart(field)
+  fireEvent.input(field, {
+    target: { value: 'preedit' },
+    inputType: 'insertCompositionText',
+    isComposing: true,
+  })
+  fireEvent.blur(field)
+  fireEvent.focus(field)
+  await act(async () => vi.advanceTimersByTimeAsync(100))
+  expect(flush!()).toBe(false)
+  expect(change).not.toHaveBeenCalled()
+  fireEvent.input(field, {
+    target: { value: 'Before confirmed' },
+    inputType: 'insertText',
+    isComposing: false,
+  })
+  expect(flush!()).toBe(false)
+  await act(async () => vi.advanceTimersByTimeAsync(80))
+  expect(flush!()).toBe(true)
+  expect(change).toHaveBeenLastCalledWith('Before confirmed')
+  expect(composition).toHaveBeenLastCalledWith({ phase: 'settled', markdown: 'Before confirmed' })
+})
 it('leaves unchanged CRLF/front matter text untouched and publishes exact edited source', () => {
   const change = vi.fn()
   let flush: (() => boolean) | null = null

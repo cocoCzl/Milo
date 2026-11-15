@@ -97,6 +97,57 @@ describe('useDocumentSession', () => {
     return session
   }
 
+  it('cancels Source close back to its input, preserves composition protection, then resumes the pending save on settlement', async () => {
+    const session = await openSavedDocument()
+    const id = session.result.current.activeTabId!
+    await act(async () => {
+      await session.result.current.setSourceMode(id, true)
+    })
+    const panel = document.createElement('section')
+    panel.id = `document-panel-${id}`
+    const hiddenVisual = document.createElement('div')
+    hiddenVisual.className = 'ProseMirror'
+    hiddenVisual.tabIndex = 0
+    const source = document.createElement('div')
+    source.className = 'source-editor'
+    const field = document.createElement('textarea')
+    source.append(field)
+    panel.append(hiddenVisual, source)
+    document.body.append(panel)
+    try {
+      vi.useFakeTimers()
+      const origin = originFor(session, id)
+      act(() => session.result.current.updateComposition(origin, { phase: 'composing' }))
+      let save!: Promise<boolean>
+      act(() => {
+        save = session.result.current.saveDocument()
+        session.result.current.requestCloseTab(id)
+      })
+      expect(session.result.current.closingTabId).toBe(id)
+      act(() => session.result.current.cancelCloseTab())
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(field).toHaveFocus()
+      expect(session.result.current.isComposing).toBe(true)
+      expect(session.result.current.closingTabId).toBeNull()
+      expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+      act(() => {
+        session.result.current.updateSource(origin, '# Confirmed source')
+        session.result.current.updateComposition(origin, {
+          phase: 'settled',
+          markdown: '# Confirmed source',
+        })
+      })
+      await act(async () => {
+        expect(await save).toBe(true)
+      })
+      expect(fileOnDisk).toBe('# Confirmed source')
+      expect(session.result.current.tabs).toHaveLength(1)
+      expect(session.result.current.isComposing).toBe(false)
+    } finally {
+      panel.remove()
+    }
+  })
+
   it('coordinates all tabs, flushes delayed edits, rejects repeated requests and cancels safely', async () => {
     const session = renderHook(() => useDocumentSession())
     act(() => session.result.current.createNewDocument())

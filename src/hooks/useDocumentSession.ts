@@ -1,4 +1,5 @@
 import { startOpenProfile, profileAsync, stageOpenProfile } from '../diagnostics/openProfile'
+import { traceInput } from '../diagnostics/inputTrace'
 import { queueDraft, readDrafts, flushDrafts } from '../file-system/draftRecovery'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -106,6 +107,12 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
       const tab = getTab(id)
       if (!tab) return Promise.resolve(false)
       const flushed = flushersRef.current.get(id)?.()
+      traceInput('session:wait-stable', {
+        id,
+        revision: tab.document.revision,
+        composing: getTab(id)?.isComposing ?? false,
+        flushed: flushed ?? true,
+      })
       if (!getTab(id)?.isComposing && flushed !== false) return Promise.resolve(true)
       return new Promise((resolve) => {
         const waiters = stableWaitersRef.current.get(id) ?? new Set()
@@ -284,6 +291,11 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const updateComposition = useCallback(
     (origin: DocumentOrigin, state: EditorComposition) => {
       if (!getOriginTab(origin)) return
+      traceInput('session:composition', {
+        id: origin.tabId,
+        phase: state.phase,
+        revision: getOriginTab(origin)!.document.revision,
+      })
       if (state.phase === 'settled' && !getOriginTab(origin)?.document.sourceMode)
         updateMarkdown(origin, state.markdown)
       replaceTab(origin.tabId, (tab) => ({
@@ -723,6 +735,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const saveDocument = useCallback(
     async (id = activeTabIdRef.current) => {
       if (id === null) return false
+      traceInput('session:save', { id, revision: getTab(id)?.document.revision ?? -1 })
       const picker = savePickersRef.current.get(id)
       if (picker && !(await picker)) return false
       if (!(await waitUntilStable(id))) return false
@@ -1173,6 +1186,7 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
   const requestCloseTab = useCallback(
     (id: number) => {
       if (closingRef.current !== null || closeAllRef.current) return
+      traceInput('session:close-tab', { id, composing: getTab(id)?.isComposing ?? false })
       flushersRef.current.get(id)?.()
       const tab = getTab(id)
       if (!tab) return
@@ -1204,20 +1218,26 @@ export function useDocumentSession(untitledTitle = 'Untitled') {
 
   const cancelCloseTab = useCallback(() => {
     const id = closingRef.current
+    traceInput('session:cancel-close', {
+      id,
+      composing: getTab(id)?.isComposing ?? false,
+      waiters: id === null ? 0 : (stableWaitersRef.current.get(id)?.size ?? 0),
+    })
     if (id !== null && removingRef.current.has(id)) return
     if (id !== null) selectTab(id)
     closeAllRef.current = null
     setClosePending(false)
     closingRef.current = null
     setClosingTabId(null)
-    window.setTimeout(
-      () =>
-        document
-          .querySelector<HTMLElement>(`#document-panel-${id} .ProseMirror`)
-          ?.focus({ preventScroll: true }),
-      0,
-    )
-  }, [selectTab])
+    window.setTimeout(() => {
+      const tab = getTab(id)
+      if (!tab || activeTabIdRef.current !== id) return
+      const target = tab.document.sourceMode ? '.source-editor textarea' : '.ProseMirror'
+      document
+        .querySelector<HTMLElement>(`#document-panel-${id} ${target}`)
+        ?.focus({ preventScroll: true })
+    }, 0)
+  }, [selectTab, getTab])
 
   const saveAndCloseTab = useCallback(async () => {
     const id = closingRef.current

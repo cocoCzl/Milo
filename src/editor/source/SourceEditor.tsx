@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EditorComposition } from '../milkdown/compositionSaveBoundary'
+import { isNonCompositionInput } from '../inputBoundary'
 import { defaultEditorCopy, type EditorCopy } from '../milkdown/editorCopy'
+import { traceInput } from '../../diagnostics/inputTrace'
 
 // Native textarea: no second parser, renderer, dependency, or editable model.
 // It owns the source while active; every stable publication uses the ordinary
@@ -107,6 +109,7 @@ export function SourceEditor({
         stable = 0
       }
       if (stable >= 2) {
+        traceInput('source:settled')
         pending.current = false
         flush.current()
         callbacks.current.onComposition({ phase: 'settled', markdown: input.current.value })
@@ -198,16 +201,25 @@ export function SourceEditor({
         autoCapitalize="off"
         autoCorrect="off"
         readOnly={!active}
+        onInput={(event) => {
+          if (composing.current && isNonCompositionInput(event.nativeEvent as InputEvent)) {
+            traceInput('source:reconcile-ended-input')
+            composing.current = false
+            settle()
+          }
+        }}
         onChange={() => {
           if (!composing.current && !pending.current) flush.current()
         }}
         onCompositionStart={() => {
+          traceInput('source:start')
           window.clearTimeout(timer.current)
           composing.current = true
           pending.current = true
           callbacks.current.onComposition({ phase: 'composing' })
         }}
         onCompositionEnd={() => {
+          traceInput('source:end')
           composing.current = false
           settle()
         }}

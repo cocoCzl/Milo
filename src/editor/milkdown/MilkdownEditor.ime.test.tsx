@@ -9,6 +9,76 @@ import { proseMirrorDocJSON } from './editorTestFixtures'
 afterEach(cleanup)
 
 describe('MilkdownEditor ime', () => {
+  it('recovers a missed compositionend only after PM has ended and a non-composing input arrives', async () => {
+    const composition = vi.fn()
+    let flush: (() => boolean) | null = null
+    const { container } = render(
+      <MilkdownEditor
+        initialMarkdown="Before"
+        onCompositionChange={composition}
+        onRegisterFlush={(fn) => {
+          flush = fn
+        }}
+      />,
+    )
+    const editor = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>('.ProseMirror')
+      expect(el).toBeInTheDocument()
+      expect(flush).toBeTypeOf('function')
+      return el!
+    })
+    fireEvent.compositionStart(editor)
+    expect(flush!()).toBe(false)
+    // ProseMirror ends its own composition on mousedown. No DOM compositionend
+    // is dispatched here: this tests the application/PM state divergence.
+    const pointDescriptor = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => editor.querySelector('p'),
+    })
+    try {
+      fireEvent.mouseDown(editor, { clientX: 0, clientY: 0 })
+    } finally {
+      if (pointDescriptor) Object.defineProperty(document, 'elementFromPoint', pointDescriptor)
+      else Reflect.deleteProperty(document, 'elementFromPoint')
+    }
+    fireEvent.mouseUp(editor)
+    expect(flush!()).toBe(false) // blur/click alone is not a confirmation signal
+    editor.querySelector('p')!.textContent = 'Before continued'
+    fireEvent.input(editor, { inputType: 'insertText', isComposing: false })
+    await waitFor(() =>
+      expect(composition).toHaveBeenLastCalledWith({
+        phase: 'settled',
+        markdown: 'Before continued\n',
+      }),
+    )
+    expect(flush!()).toBe(true)
+  })
+
+  it('does not use non-composing keys, blur or composition input to release an active composition', async () => {
+    const composition = vi.fn()
+    let flush: (() => boolean) | null = null
+    const { container } = render(
+      <MilkdownEditor
+        initialMarkdown="Before"
+        onCompositionChange={composition}
+        onRegisterFlush={(fn) => {
+          flush = fn
+        }}
+      />,
+    )
+    const editor = await waitFor(() => {
+      expect(flush).toBeTypeOf('function')
+      return container.querySelector<HTMLElement>('.ProseMirror')!
+    })
+    fireEvent.compositionStart(editor)
+    fireEvent.blur(editor)
+    fireEvent.keyDown(editor, { key: 'Escape', isComposing: false })
+    fireEvent.input(editor, { inputType: 'insertCompositionText', isComposing: false })
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    expect(flush!()).toBe(false)
+    expect(composition.mock.calls).toEqual([[{ phase: 'composing' }]])
+  })
   it('settles with suspended animation frames without serializing the entire DOM', async () => {
     const onCompositionChange = vi.fn()
     const { container } = render(

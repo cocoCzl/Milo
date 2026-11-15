@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { traceInput } from '../diagnostics/inputTrace'
 
 export type NativeCloseKind = 'window' | 'quit'
 export const listenForNativeClose = (handler: (kind: NativeCloseKind) => void) =>
@@ -31,6 +32,7 @@ export function createNativeCloseHandler(
   return {
     cancel,
     request: (kind: NativeCloseKind) => {
+      traceInput('native:close-request', { kind, inProgress })
       if (inProgress) return
       inProgress = true
       const accepted = requestAll(
