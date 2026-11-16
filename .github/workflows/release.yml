@@ -8,7 +8,6 @@ on:
       release_tag:
         description: Existing version tag to build without moving it
         required: true
-        default: v0.3.0
         type: string
 
 permissions:
@@ -39,11 +38,15 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - name: Check tag and all application versions
+        id: release_source
         env:
           RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
           node scripts/check-release-version.mjs "$RELEASE_TAG"
+          release_notes="docs/RELEASE_NOTES_${RELEASE_TAG#v}.md"
+          test -f "$release_notes"
+          echo "notes=$release_notes" >> "$GITHUB_OUTPUT"
       - name: Install signature-verification dependency
         run: command -v rg >/dev/null || brew install ripgrep
       - name: Build and verify ad-hoc Universal DMG and SHA-256
@@ -56,7 +59,7 @@ jobs:
           prerelease: true
           make_latest: 'false'
           fail_on_unmatched_files: true
-          body_path: docs/RELEASE_NOTES_0.3.0.md
+          body_path: ${{ steps.release_source.outputs.notes }}
           files: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg.sha256

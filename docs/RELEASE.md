@@ -2,6 +2,8 @@
 
 [English](RELEASE.md) | [简体中文](RELEASE.zh-CN.md)
 
+Current source: **0.3.1 (unreleased)**. The 0.3.0 release identity and acceptance record below are historical. Local builds do not publish a release.
+
 ## Current policy
 
 **0.3.0 is the first public beta**, distributed under GPL-3.0 through a GitHub Pre-release. Ship one Universal DMG for macOS 13+, containing arm64 and x86_64. Keep the application identifier `io.github.milo.editor`.
@@ -15,23 +17,23 @@ Run the checks in `.github/workflows/ci.yml`: `npm ci`, formatting, TypeScript, 
 Commit the source, record its full SHA, and build from that clean source commit:
 
 ```sh
-node scripts/check-release-version.mjs v0.3.0
+node scripts/check-release-version.mjs "v$(node -p 'require("./package.json").version')"
 ./scripts/build-macos-universal.sh
 ```
 
 The script installs locked npm dependencies, ensures both Rust targets exist, builds with Cargo's lockfile, and verifies the final DMG. It removes old packaging output first. It clears inherited Apple signing/notarization credentials and explicitly selects ad-hoc signing. Outputs:
 
-- `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Milo_0.3.0_universal.dmg`
-- The adjacent `Milo_0.3.0_universal.dmg.sha256`, using a relative filename for portable `shasum -a 256 -c` verification.
+- `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Milo_<version>_universal.dmg`
+- The adjacent `Milo_<version>_universal.dmg.sha256`, using a relative filename for portable `shasum -a 256 -c` verification.
 
 `verify-macos-release.sh` checks the image, mounts it read-only, checks both bundle versions, unchanged identifier, macOS 13.0 in the plist and both Mach-O slices, both architectures, ad-hoc status and signature integrity, and the 100 MiB cap. It generates the checksum only after successful verification.
 
-| Check | Meaning for this beta |
-| --- | --- |
-| `codesign --verify --deep --strict --all-architectures` | Must pass: ad-hoc signature integrity, not publisher identity |
-| `codesign -d --verbose=4 --arch …` | Must show `Signature=adhoc`, no TeamIdentifier, for both slices; no Developer ID authority |
-| Apple notarization / stapled ticket | Not performed; never claim notarization or Apple certification |
-| `spctl --assess --type execute` | Expected policy rejection (exit 3), recorded as rejection, never a trust pass; other tool errors fail verification |
+| Check                                                   | Meaning for this beta                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `codesign --verify --deep --strict --all-architectures` | Must pass: ad-hoc signature integrity, not publisher identity                                                      |
+| `codesign -d --verbose=4 --arch …`                      | Must show `Signature=adhoc`, no TeamIdentifier, for both slices; no Developer ID authority                         |
+| Apple notarization / stapled ticket                     | Not performed; never claim notarization or Apple certification                                                     |
+| `spctl --assess --type execute`                         | Expected policy rejection (exit 3), recorded as rejection, never a trust pass; other tool errors fail verification |
 
 Damaged signatures, a missing architecture, wrong version, deployment target or malformed image still block packaging. Do not sign or modify the bundle after creating its DMG/checksum.
 

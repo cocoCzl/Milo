@@ -2,6 +2,8 @@
 
 [English](RELEASE.md) | [简体中文](RELEASE.zh-CN.md)
 
+当前源码为 **0.3.1（尚未发布）**。下方 0.3.0 发布身份和验收记录仅用于描述历史发布；本地构建不代表发布。
+
 ## 当前政策
 
 **0.3.0 是首个公开测试版**，通过 GitHub Pre-release 分发 GPL-3.0 源码和 Universal DMG。要求 macOS 13+，同时包含 arm64 与 x86_64。应用 identifier 保持 `io.github.milo.editor`。
@@ -15,23 +17,23 @@
 提交源码，记录完整提交号，从干净的源码提交构建：
 
 ```sh
-node scripts/check-release-version.mjs v0.3.0
+node scripts/check-release-version.mjs "v$(node -p 'require("./package.json").version')"
 ./scripts/build-macos-universal.sh
 ```
 
 脚本清理旧打包输出、按 lockfile 安装 npm 依赖、确保两个 Rust target 存在、使用 Cargo lockfile 构建，并验证最终 DMG。它清除继承的 Apple 签名及公证凭据，明确选择 ad-hoc。产物：
 
-- `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Milo_0.3.0_universal.dmg`
-- 同目录 `Milo_0.3.0_universal.dmg.sha256`，使用相对文件名，可直接执行 `shasum -a 256 -c`。
+- `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Milo_<version>_universal.dmg`
+- 同目录 `Milo_<version>_universal.dmg.sha256`，使用相对文件名，可直接执行 `shasum -a 256 -c`。
 
 验证脚本检查磁盘映像、只读挂载，核对包内两个版本字段、identifier、plist 和两个 Mach-O 架构的 macOS 13.0 最低要求、架构、签名以及 100 MiB 体积上限。全部成功后才生成校验文件。
 
-| 检查 | 本次测试版的含义 |
-| --- | --- |
-| `codesign --verify --deep --strict --all-architectures` | 必须通过，证明 ad-hoc 签名完整性，不证明发布者身份 |
-| `codesign -d --verbose=4 --arch …` | 两个架构均须为 `Signature=adhoc`，无 TeamIdentifier、无 Developer ID 身份 |
-| Apple 公证和票据 | 未执行，不得声称已公证或 Apple 认证 |
-| `spctl --assess --type execute` | 预期策略拒绝（退出码 3），如实记录，不算信任通过；其他工具错误阻止验证 |
+| 检查                                                    | 本次测试版的含义                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `codesign --verify --deep --strict --all-architectures` | 必须通过，证明 ad-hoc 签名完整性，不证明发布者身份                        |
+| `codesign -d --verbose=4 --arch …`                      | 两个架构均须为 `Signature=adhoc`，无 TeamIdentifier、无 Developer ID 身份 |
+| Apple 公证和票据                                        | 未执行，不得声称已公证或 Apple 认证                                       |
+| `spctl --assess --type execute`                         | 预期策略拒绝（退出码 3），如实记录，不算信任通过；其他工具错误阻止验证    |
 
 签名损坏、架构缺失、版本错误、最低系统要求异常或映像异常仍阻止打包。生成 DMG 和校验文件后不再修改或重签包内应用。
 
