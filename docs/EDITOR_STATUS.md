@@ -43,6 +43,8 @@
 
 ## 内存状态
 
+2026-11-16 专项诊断更新见 [逐进程采样与 IME 矩阵](MEMORY_IME_DIAGNOSTICS.md)：20 个已访问视图实际销毁 20/20，文件监测订阅归零；三轮关闭后占用不单调增长，但尚不能排除泄漏。没有实施驱逐或清除撤销历史，没有声明输入法快捷键问题已修复。以下数字保留为历史场景，不能与本轮不同样本直接计算收益。
+
 指标为正常 arm64 Release 中 Milo、WebContent、GPU、Networking 的 physical footprint，总数不把共享 IOSurface 手工重复相加：
 
 | 场景 | 总 footprint |
