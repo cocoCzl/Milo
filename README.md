@@ -29,7 +29,7 @@ Milo targets macOS 13 or later. The v0.3.0 public Pre-release provides a Univers
 
 Download the DMG and checksum from [GitHub Releases](https://github.com/cocoCzl/Milo/releases), verify with `shasum -a 256 -c`, then move Milo to Applications. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** after checking the source and checksum. Do not disable Gatekeeper globally.
 
-Native coverage is strongest on Apple Silicon. The current performance budget is not signed off, and some IME, Dock and window-transition cases remain unresolved; see [Known issues](docs/KNOWN_ISSUES.md) and [Editor status](docs/EDITOR_STATUS.md).
+Native coverage is strongest on Apple Silicon. The 20-tab physical footprint exceeds the 200 MB budget, though a memory leak has not been established. Chinese IME candidate input with Cmd+S/Cmd+Q remains unresolved and unattributed; see [Known issues](docs/KNOWN_ISSUES.md) and [Editor status](docs/EDITOR_STATUS.md) for measurements and acceptance limits.
 
 ## Development
 
@@ -58,8 +58,9 @@ Browser checks use simulated native IPC. Native release packaging follows [RELEA
 
 ## Documentation
 
-- [Editor status and measurements](docs/EDITOR_STATUS.md)
-- [Known issues](docs/KNOWN_ISSUES.md)
+- [Documentation index](docs/README.md)
+- [Editor status](docs/EDITOR_STATUS.md) — current implementation, performance samples and acceptance limits
+- [Known issues](docs/KNOWN_ISSUES.md) — unresolved behavior and attribution limits
 - [UI design constraints](docs/UI_DESIGN.md)
 - [Release runbook](docs/RELEASE.md)
 - [发布说明（简体中文）](docs/RELEASE.zh-CN.md)

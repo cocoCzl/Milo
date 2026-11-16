@@ -29,7 +29,7 @@ Milo 支持 macOS 13 或更高版本。v0.3.0 公开预发布版提供同时支�
 
 从 [GitHub Releases](https://github.com/cocoCzl/Milo/releases) 下载 DMG 和校验文件，用 `shasum -a 256 -c` 核对后将 Milo 拖入“应用程序”。如果 macOS 阻止首次打开，在确认来源和校验值后前往“系统设置 → 隐私与安全性 → 仍要打开”。不要全局关闭 Gatekeeper。
 
-当前原生覆盖以 Apple Silicon 为主。性能预算尚未签收，部分输入法、Dock 和窗口过渡场景仍未归因或测量，详见[已知问题](docs/KNOWN_ISSUES.md)和[编辑器状态](docs/EDITOR_STATUS.md)。
+当前原生覆盖以 Apple Silicon 为主。20 标签 physical footprint 超过 200 MB 预算，但尚未确认真实泄漏；中文候选输入期间 Cmd+S/Cmd+Q 的问题仍未解决、尚未归因。测量数据和验收边界详见[已知问题](docs/KNOWN_ISSUES.md)和[编辑器状态](docs/EDITOR_STATUS.md)。
 
 ## 开发
 
@@ -58,8 +58,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked
 
 ## 文档
 
-- [编辑器状态与测量](docs/EDITOR_STATUS.md)
-- [已知问题](docs/KNOWN_ISSUES.md)
+- [文档索引](docs/README.md)
+- [编辑器状态](docs/EDITOR_STATUS.md)：当前实现、性能样本与验收边界
+- [已知问题](docs/KNOWN_ISSUES.md)：未解决行为与归因限制
 - [UI 设计约束](docs/UI_DESIGN.md)
 - [Release runbook](docs/RELEASE.md)
 - [发布说明](docs/RELEASE.zh-CN.md)
