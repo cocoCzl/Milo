@@ -1483,6 +1483,8 @@ export function MilkdownEditor({
               <EditorOutline
                 preferences={outlinePreferences}
                 depthLabel={editorCopy.outlineDepth}
+                depthOptionLabel={editorCopy.outlineDepthOption}
+                portalContainer={outlineMount}
                 collapseLabel={editorCopy.collapseSection}
                 expandLabel={editorCopy.expandSection}
                 onPreferencesChange={(preferences) => {

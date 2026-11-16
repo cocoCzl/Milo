@@ -21,6 +21,7 @@ export type EditorCopy = BlockMenuCopy &
     findNext: string
     closeFind: string
     outlineDepth: string
+    outlineDepthOption: (depth: number) => string
     collapseSection: string
     expandSection: string
     addColumnLeft: string
@@ -61,6 +62,7 @@ export const defaultEditorCopy: EditorCopy = {
   findNext: 'Next match',
   closeFind: 'Close find',
   outlineDepth: 'Heading levels',
+  outlineDepthOption: (depth) => (depth === 1 ? 'Only H1' : `Show to H${depth}`),
   collapseSection: 'Collapse section',
   expandSection: 'Expand section',
   apply: 'Apply',

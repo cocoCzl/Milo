@@ -1,5 +1,6 @@
 import { ChevronRight, ListTree, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { Select } from '../../components/Select'
 
 export type EditorHeading = {
   id: string
@@ -14,6 +15,8 @@ type EditorOutlineProps = {
   preferences?: OutlinePreferences
   onPreferencesChange?: (preferences: OutlinePreferences) => void
   depthLabel?: string
+  depthOptionLabel?: (depth: number) => string
+  portalContainer?: HTMLElement | null
   collapseLabel?: string
   expandLabel?: string
   emptyLabel: string
@@ -27,9 +30,11 @@ type EditorOutlineProps = {
 }
 
 export function EditorOutline({
-  preferences = { depth: 6, collapsed: new Set() },
+  preferences = { depth: 3, collapsed: new Set() },
   onPreferencesChange,
   depthLabel = 'Heading levels',
+  depthOptionLabel = (depth) => (depth === 1 ? 'Only H1' : `Show to H${depth}`),
+  portalContainer,
   collapseLabel = 'Collapse section',
   expandLabel = 'Expand section',
   activePosition,
@@ -93,20 +98,17 @@ export function EditorOutline({
         <ListTree aria-hidden="true" />
         <span>{label}</span>
         {onPreferencesChange ? (
-          <select
-            tabIndex={0}
+          <Select
             aria-label={depthLabel}
-            value={preferences.depth}
-            onChange={(event) =>
-              onPreferencesChange({ ...preferences, depth: Number(event.target.value) })
-            }
-          >
-            {[1, 2, 3, 4, 5, 6].map((depth) => (
-              <option key={depth} value={depth}>
-                H1–H{depth}
-              </option>
-            ))}
-          </select>
+            options={[1, 2, 3, 4, 5, 6].map((depth) => ({
+              label: depthOptionLabel(depth),
+              value: String(depth),
+            }))}
+            portalContainer={portalContainer}
+            value={String(preferences.depth)}
+            variant="outline"
+            onValueChange={(value) => onPreferencesChange({ ...preferences, depth: Number(value) })}
+          />
         ) : null}
         {onClose ? (
           <button
@@ -126,7 +128,7 @@ export function EditorOutline({
             {visible.map((heading) => (
               <li
                 key={heading.key}
-                className={activeParents.has(heading.key) ? 'editor-outline__ancestor' : undefined}
+                className={`editor-outline__row editor-outline__row--level-${Math.min(Math.max(heading.level, 1), 6)}${activeParents.has(heading.key) ? ' editor-outline__ancestor' : ''}`}
               >
                 {branches.has(heading.key) && onPreferencesChange ? (
                   <button
@@ -142,7 +144,7 @@ export function EditorOutline({
                       onPreferencesChange({ ...preferences, collapsed })
                     }}
                   >
-                    <ChevronRight size={12} />
+                    <ChevronRight aria-hidden="true" size={12} />
                   </button>
                 ) : null}
                 <button

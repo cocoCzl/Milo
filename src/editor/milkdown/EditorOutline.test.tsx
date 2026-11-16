@@ -120,6 +120,7 @@ describe('EditorOutline', () => {
     }))
     const { container } = render(
       <EditorOutline
+        preferences={{ depth: 6, collapsed: new Set() }}
         activePosition={5}
         closeLabel="Close outline"
         drawer={false}
@@ -147,6 +148,7 @@ describe('EditorOutline', () => {
       'A very long English and 中文 mixed heading that must remain contained inside the outline pane'
     const { container, rerender } = render(
       <EditorOutline
+        preferences={{ depth: 6, collapsed: new Set() }}
         activePosition={null}
         closeLabel="Close outline"
         drawer={false}

@@ -339,7 +339,7 @@ describe('application shell foundation', () => {
   })
 
   it('polishes inline and drawer outlines without changing their layout roles', () => {
-    declarations('.app-shell', { '--outline-width': '256px' })
+    declarations('.app-shell', { '--outline-width': '288px' })
     declarations('.document-stage', {
       'grid-template-columns':
         'minmax(0, 1fr) minmax(0, calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap))) minmax(0, 1fr)',
@@ -348,13 +348,15 @@ describe('application shell foundation', () => {
       'grid-template-columns':
         'minmax(0, 1fr) minmax(0, calc(var(--reading-width) + var(--editor-rail-width) + var(--editor-column-gap) + var(--space-6) + var(--outline-width))) minmax(0, 1fr)',
     })
-    declarations('.editor-outline--drawer', { width: 'min(280px, calc(100vw - 24px))' })
+    declarations('.editor-outline--drawer', {
+      width: 'min(var(--outline-width), calc(100vw - 24px))',
+    })
     declarations('.editor-outline', { background: 'var(--surface-outline)' })
     declarations('.editor-outline__header', {
-      'min-height': '2.5em',
+      'min-height': '3.25em',
       'border-bottom': '1px solid var(--context-line)',
     })
-    declarations('.editor-outline__item', { position: 'relative', 'min-height': '2.333333em' })
+    declarations('.editor-outline__item', { position: 'relative', 'min-height': '2.307692em' })
     declarations('.editor-outline__item--active::before', {
       width: '2px',
       background: 'var(--accent)',
@@ -372,13 +374,13 @@ describe('application shell foundation', () => {
 
   it('keeps all six outline levels compact with bounded deep indentation', () => {
     for (const [level, padding] of [
-      ['2', '19px'],
-      ['3', '29px'],
-      ['4', '37px'],
-      ['5', '43px'],
-      ['6', '43px'],
+      ['2', '10px'],
+      ['3', '20px'],
+      ['4', '28px'],
+      ['5', '34px'],
+      ['6', '34px'],
     ])
-      declarations(`.editor-outline__item--level-${level}`, { 'padding-left': padding })
+      declarations(`.editor-outline__row--level-${level}`, { '--outline-indent': padding })
     declarations('.editor-outline__item span', {
       'text-overflow': 'ellipsis',
       'white-space': 'nowrap',
@@ -414,8 +416,8 @@ describe('application shell foundation', () => {
       background: 'var(--hover-fill)',
     })
     declarations('.editor-outline__item:focus-visible', {
-      color: 'var(--ink)',
-      background: 'var(--hover-fill)',
+      outline: '2px solid var(--focus-ring)',
+      'outline-offset': '-2px',
     })
     declarations('.editor-outline__item--active', {
       color: 'var(--accent)',

@@ -11,6 +11,7 @@ type SelectProps = {
   options: SelectOption[]
   portalContainer?: HTMLElement | null
   value: string
+  variant?: 'outline'
   onValueChange: (value: string) => void
 }
 
@@ -20,10 +21,15 @@ export function Select({
   options,
   portalContainer,
   value,
+  variant,
 }: SelectProps) {
   return (
     <SelectPrimitive.Root value={value} onValueChange={onValueChange}>
-      <SelectPrimitive.Trigger aria-label={ariaLabel} className="milo-select__trigger">
+      <SelectPrimitive.Trigger
+        aria-label={ariaLabel}
+        className={`milo-select__trigger${variant ? ` milo-select__trigger--${variant}` : ''}`}
+        tabIndex={variant === 'outline' ? 0 : undefined}
+      >
         <SelectPrimitive.Value />
         <SelectPrimitive.Icon className="milo-select__icon">
           <ChevronDown aria-hidden="true" size={14} strokeWidth={1.8} />
@@ -31,10 +37,12 @@ export function Select({
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal container={portalContainer ?? undefined}>
         <SelectPrimitive.Content
-          className="milo-select__content"
+          aria-label={variant === 'outline' ? ariaLabel : undefined}
+          className={`milo-select__content${variant ? ` milo-select__content--${variant}` : ''}`}
           collisionPadding={10}
           position="popper"
           sideOffset={5}
+          onEscapeKeyDown={variant === 'outline' ? (event) => event.stopPropagation() : undefined}
         >
           <SelectPrimitive.Viewport className="milo-select__viewport">
             {options.map((option) => (
