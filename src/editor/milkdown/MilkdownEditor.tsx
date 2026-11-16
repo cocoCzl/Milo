@@ -1,6 +1,7 @@
 import { markLifecycle } from '../../diagnostics/profileClock'
 import { isSupportedLink, type NavigationTarget } from '../../file-system/documentLink'
 import { createOpenProfilePlugin } from '../../diagnostics/editorOpenProfile'
+import { editorResourcePlugins, profileNodeView } from '../../diagnostics/editorResources'
 import {
   measureRuntime,
   takeOpenProfile,
@@ -428,15 +429,22 @@ export function MilkdownEditor({
             },
           }),
           ...plugins,
+          ...editorResourcePlugins(),
         ])
         ctx.update(nodeViewCtx, (views) => [
           ...views,
-          ['table', createTableNodeView] as [string, NodeViewConstructor],
-          ['code_block', createCodeBlockNodeView(copyRef, presentationModeRef)] as [
+          ['table', profileNodeView('tableViews', createTableNodeView)] as [
             string,
             NodeViewConstructor,
           ],
-          ['image', createImageNodeView(documentPathRef, copyRef)] as [string, NodeViewConstructor],
+          [
+            'code_block',
+            profileNodeView('codeViews', createCodeBlockNodeView(copyRef, presentationModeRef)),
+          ] as [string, NodeViewConstructor],
+          [
+            'image',
+            profileNodeView('imageViews', createImageNodeView(documentPathRef, copyRef)),
+          ] as [string, NodeViewConstructor],
         ])
       })
       .use(commonmark)
@@ -475,6 +483,7 @@ export function MilkdownEditor({
               serializedChars: serialized.length,
               initialChars: initialMarkdownRef.current.length,
               composing: Number(hasPendingComposition(ctx.get(editorViewCtx))),
+              contextualSubscriptions: contextualStoreRef.current?.subscriberCount() ?? 0,
             }
           }),
         )

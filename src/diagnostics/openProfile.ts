@@ -2,6 +2,7 @@
 import { recordProfile } from './profileClock'
 import type { Node } from '@milkdown/prose/model'
 import { watchResourceCounts } from '../file-system/nativeFileWatcher'
+import { editorResourceCounts } from './editorResources'
 
 const profileEnabled = () => import.meta.env.VITE_MILO_PROFILE === '1'
 type Entry = { stage: string; ms: number; endMs: number }
@@ -114,6 +115,7 @@ export async function emitRuntimeSnapshot(reason: string) {
     nowMs: performance.now(),
     build: import.meta.env.VITE_MILO_PROFILE_COMMIT ?? 'unspecified',
     counts: {
+      resources: editorResourceCounts(),
       watches: watchResourceCounts(),
       tabs: count('.document-tab'),
       views: count('.ProseMirror'),

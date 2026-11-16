@@ -35,7 +35,15 @@ export function installInputTrace() {
     traceInput(`dom:${event.type}`, {
       panel: target?.closest('.document-panel')?.id ?? '',
       target: target?.closest('.ProseMirror') ? 'wys' : (target?.tagName ?? ''),
-      composing: keyboard?.isComposing ?? input?.isComposing ?? false,
+      // CompositionEvent has no isComposing property; null means unavailable.
+      composing: keyboard?.isComposing ?? input?.isComposing ?? null,
+      defaultPrevented: event.defaultPrevented,
+      commandCode:
+        keyboard &&
+        (keyboard.metaKey || keyboard.ctrlKey) &&
+        ['KeyS', 'KeyQ'].includes(keyboard.code)
+          ? keyboard.code
+          : '',
       inputType: input?.inputType ?? '',
       // Named control keys and modifier-command names only, never typed text.
       key: keyboard

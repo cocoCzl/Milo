@@ -17,6 +17,10 @@ export class ContextualEditorStore {
 
   getSnapshot = () => this.snapshot
 
+  subscriberCount() {
+    return this.listeners.size
+  }
+
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
