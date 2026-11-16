@@ -9,8 +9,125 @@ async function showOutline(page) {
     await page.getByRole('button', { name: '打开大纲', exact: true }).click()
   await page.locator('.editor-outline__body').waitFor()
   const depth = page.getByRole('combobox', { name: '展示标题层级' })
-  if (await depth.count()) await depth.selectOption('6')
+  if ((await depth.count()) && !(await depth.innerText()).includes('H6')) {
+    await depth.click()
+    await page.getByRole('option', { name: '显示至 H6', exact: true }).click()
+  }
   await settle(page)
+}
+
+async function depthFocusReturned(page) {
+  await page.waitForFunction(
+    () => document.activeElement?.classList.contains('milo-select__trigger--outline'),
+    undefined,
+    { timeout: 2000 },
+  )
+}
+
+async function depthControl(page, name) {
+  async function focusedOption(label) {
+    await page.waitForFunction(
+      (label) =>
+        document.activeElement?.getAttribute('role') === 'option' &&
+        document.activeElement?.textContent === label,
+      label,
+    )
+  }
+  const trigger = page.getByRole('combobox', { name: '展示标题层级' })
+  await page.evaluate(() => {
+    const editor = document.querySelector('.ProseMirror')
+    window.__miloOutlineTest.originalEditor = editor
+    window.__miloOutlineTest.originalDoc = editor.pmViewDesc.node
+  })
+  async function filtered(depth) {
+    assert.equal(await trigger.innerText(), depth === 1 ? '仅显示 H1' : `显示至 H${depth}`)
+    const measured = await page.evaluate((depth) => {
+      const editor = document.querySelector('.ProseMirror')
+      return {
+        expected: [...editor.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(
+          (heading) => Number(heading.tagName.slice(1)) <= depth,
+        ).length,
+        actual: document.querySelectorAll('.editor-outline__item').length,
+        sameEditor: editor === window.__miloOutlineTest.originalEditor,
+        sameDoc: editor.pmViewDesc.node === window.__miloOutlineTest.originalDoc,
+        stored: localStorage.getItem('milo-outline-depth'),
+        writes: window.__miloOutlineTest.writes,
+      }
+    }, depth)
+    assert.equal(measured.actual, measured.expected)
+    assert(measured.sameEditor, 'depth change remounted Milkdown')
+    assert(measured.sameDoc, 'depth change mutated the Markdown model')
+    assert.deepEqual(measured.writes, [], 'outline preferences caused a save')
+    if (measured.stored !== null) assert.equal(measured.stored, String(depth))
+  }
+  await filtered(3)
+  assert.equal(await page.locator('.editor-outline select').count(), 0)
+  const before = await trigger.boundingBox()
+  assert(before.width >= 110 && before.width <= 140)
+  await trigger.click()
+  assert.equal(
+    await page.locator('.milo-select__trigger--outline').getAttribute('aria-expanded'),
+    'true',
+  )
+  const menu = page.getByRole('listbox')
+  const menuSize = await menu.boundingBox()
+  assert(menuSize.width >= 140 && menuSize.width <= 170)
+  assert.equal(await menu.getByRole('option').count(), 6)
+  assert.equal(await menu.locator('[data-state="checked"] .lucide-check').count(), 1)
+  const colors = await menu.evaluate((el) => ({
+    background: getComputedStyle(el).backgroundColor,
+    color: getComputedStyle(el).color,
+    theme: el.closest('.app-shell')?.dataset.theme,
+  }))
+  assert.notEqual(colors.color, colors.background)
+  assert(colors.theme, 'menu lost the application theme portal')
+  const optionStyle = await menu
+    .getByRole('option')
+    .first()
+    .evaluate((el) => ({
+      weight: Number(getComputedStyle(el).fontWeight),
+      height: el.getBoundingClientRect().height,
+    }))
+  assert(optionStyle.weight <= 450, 'outline menu uses bold text')
+  assert(optionStyle.height >= 30, 'outline menu hit targets are too small')
+  await page.screenshot({ path: `${output}/${name}-depth-menu.png` })
+  await page.keyboard.press('Escape')
+  await menu.waitFor({ state: 'detached' })
+  await depthFocusReturned(page)
+  assert.equal(await page.locator('.editor-outline').count(), 1, 'Escape also closed the Drawer')
+  for (const depth of [1, 2, 3, 6]) {
+    await trigger.click()
+    await page
+      .getByRole('option', {
+        name: depth === 1 ? '仅显示 H1' : `显示至 H${depth}`,
+        exact: true,
+      })
+      .click()
+    await menu.waitFor({ state: 'detached' })
+    await depthFocusReturned(page)
+    await filtered(depth)
+  }
+  // Keyboard selection commits only on Enter. Escape discards the pending row.
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  await focusedOption('显示至 H6')
+  await page.keyboard.press('Home')
+  await focusedOption('仅显示 H1')
+  await page.keyboard.press('ArrowDown')
+  await focusedOption('显示至 H2')
+  await page.keyboard.press('Enter')
+  await menu.waitFor({ state: 'detached' })
+  await filtered(2)
+  await depthFocusReturned(page)
+  await page.keyboard.press('ArrowDown')
+  await focusedOption('显示至 H2')
+  await page.keyboard.press('ArrowUp')
+  await focusedOption('仅显示 H1')
+  await page.keyboard.press('Escape')
+  await menu.waitFor({ state: 'detached' })
+  await filtered(2)
+  await depthFocusReturned(page)
+  await showOutline(page)
 }
 
 async function metrics(page) {
@@ -134,15 +251,20 @@ try {
     [1024, 600],
     [800, 600],
   ]) {
-    for (const theme of ['light', 'dark', 'warm']) cases.push({ width, height, theme })
+    for (const theme of ['light', 'dark', 'warm']) {
+      for (const uiZoom of [100, 140]) cases.push({ width, height, theme, uiZoom })
+    }
   }
   cases.push({ width: 1440, height: 900, theme: 'light', uiZoom: 140, docZoom: 160 })
   cases.push({ width: 1024, height: 600, theme: 'dark', uiZoom: 140, docZoom: 160 })
   cases.push({ width: 1440, height: 600, theme: 'warm', sidebar: true, uiZoom: 120 })
   for (const options of cases) {
     const page = await open(options)
-    await showOutline(page)
-    const name = `${options.width}x${options.height}-${options.theme}-${options.uiZoom || 100}${options.sidebar ? '-sidebar' : ''}`
+    const name = `${options.width}x${options.height}-${options.theme}-${options.uiZoom || 100}${options.docZoom ? `-doc${options.docZoom}` : ''}${options.sidebar ? '-sidebar' : ''}`
+    await settle(page)
+    if (!(await page.locator('.editor-outline').count()))
+      await page.getByRole('button', { name: '打开大纲', exact: true }).click()
+    await depthControl(page, name)
     assert.equal(await page.locator('.editor-outline__item').count(), 101)
     const top = await metrics(page)
     assert(top.headerHit)
@@ -374,6 +496,11 @@ try {
   // Focus Mode uses the existing drawer compositor layer.
   await page.evaluate(() => window.__miloOutlineTest.command('toggle-focus-mode'))
   await showOutline(page)
+  await page.getByRole('combobox', { name: '展示标题层级' }).click()
+  await page.keyboard.press('Escape')
+  await depthFocusReturned(page)
+  assert.equal(await page.locator('.editor-outline--drawer').count(), 1)
+  assert.equal(await page.locator('.app-shell--focus-mode').count(), 1)
   await wheel(page, 100000)
   contained(await metrics(page))
   await page.keyboard.press('Escape')
@@ -441,6 +568,23 @@ try {
   await lazy.waitForFunction(() =>
     window.__miloOutlineTest.writes.some((w) => w.markdown.includes('lazy-undo-check')),
   )
+  await showOutline(lazy)
+  await lazy.evaluate(() => {
+    window.__miloOutlineTest.editedDoc = document.querySelector('.ProseMirror').pmViewDesc.node
+  })
+  const lazyDepth = lazy.getByRole('combobox', { name: '展示标题层级' })
+  for (const name of ['仅显示 H1', '显示至 H6']) {
+    await lazyDepth.click()
+    await lazy.getByRole('option', { name, exact: true }).click()
+    await depthFocusReturned(lazy)
+  }
+  assert(
+    await lazy.evaluate(
+      () =>
+        window.__miloOutlineTest.editedDoc ===
+        document.querySelector('.ProseMirror').pmViewDesc.node,
+    ),
+  )
   const scroll = await lazy.locator('.document-stage').evaluate((stage) => {
     stage.scrollTop = 1500
     return stage.scrollTop
@@ -470,6 +614,12 @@ try {
         .querySelector('.document-panel:not([hidden]) .ProseMirror')
         .textContent.includes('lazy-undo-check'),
   )
+  await lazy.keyboard.press('Meta+Shift+z')
+  await lazy.waitForFunction(() =>
+    document
+      .querySelector('.document-panel:not([hidden]) .ProseMirror')
+      .textContent.includes('lazy-undo-check'),
+  )
   await lazy.close()
 
   for (const uiZoom of [100, 140]) {
@@ -492,10 +642,68 @@ try {
       'focus changed current chapter',
     )
     assert.equal(await last.getAttribute('aria-current'), null)
+    const feedback = await last.evaluate((el) => {
+      const active = document.querySelector('.editor-outline__item--active')
+      return {
+        focusOutline: getComputedStyle(el).outlineStyle,
+        focusFill: getComputedStyle(el).backgroundColor,
+        activeFill: getComputedStyle(active).backgroundColor,
+      }
+    })
+    assert.equal(feedback.focusOutline, 'solid')
+    assert.notEqual(
+      feedback.focusFill,
+      feedback.activeFill,
+      'keyboard focus looks like current chapter',
+    )
     assert.equal(await stage.evaluate((el) => el.scrollTop), 0)
     assert.deepEqual(await fitted.evaluate(() => window.__miloOutlineTest.writes), [])
     await fitted.close()
   }
+
+  // Depth is local UI storage and survives a real document close/reopen.
+  for (const width of [1440, 800]) {
+    const persistent = await open({ width, height: 900 })
+    await showOutline(persistent)
+    const trigger = persistent.getByRole('combobox', { name: '展示标题层级' })
+    await trigger.click()
+    await persistent.getByRole('option', { name: '显示至 H2', exact: true }).click()
+    const count = await persistent.locator('.editor-outline__item').count()
+    const original = await persistent
+      .locator('.ProseMirror')
+      .evaluate((el) => el.pmViewDesc.node.toJSON())
+    await persistent.locator('.document-tab__close').click()
+    await persistent.locator('.document-empty-state').waitFor()
+    await persistent.evaluate(() => window.__miloOutlineTest.open('/test/outline-long.md'))
+    await persistent.locator('.milkdown-editor[aria-busy="false"] .ProseMirror').waitFor()
+    if (!(await persistent.locator('.editor-outline').count()))
+      await persistent.getByRole('button', { name: '打开大纲', exact: true }).click()
+    await trigger.waitFor()
+    assert.equal(await trigger.innerText(), '显示至 H2')
+    assert.equal(await persistent.locator('.editor-outline__item').count(), count)
+    assert.deepEqual(
+      await persistent.locator('.ProseMirror').evaluate((el) => el.pmViewDesc.node.toJSON()),
+      original,
+    )
+    assert.deepEqual(await persistent.evaluate(() => window.__miloOutlineTest.writes), [])
+    await persistent.close()
+  }
+  const english = await open({ locale: 'en', uiZoom: 140 })
+  const englishDepth = english.getByRole('combobox', { name: 'Heading levels' })
+  assert.equal(await englishDepth.innerText(), 'Show to H3')
+  await englishDepth.click()
+  assert.deepEqual(await english.getByRole('option').allTextContents(), [
+    'Only H1',
+    'Show to H2',
+    'Show to H3',
+    'Show to H4',
+    'Show to H5',
+    'Show to H6',
+  ])
+  await english.screenshot({ path: `${output}/english-140-depth-menu.png` })
+  await english.keyboard.press('Escape')
+  await depthFocusReturned(english)
+  await english.close()
 
   const closed = await open()
   await closed.locator('.document-tab__close').click()
@@ -522,7 +730,7 @@ try {
         engine: browser.version(),
         cases: results,
         interactionChecks:
-          'keyboard, modes, active visibility, all levels, duplicate IDs, drawer, resize, tabs, focus, edit/autosave, short/empty/long title, system theme',
+          'Radix depth mouse/arrow/Enter/Escape/focus return, H1–H6 filtering, depth persistence, unchanged Markdown model/editor/save calls, keyboard, modes, active visibility, all levels, duplicate IDs, drawer, resize, tabs, focus, edit/autosave, short/empty/long title, English, system theme',
         pageErrors: errors,
       },
       null,

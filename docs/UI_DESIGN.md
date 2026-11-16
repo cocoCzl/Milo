@@ -46,16 +46,16 @@ These widths protect reading comfort and must not expand merely to consume a wid
 
 ### Outline and spacing
 
-- Inline Outline width: 256 px; the top-bar toggle can hide and reopen it.
-- Default maximum heading depth is 3, adjustable to 1–6. Section folding is per mounted document; depth preference is local UI storage, never Markdown.
-- Current-heading accent, ancestor weight and keyboard focus are distinct.
+- Inline Outline width: 288 px; the top-bar toggle can hide and reopen it.
+- Default maximum heading depth is 3, adjustable to 1–6 through the shared Radix Select. Depth 1 shows only H1; depth N shows H1–HN. Chinese labels read “仅显示 H1” / “显示至 HN”, with English “Only H1” / “Show to HN”. Section folding is per mounted document; depth preference is local UI storage, never Markdown.
+- Current-heading accent, neutral hover, ancestor weight and inset keyboard focus ring are distinct. The Outline Select uses a compact 136×31 px trigger and 160 px floating menu, accent-tinted checked rows with a Check icon, arrow/Enter/Escape interaction, and focus restoration. Escape closes the Select before closing a Drawer or exiting Focus Mode.
 - Article-to-Outline gap: 24 px.
 - Inline Outline is selected when the Document Stage is at least 1150 px wide; narrower layouts use the Drawer.
 - The Document Stage remains the sole scrolling container for document content.
 - Inline Outline is portalled into a sibling grid layer in Document Area. It shares the Stage's horizontal tracks and reserved rail, but receives its height from the single remaining workspace row below the Application Bar, with 16 px outer insets. Do not size it with viewport subtraction or put it back inside the article's scroll root.
 - The Outline header stays visible; only its body scrolls, with 16 px trailing padding and contained overscroll. Short outlines shrink to content.
 - Current-heading visibility adjusts only the Outline body's scroll position when the active heading changes and is outside the visible list. Unrelated renders must preserve manual Outline browsing.
-- Outline rows scale with Interface Zoom (about 28 px at 100%), keep native full-text titles, and cap deep indentation. Active color applies at every depth in both layouts.
+- Outline rows scale with Interface Zoom (13 px type, about 30 px rows at 100%), keep full-text `title` tooltips and stable single-line ellipsis, and cap deep indentation. Two-line rows are intentionally avoided so filtering, resizing and zoom do not change wrapping heights. Fold controls sit in the left indentation gutter. Active color applies at every depth in both layouts.
 
 On large layouts, extra space is shared by equal flexible tracks:
 
@@ -75,7 +75,7 @@ The editor rail reserves only the space required by the Block Handle and related
 
 `tests/fixtures/outline-long.md` is synthetic test material with 32 chapters, all six heading depths, duplicate and long mixed-language headings, and the explicit final chapter `32. 最后的收束话术`.
 
-Install dependencies with `npm ci` and the pinned development browser with `npx playwright install --with-deps chromium`. With `npm run dev -- --host 127.0.0.1` running, execute `npm run test:browser`. Playwright is a lockfile-pinned development dependency, never a runtime application dependency. CI runs the same commands and uploads artifacts. Screenshots and measured rectangles go to `.tmp/milo-outline-regression`, or the directory set by `MILO_OUTLINE_ARTIFACTS`.
+Install dependencies with `npm ci` and the pinned development browser with `npx playwright install --with-deps chromium webkit`. With `npm run dev -- --host 127.0.0.1` running, execute `npm run test:browser` and `MILO_BROWSER=webkit npm run test:browser`. Playwright is a lockfile-pinned development dependency, never a runtime application dependency. CI runs the Chromium suite and uploads artifacts. Screenshots and measured rectangles go to `.tmp/milo-outline-regression`, or the directory set by `MILO_OUTLINE_ARTIFACTS`.
 
 The same harness checks Home with no Document Tabs: its complete empty-state group must be centered in Document Area (2 px horizontal / 12 px vertical tolerance), both buttons must fit, and the stage must not overflow. It covers sidebar on/off where supported, viewport sizes including 1280×800, 1440×900, 1920×1080 and a narrow window, three themes, Interface Zoom 100%/140%, and the transition after closing the last tab.
 

@@ -24,6 +24,7 @@ async function open({
   width = 1440,
   height = 900,
   theme = 'light',
+  locale = 'zh-CN',
   uiZoom = 100,
   docZoom = 100,
   sidebar = false,
@@ -61,7 +62,7 @@ async function open({
     console.error(error.stack)
   })
   await page.addInitScript(
-    ({ content, theme, uiZoom, docZoom, sidebar, home, tabs, folder }) => {
+    ({ content, theme, locale, uiZoom, docZoom, sidebar, home, tabs, folder }) => {
       const callbacks = new Map()
       const listeners = new Map()
       const files = new Map([
@@ -112,7 +113,7 @@ async function open({
             return {
               settingsVersion: 5,
               appearance: theme,
-              locale: 'zh-CN',
+              locale,
               documentZoom: docZoom,
               interfaceZoom: uiZoom,
               documentFontStyle: 'sans',
@@ -195,7 +196,7 @@ async function open({
         },
       }
     },
-    { content, theme, uiZoom, docZoom, sidebar, home, tabs, folder },
+    { content, theme, locale, uiZoom, docZoom, sidebar, home, tabs, folder },
   )
   await page.goto(url)
   try {
