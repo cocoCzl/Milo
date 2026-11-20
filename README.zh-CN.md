@@ -2,69 +2,48 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Milo 是一款面向 macOS 的 Local-first Markdown 编辑器。它直接打开普通 Markdown 文件，在专注的所见即所得编辑器中写作，同时保持文件可移植并让文件本身作为权威来源。
+Milo 是面向 macOS 的本地 Markdown 编辑器。可以可视化写作，也可以直接编辑源码，文档始终是可在其他编辑器中使用的普通 Markdown 文件。
 
-当前源码版本为 **0.3.1（尚未发布）**。GitHub 上的 v0.3.0 预发布版是历史构建，当前 `master` 包含后续的编辑器和可靠性改进。
+当前本地开发版本为 **0.3.2（未发布）**；可下载的公开版本为 **v0.3.0 预发布版**。本地改动不代表已经发布。
 
-## 功能
+## 主要功能
 
-- 支持标题、强调、引用、列表、任务列表、表格、链接、图片和代码块的 CommonMark/GFM 编辑。
-- 编辑、阅读和整文件源码模式，编辑器按需加载。
-- 原生打开、保存、另存为、最近文件、目录浏览、标签页和会话恢复。
-- 安全保存、冲突检查、恢复副本，以及 Front Matter、UTF-8 BOM、LF/CRLF 处理。
-- 相对 Markdown 链接、页内锚点、返回导航、文内查找替换和当前文件夹范围的快速打开。
-- 大纲导航、主题、独立的正文/界面缩放、专注模式和可访问的键盘操作。
-- 将图片粘贴到文档同级 `assets/` 目录，并使用相对 Markdown 路径。
-- 远程图片只有在用户明确操作后加载；核心写作不依赖账号、遥测或云服务。
+- 可视化编辑、阅读和源码模式，支持表格、任务列表、图片与代码块。
+- 标签页、文件夹浏览、最近文件与快速打开；文内查找替换和大纲导航。
+- 已有文件自动保存、另存为、外部修改检查及未保存文档恢复。
+- 浅色、深色与暖色主题，专注模式、键盘操作及独立的正文和界面缩放。
+
+## 下载与开始使用
+
+Milo 面向 **macOS 13+**。公开 Universal DMG 包含 Apple Silicon 和 Intel 架构；实际实机覆盖见[已知问题](docs/KNOWN_ISSUES.md)。
+
+1. 从 [v0.3.0 预发布页面](https://github.com/cocoCzl/Milo/releases/tag/v0.3.0)下载 DMG 和对应的 `.sha256` 文件。
+2. 在下载目录运行 `shasum -a 256 -c Milo_0.3.0_universal.dmg.sha256`，核对后将 Milo 拖入“应用程序”。
+3. 打开 Milo，选择 Markdown 文件，或新建文档并首次保存到指定位置。已有文件会在空闲编辑后自动保存；新文档需要先明确保存一次。
+
+下载包采用 ad-hoc 签名，**未经 Apple 公证**。若 macOS 阻止打开，请先核对来源和校验值，再到“系统设置 → 隐私与安全性 → 仍要打开”中操作。不要全局关闭 Gatekeeper。
+
+**测试版提示：**请使用已备份文件。代码块中候选尚未确认就退出，存在保存为原始拼音的未解决问题。退出前先确认输入并核对保存内容；该问题及其他限制见[已知问题](docs/KNOWN_ISSUES.md)。
 
 ## 文件与隐私
 
-Markdown 文件始终是数据源。偏好、最近路径、会话元数据和恢复副本保存在文档目录之外。Milo 不使用数据库、账号系统、遥测服务或自动云同步。测试预发布版本时请使用可丢弃或已备份的文件。
+Markdown 文件是权威来源。可视化编辑可能规范化 Markdown 格式；源码模式展示包含 Front Matter 的完整文件。不同模式的撤销历史相互独立。
 
-所见即所得编辑可能规范化部分 Markdown 格式。源码模式保留完整文件（包括 Front Matter），用于不能安全转换的内容。跨模式撤销尚未统一，详见[已知问题](docs/KNOWN_ISSUES.md)。
+偏好设置、会话信息和恢复副本存放在本地应用数据目录，不写入文档文件夹。恢复副本可能落后于最后编辑，不能代替保存。粘贴图片存放在已保存文档旁的 `assets/` 目录；远程图片仅在明确请求后加载。Milo 没有账号、遥测、自动云同步或后台更新检查。
 
-## 平台与下载
+## 本地开发
 
-Milo 支持 macOS 13 或更高版本。v0.3.0 公开预发布版提供同时支持 Apple Silicon 和 Intel 的 Universal DMG，使用 ad-hoc 签名且未经过公证。
-
-从 [GitHub Releases](https://github.com/cocoCzl/Milo/releases) 下载 DMG 和校验文件，用 `shasum -a 256 -c` 核对后将 Milo 拖入“应用程序”。如果 macOS 阻止首次打开，在确认来源和校验值后前往“系统设置 → 隐私与安全性 → 仍要打开”。不要全局关闭 Gatekeeper。
-
-当前原生覆盖以 Apple Silicon 为主。20 标签 physical footprint 超过 200 MB 预算，但尚未确认真实泄漏；中文候选输入期间 Cmd+S/Cmd+Q 的问题仍未解决、尚未归因。测量数据和验收边界详见[已知问题](docs/KNOWN_ISSUES.md)和[编辑器状态](docs/EDITOR_STATUS.md)。
-
-## 开发
-
-要求：Node.js 24、稳定版 Rust、Xcode Command Line Tools 和 macOS Rust targets。
+在 macOS 上安装 Node.js 24、稳定版 Rust 和 Xcode Command Line Tools，然后运行：
 
 ```sh
 npm ci
 npm run tauri -- dev
 ```
 
-## 检查
-
-```sh
-npm run format:check
-npm run typecheck
-npm run lint -- --max-warnings=0
-npm test
-npm run build
-npm run test:browser
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-```
-
-浏览器检查使用模拟原生 IPC；原生 Release 打包请参阅 [RELEASE.md](docs/RELEASE.md)。
-
-## 文档
-
-- [文档索引](docs/README.md)
-- [编辑器状态](docs/EDITOR_STATUS.md)：当前实现、性能样本与验收边界
-- [已知问题](docs/KNOWN_ISSUES.md)：未解决行为与归因限制
-- [UI 设计约束](docs/UI_DESIGN.md)
-- [Release runbook](docs/RELEASE.md)
-- [发布说明](docs/RELEASE.zh-CN.md)
+- [开发指南](docs/DEVELOPMENT.md)：环境、检查和工程约束。
+- [已知问题](docs/KNOWN_ISSUES.md)：当前缺陷与验证范围。
+- [发布指南](docs/RELEASE.md)：维护者打包与发布流程。
 
 ## 许可证
 
-Milo 使用 [GPL-3.0](LICENSE) 协议。
+[GPL-3.0](LICENSE)。

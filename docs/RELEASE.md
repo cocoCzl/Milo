@@ -1,74 +1,48 @@
-# Milo macOS release runbook
+# 发布指南
 
-[English](RELEASE.md) | [简体中文](RELEASE.zh-CN.md)
+本指南供维护者在真正准备发布时使用。当前开发版本为 **0.3.2（未发布）**；编辑版本号或本地构建都不代表发布。
 
-Current source: **0.3.1 (unreleased)**. The 0.3.0 release identity and acceptance record below are historical. Local builds do not publish a release.
+## 发布前检查
 
-## Current policy
+- 取得维护者对创建版本标签、触发发布工作流及公开发布的明确授权；历史发布授权或性能豁免不适用于未来版本。
+- 按[开发指南](DEVELOPMENT.md#检查)完成项目 CI 门禁及本次改动所需的原生验收。保存、恢复、冲突、组合输入、退出及隐私契约不可因打包而放宽；确认[已知问题](KNOWN_ISSUES.md)准确披露，未通过项目如需豁免必须明确记录，不能写成通过。
+- 确认打包源码干净、对应已批准提交，记录完整提交号。检查提交内容，排除真实文档、用户设置、诊断应用和内部验收产物；不要在版本准备中顺带升级依赖。
+- 真正准备发布时创建该版本的 `docs/RELEASE_NOTES_<版本>.md`。工作流要求它存在；单纯的未发布开发版本无需正文。`RELEASE_NOTES_0.3.0.md` 保留是因为它仍是现有发布工作流的有效输入，不是当前状态说明。历史公开版见 [v0.3.0 Release](https://github.com/cocoCzl/Milo/releases/tag/v0.3.0)。
 
-**0.3.0 is the first public beta**, distributed under GPL-3.0 through a GitHub Pre-release. Ship one Universal DMG for macOS 13+, containing arm64 and x86_64. Keep the application identifier `io.github.milo.editor`.
+## 版本与构建
 
-This release explicitly uses **ad-hoc signing** (`signingIdentity: "-"`). It has no Developer ID identity signature and no Apple notarization. Apple Developer membership, certificates, Apple account credentials and related GitHub Secrets are unnecessary. A failed identity-signing or notarization attempt must never silently fall back to this mode.
-
-## Build and automated gates
-
-Run the checks in `.github/workflows/ci.yml`: `npm ci`, formatting, TypeScript, frontend tests, lint with zero warnings, production build, rustfmt, Clippy with zero warnings, locked Rust tests and a bundled macOS Debug build. Do not upgrade dependencies as part of release preparation.
-
-Commit the source, record its full SHA, and build from that clean source commit:
+在仓库根目录执行轻量一致性检查：
 
 ```sh
 node scripts/check-release-version.mjs "v$(node -p 'require("./package.json").version')"
+```
+
+检查覆盖 npm/Cargo/Tauri 元数据及对应锁文件，同时校验应用标识 `io.github.milo.editor`、最低 macOS 13.0 和当前 ad-hoc 签名配置。关于菜单使用应用元数据，打包脚本读取 `package.json`；不另加硬编码版本或修改第三方依赖版本。
+
+获准构建后使用：
+
+```sh
 ./scripts/build-macos-universal.sh
 ```
 
-The script installs locked npm dependencies, ensures both Rust targets exist, builds with Cargo's lockfile, and verifies the final DMG. It removes old packaging output first. It clears inherited Apple signing/notarization credentials and explicitly selects ad-hoc signing. Outputs:
+脚本清理旧打包输出，按锁文件安装依赖、安装 arm64/x86_64 Rust target，构建 Universal DMG 并自动调用验证脚本。需要单独核验已有产物时使用：
 
-- `src-tauri/target/universal-apple-darwin/release/bundle/dmg/Milo_<version>_universal.dmg`
-- The adjacent `Milo_<version>_universal.dmg.sha256`, using a relative filename for portable `shasum -a 256 -c` verification.
+```sh
+./scripts/verify-macos-release.sh
+```
 
-`verify-macos-release.sh` checks the image, mounts it read-only, checks both bundle versions, unchanged identifier, macOS 13.0 in the plist and both Mach-O slices, both architectures, ad-hoc status and signature integrity, and the 100 MiB cap. It generates the checksum only after successful verification.
+产物位于 `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`：DMG 及其同名 `.sha256` 校验文件。校验文件使用相对文件名，可在产物目录运行 `shasum -a 256 -c 'Milo_<version>_universal.dmg.sha256'`。
 
-| Check                                                   | Meaning for this beta                                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `codesign --verify --deep --strict --all-architectures` | Must pass: ad-hoc signature integrity, not publisher identity                                                      |
-| `codesign -d --verbose=4 --arch …`                      | Must show `Signature=adhoc`, no TeamIdentifier, for both slices; no Developer ID authority                         |
-| Apple notarization / stapled ticket                     | Not performed; never claim notarization or Apple certification                                                     |
-| `spctl --assess --type execute`                         | Expected policy rejection (exit 3), recorded as rejection, never a trust pass; other tool errors fail verification |
+## 验证与支持边界
 
-Damaged signatures, a missing architecture, wrong version, deployment target or malformed image still block packaging. Do not sign or modify the bundle after creating its DMG/checksum.
+- 验证脚本检查磁盘映像、包内版本与应用标识、最低 macOS、arm64/x86_64 两个架构、ad-hoc 签名完整性及 100 MiB 包体上限；全部成功后生成 SHA-256。生成 DMG/校验文件后不再修改或重签包内应用。
+- 当前采用 `signingIdentity: "-"`，没有 Developer ID 身份签名或 Apple 公证。构建脚本清除继承的 Apple 签名凭据，不需要 Apple 账号；不能将正式签名失败悄悄降级成此模式。签名完整性通过不代表发布者身份或 Gatekeeper 信任通过。
+- 当前未公证包的 Gatekeeper 策略拒绝是预期结果，应如实披露；其他工具错误仍阻止验证。不要指导用户关闭 Gatekeeper。未来更换签名方式时须同步验证脚本和安装说明。
+- macOS 13+ 与 Universal 是分发目标，实机支持证据以已知问题为准，不能从架构存在推断完整兼容。浏览器样本、单架构隔离应用或诊断构建不能代替发行包和原生验收。原性能目标保留在 [CONTEXT.md](../CONTEXT.md)，不继承历史版本豁免。
 
-## 0.3.0 release identity and completed checks
+## 发布步骤
 
-- [Public Pre-release](https://github.com/cocoCzl/Milo/releases/tag/v0.3.0), not stable Latest. The maintainer authorized publication on 2026-10-24.
-- Unchanged source/tag: `v0.3.0` → `797035ab4d9305a1989134854b0d9cd3f0820a35`. The successful [Release run](https://github.com/cocoCzl/Milo/actions/runs/40093107626) built that tag using workflow commit `6bba1d5`; source quality gates passed. Subsequent changes are documentation/workflow only.
-- Existing attachment: `Milo_0.3.0_universal.dmg`, **7,545,711 bytes**, SHA-256 `784ee2e694ae4943c8d5d367985d02c87b2cfa3bb463657d89bc6865d26230a9`; matching checksum file: 91 bytes. Do not move the tag, replace the attachment or rebuild for documentation updates.
-- Image, version, identifier, minimum macOS, both architectures and strict ad-hoc integrity passed. Gatekeeper trust assessment rejected it (exit 3); no Developer ID or notarization.
-- Browser download retained quarantine; the installed application matched the attachment. Manual installation, system permission and first opening are maintainer-confirmed, not a claim based on screenshots. Follow the README's Apple Privacy & Security / Open Anyway instructions; exact prompts vary.
-- Preferences, editing/save and document close/reopen smoke checks passed. Real Chinese IME Auto Save, immediate Command-S and Save and Close passed actual disk/reopen comparison using native pinyin, without paste or synthetic composition. Real documents, preferences and the original session were preserved.
-
-## Accepted beta limitations and performance exception
-
-The maintainer explicitly accepts these gaps for public 0.3.0 Pre-release distribution. They remain unverified or incomplete, not test passes or prerequisites to repeat before this publication:
-
-- Actual immediate app-switch and minimize/restore IME transitions were not fully observed; those samples did retain Chinese on disk/reopen.
-- Cold-start and approximately 1 MB file-open latency were not reliably measured.
-- Memory observations span different running scenarios. Aggregate Milo plus related WebKit idle footprint was 186.52 MB in a two-tab state and 250.32 MB in an earlier additional-preedit-tab state. Process physical footprints were summed without global shared-memory deduplication. This is not an isolated baseline or an overall budget pass.
-- Hardware coverage is arm64 / macOS 27.0.1 (26A434); Intel and macOS 13–26 are untested on hardware.
-
-The original performance targets are median of five cold starts to editable document ≤1.5 s, median of five approximately 1 MB opens ≤1 s, and idle aggregate footprint after 30 s ≤200 MB on a 16 GB Apple Silicon Mac. These publication gates have an explicit **exception for this 0.3.0 Pre-release only**. Future verification retains the targets; no fabricated measurements, compatibility claims or general relaxation is allowed. Existing measurements are observations, not performance sign-off.
-
-See [Known issues](KNOWN_ISSUES.md) and the [bilingual release body](RELEASE_NOTES_0.3.0.md). No further application tests or build are required for this documentation/publication handoff.
-
-## Publication procedure
-
-Automation creates drafts with `draft: true`, `prerelease: true`, `make_latest: 'false'`, attaching only the Universal DMG and checksum. Public publication sets `draft: false`, keeps `prerelease: true` and `make_latest: false`, using the maintainer's explicit authorization. For 0.3.0 that authorization includes the limitations above.
-
-Before publication compare the existing remote tag and both attachments against the recorded identity; stop on any mismatch. Update the release body without replacing assets. After publication check anonymous page access and download the public assets to verify SHA-256. Documentation-only commits do not alter the tagged application; this final handoff runs only documentation checks, as explicitly requested.
-
-## Verification after current source changes
-
-The 0.3.0 exception and documentation-only handoff above apply only to that historical publication. Subsequent source changes require the complete CI gate, pinned Playwright browser installation and the original performance budgets. Keep generated evidence outside the repository. Record acceptance limits in [Known issues](KNOWN_ISSUES.md); do not promote browser development timings or old IME checks to native acceptance. For disposable native checks, `npm run tauri -- build --bundles app --config '{"identifier":"io.github.milo.validation"}'` creates a genuine Tauri Release app with separate app-data; do not run it over the user's real session. That arm64 test build is not a Universal DMG release. No release was produced by this optimization task.
-
-## Current editor status
-
-The current source adds whole-file Source mode, local Markdown navigation, replacements and folder Quick Open, plus ordered asynchronous disk transactions and lazy editor/menu loading. See [EDITOR_STATUS.md](EDITOR_STATUS.md) for exact implemented behavior and current evidence. An isolated arm64 `.app` build, browser tests or historical 0.3.0 exceptions do not satisfy Universal packaging, native IME/window lifecycle or native performance gates. All existing save/recovery/privacy and release approval requirements remain in force.
+1. 获准后，从批准提交创建匹配版本的 `v<版本>` 标签，再推送该标签；不要移动历史标签。也可经 `workflow_dispatch` 指定已存在标签，工作流会核对提交与标签一致。
+2. [.github/workflows/release.yml](../.github/workflows/release.yml)先执行复用 CI，再构建和验证，只附 DMG 与 SHA-256，创建 `draft: true`、`prerelease: true`、`make_latest: false` 的草稿。
+3. 核对草稿源码身份、版本正文、附件、校验值和未验证范围。只有在获得公开发布授权后才公开草稿；保持预发布状态，不自动设为稳定版 Latest。
+4. 公开后检查匿名访问和下载，保留下载隔离属性，重新核对 SHA-256 与安装行为。修改文档不移动标签、不替换历史附件，也不修改既有 Release；如需这些操作须另有明确授权。

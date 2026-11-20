@@ -2,69 +2,48 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Milo is a local-first Markdown editor for macOS. It opens ordinary Markdown files in a focused WYSIWYG editor while keeping those files portable and authoritative.
+Milo is a local-first Markdown editor for macOS. Write visually or edit the source while keeping ordinary Markdown files that work in other editors.
 
-The current source version is **0.3.1 (unreleased)**. The GitHub v0.3.0 Pre-release is a historical build; current `master` contains later editor and reliability work.
+The current local development version is **0.3.2 (unreleased)**; the available public download is **v0.3.0 Pre-release**. Local changes are not a published release.
 
 ## Features
 
-- CommonMark and GFM editing with headings, emphasis, quotes, lists, task lists, tables, links, images and code blocks.
-- Edit, Read and whole-file Source modes with on-demand editor loading.
-- Native Open, Save, Save As, recent files, folder browsing, tabs and session restoration.
-- Safe saving with conflict checks, recovery copies, Front Matter, UTF-8 BOM and LF/CRLF handling.
-- Relative Markdown links, anchors, Back navigation, document find/replace and folder-scoped Quick Open.
-- Outline navigation, themes, independent document/interface zoom, Focus Mode and accessible keyboard controls.
-- Image paste into a document-adjacent `assets/` folder using relative Markdown links.
-- Remote images load only after an explicit action; core writing has no account, telemetry or cloud dependency.
+- Visual, Read and Source modes for Markdown with tables, task lists, images and code blocks.
+- Tabs, folder browsing, recent files and Quick Open; document search, replacement and outline navigation.
+- Auto Save for saved documents, Save As, external-change checks and recovery of unsaved documents.
+- Light, Dark and Warm themes, Focus Mode, keyboard controls and separate document/interface zoom.
+
+## Download and start
+
+Milo targets **macOS 13+**. The public Universal DMG supports Apple Silicon and Intel; actual hardware coverage is described in [Known issues](docs/KNOWN_ISSUES.md).
+
+1. Download the DMG and matching `.sha256` file from [v0.3.0 Pre-release](https://github.com/cocoCzl/Milo/releases/tag/v0.3.0).
+2. In the download directory, run `shasum -a 256 -c Milo_0.3.0_universal.dmg.sha256`, then drag Milo to Applications.
+3. Open Milo and choose a Markdown file, or create a document and use Save to choose its location. Existing files save automatically after idle editing; new documents need an explicit first save.
+
+The download is ad-hoc signed and **not Apple-notarized**. If macOS blocks it, verify the source and checksum, then use **System Settings → Privacy & Security → Open Anyway**. Do not disable Gatekeeper globally.
+
+**Beta:** use backed-up files. An unresolved code-block IME issue may save raw Pinyin when quitting before confirming a candidate. Confirm input before quitting and check saved content; see [Known issues](docs/KNOWN_ISSUES.md) for this and other limitations.
 
 ## Files and privacy
 
-Markdown files remain the source of truth. Preferences, recent paths, session metadata and recovery copies stay outside document folders. Milo does not use a database, account system, telemetry service or automatic cloud sync. Use disposable or backed-up files when testing pre-release builds.
+Markdown files remain authoritative. WYSIWYG edits may normalize Markdown formatting; Source mode exposes the whole file, including Front Matter. Undo is separate across modes.
 
-WYSIWYG editing can normalize parts of Markdown formatting. Source mode preserves the complete file, including Front Matter, for content that should not be converted safely. Cross-mode undo is not unified yet; see [Known issues](docs/KNOWN_ISSUES.md).
+Preferences, session metadata and recovery copies stay in local app data, outside document folders. Recovery copies can lag edits and do not replace saving. Pasted images use an `assets/` folder beside the saved document. Remote images load only on request. Milo has no account, telemetry, automatic cloud sync or background update check.
 
-## Platform and download
+## Local development
 
-Milo targets macOS 13 or later. The v0.3.0 public Pre-release provides a Universal DMG for Apple Silicon and Intel. It is ad-hoc signed and not notarized.
-
-Download the DMG and checksum from [GitHub Releases](https://github.com/cocoCzl/Milo/releases), verify with `shasum -a 256 -c`, then move Milo to Applications. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** after checking the source and checksum. Do not disable Gatekeeper globally.
-
-Native coverage is strongest on Apple Silicon. The 20-tab physical footprint exceeds the 200 MB budget, though a memory leak has not been established. Chinese IME candidate input with Cmd+S/Cmd+Q remains unresolved and unattributed; see [Known issues](docs/KNOWN_ISSUES.md) and [Editor status](docs/EDITOR_STATUS.md) for measurements and acceptance limits.
-
-## Development
-
-Requirements: Node.js 24, stable Rust, Xcode Command Line Tools and the macOS Rust targets.
+On macOS, install Node.js 24, stable Rust and Xcode Command Line Tools, then run:
 
 ```sh
 npm ci
 npm run tauri -- dev
 ```
 
-## Checks
-
-```sh
-npm run format:check
-npm run typecheck
-npm run lint -- --max-warnings=0
-npm test
-npm run build
-npm run test:browser
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-```
-
-Browser checks use simulated native IPC. Native release packaging follows [RELEASE.md](docs/RELEASE.md).
-
-## Documentation
-
-- [Documentation index](docs/README.md)
-- [Editor status](docs/EDITOR_STATUS.md) — current implementation, performance samples and acceptance limits
-- [Known issues](docs/KNOWN_ISSUES.md) — unresolved behavior and attribution limits
-- [UI design constraints](docs/UI_DESIGN.md)
-- [Release runbook](docs/RELEASE.md)
-- [发布说明（简体中文）](docs/RELEASE.zh-CN.md)
+- [Development guide](docs/DEVELOPMENT.md) — setup, checks and engineering constraints (Chinese)
+- [Known issues](docs/KNOWN_ISSUES.md) — current defects and verification limits (Chinese)
+- [Release guide](docs/RELEASE.md) — maintainer packaging and publication (Chinese)
 
 ## License
 
-Milo is licensed under [GPL-3.0](LICENSE).
+[GPL-3.0](LICENSE).
