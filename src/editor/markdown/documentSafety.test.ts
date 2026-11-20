@@ -71,7 +71,7 @@ it('matches the original full-AST protection for HTML and Markdown boundaries', 
     '---\ntitle: unclosed\n正文',
     '---',
     'a < b',
-    '正文\n\n'.repeat(20000) + '<div>真正 HTML 在末尾</div>',
+    '正文\n\n末尾之前的段落\n\n<div>真正 HTML 在末尾</div>',
     frontMatterFixture,
     protectedFixture,
     supportedFixture,
@@ -83,4 +83,20 @@ it('matches the original full-AST protection for HTML and Markdown boundaries', 
       : null
     expect(inspectMarkdownDocument(markdown)).toEqual({ frontMatter, body, protectionReason })
   }
+})
+
+it.each([
+  { name: 'plain text', tail: '末尾仍是正文', protectionReason: null },
+  {
+    name: 'raw HTML at the end',
+    tail: '<div>真正 HTML 在末尾</div>',
+    protectionReason:
+      'This document contains raw HTML, which Milo cannot safely preserve in WYSIWYG mode.',
+  },
+])('checks the entire long document with $name', ({ tail, protectionReason }) => {
+  const body = '正文\n\n'.repeat(20000) + tail
+
+  // Keep the large fixture and exact result, without a second full parse merely
+  // to derive its known expectation. Boundary cases above retain the AST oracle.
+  expect(inspectMarkdownDocument(body)).toEqual({ frontMatter: '', body, protectionReason })
 })
