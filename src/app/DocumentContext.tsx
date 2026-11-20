@@ -1,4 +1,4 @@
-import { FileText, Save } from 'lucide-react'
+import { AlertCircle, FileText, Save } from 'lucide-react'
 import { IconButton } from '../components/IconButton'
 import type { DocumentTab } from '../hooks/documentSessionModel'
 import type { InterfaceCopy } from './interfaceCopy'
@@ -23,13 +23,15 @@ export function DocumentContext({
   const workspace = folder ? fileName(folder) : null
   const tone = statusTone(tab)
   const status =
-    tab.saveFeedback === 'pending'
-      ? copy.savingSoon
-      : tab.saveFeedback === 'saving'
-        ? copy.saving
-        : tab.saveFeedback === 'saved'
-          ? copy.saved
-          : documentStatus(tab, copy)
+    tab.saveError || tab.error || tab.externalChange
+      ? documentStatus(tab, copy)
+      : tab.saveFeedback === 'pending'
+        ? copy.savingSoon
+        : tab.saveFeedback === 'saving'
+          ? copy.saving
+          : tab.saveFeedback === 'saved'
+            ? copy.saved
+            : documentStatus(tab, copy)
 
   return (
     <div
@@ -55,10 +57,14 @@ export function DocumentContext({
       </div>
       <div className="document-context__actions">
         <div className="document-context__status">
-          <span
-            className={`document-context__status-dot document-context__status-dot--${tone}`}
-            aria-hidden="true"
-          />
+          {tone === 'error' ? (
+            <AlertCircle size={14} aria-hidden="true" />
+          ) : (
+            <span
+              className={`document-context__status-dot document-context__status-dot--${tone}`}
+              aria-hidden="true"
+            />
+          )}
           <span>{status}</span>
         </div>
         <IconButton

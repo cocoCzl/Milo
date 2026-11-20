@@ -28,7 +28,8 @@ export function fileName(path: string): string {
 export function documentStatus(tab: DocumentTab, copy: InterfaceCopy): string {
   if (tab.externalChange) return copy.externalChange
   if (tab.document.protectionReason && !tab.document.sourceMode) return copy.protectedDocument
-  if (tab.saveError || tab.error) return copy.saveFailed
+  if (tab.saveError) return copy.saveFailed
+  if (tab.error) return copy.operationFailed
   if (tab.activity === 'opening') return `${copy.openDocument}…`
   if (tab.activity === 'saving') return `${copy.saving}…`
   if (tab.document.isDirty) return copy.unsavedStatus

@@ -1,10 +1,13 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useEffect, useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   collectFolderFiles,
   filterFolderFiles,
   type FolderMatch,
 } from '../file-system/folderSearch'
+
+type QuickOpenError = { kind: 'scan'; message: string } | { kind: 'open'; path: string }
 
 export function QuickOpen({
   folder,
@@ -17,7 +20,11 @@ export function QuickOpen({
   rootLabel,
   keyboardHint,
   openFailed,
+  scanFailed,
+  partialSearch,
+  cancelLabel,
   onClose,
+  onClosed,
   onOpen,
 }: {
   folder: string
@@ -30,97 +37,225 @@ export function QuickOpen({
   rootLabel: string
   keyboardHint: string
   openFailed: string
+  scanFailed: string
+  partialSearch: string
+  cancelLabel: string
   onClose: () => void
-  onOpen: (path: string) => Promise<boolean>
+  onClosed?: (opened: boolean) => void
+  onOpen: (path: string, options: { signal: AbortSignal; reportError: false }) => Promise<boolean>
 }) {
   const [query, setQuery] = useState('')
   const [files, setFiles] = useState<FolderMatch[]>([])
   const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<QuickOpenError | null>(null)
   const [truncated, setTruncated] = useState(false)
-  const [current, setCurrent] = useState(0)
+  const [incomplete, setIncomplete] = useState(false)
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [opening, setOpening] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const openRequest = useRef<AbortController | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const returnScroll = useRef(0)
+  const opened = useRef(false)
+  const focusRestored = useRef(false)
   useEffect(() => {
     const controller = new AbortController()
+    openRequest.current?.abort()
+    openRequest.current = null
+    setOpening(null)
     setBusy(true)
     setError(null)
-    void collectFolderFiles(folder, controller.signal)
+    setIncomplete(false)
+    setTruncated(false)
+    const publish = (result: Awaited<ReturnType<typeof collectFolderFiles>>) => {
+      if (controller.signal.aborted) return
+      setFiles((previous) => {
+        const fresh = new Set(result.files.map((file) => file.path))
+        return [...result.files, ...previous.filter((file) => !fresh.has(file.path))]
+      })
+      setIncomplete(result.incomplete)
+    }
+    void collectFolderFiles(folder, controller.signal, publish)
       .then((result) => {
         if (controller.signal.aborted) return
         setFiles(result.files)
+        setIncomplete(result.incomplete)
         setTruncated(result.truncated)
         setBusy(false)
       })
       .catch((reason) => {
         if (!controller.signal.aborted) {
-          setError(String(reason))
+          setError({ kind: 'scan', message: String(reason) })
           setBusy(false)
         }
       })
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      openRequest.current?.abort()
+    }
   }, [folder, attempt])
   const matches = useMemo(() => filterFolderFiles(files, query), [files, query])
+  const current = Math.max(
+    0,
+    matches.findIndex((file) => file.path === selectedPath),
+  )
+  const selected = matches[current]
+  // A scan appends in traversal order; preserve a path, never an unstable index.
+  useEffect(() => {
+    if (selected) setSelectedPath(selected.path)
+  }, [selected])
+  const close = () => {
+    opened.current = false
+    openRequest.current?.abort()
+    // Remove the modal focus trap before returning focus. Radix's deferred
+    // unmount autofocus can otherwise run after the next keystroke.
+    flushSync(onClose)
+    focusRestored.current = true
+    onClosed?.(false)
+  }
   const open = async (path: string) => {
-    if (await onOpen(path)) onClose()
-    else setError(`${openFailed}: ${path}`)
+    if (openRequest.current && !openRequest.current.signal.aborted) return
+    const request = new AbortController()
+    openRequest.current = request
+    setOpening(path)
+    setError(null)
+    let success = false
+    try {
+      success = await onOpen(path, { signal: request.signal, reportError: false })
+    } catch {
+      // The session normally returns false; keep this boundary safe for callers.
+    }
+    if (request.signal.aborted || openRequest.current !== request) return
+    openRequest.current = null
+    setOpening(null)
+    if (success) {
+      opened.current = true
+      onClose()
+    } else setError({ kind: 'open', path })
   }
   useEffect(() => {
-    document.getElementById(`quick-file-${current}`)?.scrollIntoView?.({ block: 'nearest' })
-  }, [current])
+    if (selected)
+      document.getElementById(`quick-file-${current}`)?.scrollIntoView?.({ block: 'nearest' })
+  }, [current, selected])
+  useEffect(() => {
+    if (listRef.current && returnScroll.current) listRef.current.scrollTop = returnScroll.current
+  }, [files])
   return (
     <Dialog.Root
       open
       onOpenChange={(value) => {
-        if (!value) onClose()
+        if (!value) close()
       }}
     >
       <Dialog.Portal container={document.querySelector<HTMLElement>('.app-shell')}>
         <Dialog.Overlay className="quick-open-backdrop" />
-        <Dialog.Content className="quick-open" aria-describedby={undefined}>
+        <Dialog.Content
+          className="quick-open"
+          aria-describedby={undefined}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            inputRef.current?.focus()
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            if (!focusRestored.current) onClosed?.(opened.current)
+          }}
+        >
           <Dialog.Title>{label}</Dialog.Title>
           <input
+            ref={inputRef}
             autoFocus
             role="combobox"
             aria-label={label}
             aria-controls="quick-files"
             aria-expanded="true"
             aria-autocomplete="list"
-            aria-activedescendant={matches[current] ? `quick-file-${current}` : undefined}
+            aria-activedescendant={selected ? `quick-file-${current}` : undefined}
             value={query}
             placeholder={placeholder}
             onChange={(event) => {
               setQuery(event.target.value)
-              setCurrent(0)
+              setSelectedPath(null)
+              returnScroll.current = 0
             }}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing || event.keyCode === 229) {
                 if (event.key === 'Escape') event.stopPropagation()
                 return
               }
-              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              if (
+                event.key === 'ArrowDown' ||
+                event.key === 'ArrowUp' ||
+                event.key === 'Home' ||
+                event.key === 'End'
+              ) {
                 event.preventDefault()
-                setCurrent((index) =>
-                  Math.max(
-                    0,
-                    Math.min(matches.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)),
-                  ),
-                )
+                const index =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? matches.length - 1
+                      : Math.max(
+                          0,
+                          Math.min(
+                            matches.length - 1,
+                            current + (event.key === 'ArrowDown' ? 1 : -1),
+                          ),
+                        )
+                setSelectedPath(matches[index]?.path ?? null)
               }
-              if (event.key === 'Enter' && matches[current]) {
+              if (event.key === 'Enter' && selected) {
                 event.preventDefault()
-                void open(matches[current].path)
+                void open(selected.path)
               }
             }}
           />
           {busy ? <p role="status">{loading}</p> : null}
-          {error ? (
-            <button type="button" onClick={() => setAttempt((n) => n + 1)}>
-              {error} · {retry}
-            </button>
+          {opening ? (
+            <p role="status">
+              {loading} · {opening.split('/').at(-1)}
+            </p>
           ) : null}
-          {!busy && !error && !matches.length ? <p role="status">{noResults}</p> : null}
+          {error ? (
+            <div className="quick-open__error" role="alert">
+              <span>
+                {error.kind === 'scan'
+                  ? `${scanFailed} · ${error.message}`
+                  : `${openFailed}: ${error.path}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (error.kind === 'open') void open(error.path)
+                  else setAttempt((n) => n + 1)
+                }}
+              >
+                {retry}
+              </button>
+            </div>
+          ) : null}
+          {incomplete ? (
+            <div className="quick-open__partial" role="status">
+              {partialSearch}
+              <button type="button" onClick={() => setAttempt((n) => n + 1)}>
+                {retry}
+              </button>
+            </div>
+          ) : null}
+          {!busy && !error && !incomplete && !truncated && !matches.length ? (
+            <p role="status">{noResults}</p>
+          ) : null}
           {truncated ? <p role="status">{limited}</p> : null}
-          <div id="quick-files" role="listbox" aria-label={label}>
+          <div
+            ref={listRef}
+            id="quick-files"
+            role="listbox"
+            aria-label={label}
+            onScroll={(event) => {
+              returnScroll.current = event.currentTarget.scrollTop
+            }}
+          >
             {matches.map((file, index) => (
               <button
                 key={file.path}
@@ -128,7 +263,12 @@ export function QuickOpen({
                 role="option"
                 aria-selected={current === index}
                 type="button"
-                onClick={() => void open(file.path)}
+                tabIndex={-1}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setSelectedPath(file.path)
+                  void open(file.path)
+                }}
               >
                 <strong>{file.name}</strong>
                 <small>
@@ -140,7 +280,7 @@ export function QuickOpen({
             ))}
           </div>
           <p className="quick-open__hint">{keyboardHint}</p>
-          <Dialog.Close className="quick-open__close" aria-label="Escape">
+          <Dialog.Close className="quick-open__close" aria-label={cancelLabel}>
             ×
           </Dialog.Close>
         </Dialog.Content>

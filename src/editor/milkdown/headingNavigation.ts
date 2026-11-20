@@ -38,13 +38,12 @@ type HeadingDomCache = {
 // heading through the same unique id used in the outline model.
 const headingDomCaches = new WeakMap<EditorView, HeadingDomCache>()
 
-function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLElement> {
+function headingElementsById(
+  editorView: EditorView,
+  force = false,
+): ReadonlyMap<string, HTMLElement> {
   const cached = headingDomCaches.get(editorView)
-  if (
-    cached?.doc === editorView.state.doc &&
-    Array.from(cached.elementsById.values()).every((element) => editorView.dom.contains(element))
-  )
-    return cached.elementsById
+  if (!force && cached?.doc === editorView.state.doc) return cached.elementsById
 
   const elementsById = new Map<string, HTMLElement>()
   editorView.dom
@@ -58,8 +57,10 @@ function headingElementsById(editorView: EditorView): ReadonlyMap<string, HTMLEl
 }
 
 export function headingElementResolver(editorView: EditorView) {
-  // Validate once for a navigation/scroll pass, rather than H times for H headings.
-  const elements = headingElementsById(editorView)
+  // Validate only the headings actually read by the binary search. A changed
+  // DOM with the same immutable model can rebuild at most once in this pass.
+  let elements = headingElementsById(editorView)
+  let rebuilt = false
   return (heading: EditorHeading): HTMLElement | null => {
     const node = editorView.state.doc.nodeAt(heading.pos)
     if (
@@ -71,15 +72,22 @@ export function headingElementResolver(editorView: EditorView) {
       return null
     }
 
-    const element = elements.get(heading.id)
-    if (!element) return null
-    if (
-      element.tagName.toLowerCase() !== `h${heading.level}` ||
-      element.textContent?.trim() !== heading.text
-    ) {
-      return null
+    const valid = (element: HTMLElement | undefined): element is HTMLElement =>
+      Boolean(
+        element &&
+        element.id === heading.id &&
+        editorView.dom.contains(element) &&
+        element.tagName.toLowerCase() === `h${heading.level}` &&
+        element.textContent?.trim() === heading.text,
+      )
+    let element = elements.get(heading.id)
+    if (valid(element)) return element
+    if (!rebuilt) {
+      rebuilt = true
+      elements = headingElementsById(editorView, true)
+      element = elements.get(heading.id)
     }
-    return element
+    return valid(element) ? element! : null
   }
 }
 

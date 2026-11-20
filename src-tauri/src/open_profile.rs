@@ -7,6 +7,8 @@ static ENTRY: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new
 static EVENTS: std::sync::Mutex<Vec<serde_json::Value>> = std::sync::Mutex::new(Vec::new());
 #[cfg(feature = "diagnostics")]
 static DROPPED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+#[cfg(feature = "diagnostics")]
+static SEQUENCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 pub fn start_process_clock() {
     #[cfg(feature = "diagnostics")]
@@ -20,6 +22,24 @@ fn elapsed_ms() -> f64 {
         .elapsed()
         .as_secs_f64()
         * 1000.0
+}
+
+// Bounded, in-memory native event capture. Normal builds do no work.
+pub fn input_event(event: &str, fields: serde_json::Value) {
+    #[cfg(feature = "diagnostics")]
+    if let Ok(mut events) = EVENTS.lock() {
+        if events.len() < 512 {
+            events.push(serde_json::json!({"kind":"native-input", "event": event,
+                "sequence": SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                "atMs": elapsed_ms(), "unixMs": std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64() * 1000.0,
+                "fields": fields}));
+        } else {
+            DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    #[cfg(not(feature = "diagnostics"))]
+    let _ = (event, fields);
 }
 
 #[tauri::command]

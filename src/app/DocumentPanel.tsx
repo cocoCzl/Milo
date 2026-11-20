@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom'
+import { SaveErrorMessage } from './SaveErrorMessage'
 import { SourceLoader } from './SourceLoader'
 import type { NavigationTarget } from '../file-system/documentLink'
 import { useCallback, useEffect, useRef, useMemo, memo } from 'react'
@@ -13,6 +15,8 @@ type DocumentPanelProps = {
   onNavigateLink: (id: number, href: string) => void
   navigationTarget?: NavigationTarget
   active: boolean
+  feedbackMount?: HTMLElement | null
+  errorInDialog?: boolean
   copy: InterfaceCopy
   actions: Pick<
     ReturnType<typeof useDocumentSession>,
@@ -42,6 +46,8 @@ type DocumentPanelProps = {
 
 export const DocumentPanel = memo(function DocumentPanel({
   active,
+  errorInDialog = false,
+  feedbackMount = null,
   onNavigateLink,
   navigationTarget,
   copy,
@@ -103,6 +109,60 @@ export const DocumentPanel = memo(function DocumentPanel({
   const { document, error, saveError, externalChange, notice } = tab
   const actionableError = saveError ?? error
   const isProtected = document.protectionReason !== null
+
+  const errorNotice =
+    active && actionableError && !errorInDialog ? (
+      <div
+        className="document-error"
+        role="alert"
+        onMouseDownCapture={(event) => {
+          // Pointer disclosure should not move the writing selection. Keyboard
+          // navigation still focuses each native summary and button normally.
+          if (
+            event.button === 0 &&
+            event.target instanceof Element &&
+            event.target.closest('summary') &&
+            event.currentTarget.ownerDocument.activeElement?.matches(
+              '.ProseMirror, .source-editor textarea',
+            )
+          )
+            event.preventDefault()
+        }}
+      >
+        {saveError ? (
+          <details className="save-recovery" open>
+            <summary>{copy.saveFailed}</summary>
+            <SaveErrorMessage error={saveError} copy={copy} />
+          </details>
+        ) : (
+          <span>{actionableError}</span>
+        )}
+        {saveError ? (
+          <div className="save-recovery__actions">
+            <button
+              className="action-button action-button--primary"
+              type="button"
+              onClick={() => void actions.retrySave(tab.id)}
+            >
+              {copy.tryAgain}
+            </button>
+            <button
+              className="action-button"
+              type="button"
+              onClick={() => void actions.saveAsDocument(tab.id)}
+            >
+              {copy.saveAs}
+            </button>
+          </div>
+        ) : tab.errorSource === 'image' ? (
+          <span>{copy.pasteImageAgain}</span>
+        ) : tab.errorSource === 'reload' ? (
+          <button type="button" onClick={() => void actions.reloadExternalChange(tab.id)}>
+            {copy.reloadFile}
+          </button>
+        ) : null}
+      </div>
+    ) : null
 
   return (
     <section
@@ -212,17 +272,7 @@ export const DocumentPanel = memo(function DocumentPanel({
           </div>
         </div>
       ) : null}
-      {actionableError ? (
-        <div className="document-error" role="alert">
-          <span>{actionableError}</span>
-          <button type="button" onClick={() => void actions.retrySave(tab.id)}>
-            {copy.tryAgain}
-          </button>
-          <button type="button" onClick={() => void actions.saveAsDocument(tab.id)}>
-            {copy.saveAs}
-          </button>
-        </div>
-      ) : null}
+      {feedbackMount ? createPortal(errorNotice, feedbackMount) : errorNotice}
     </section>
   )
 })

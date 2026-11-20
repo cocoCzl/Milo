@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { ChevronUp, ChevronDown, X } from 'lucide-react'
 import type { EditorComposition } from '../milkdown/compositionSaveBoundary'
 import { isNonCompositionInput } from '../inputBoundary'
 import { defaultEditorCopy, type EditorCopy } from '../milkdown/editorCopy'
 import { traceInput } from '../../diagnostics/inputTrace'
+import { technicalMark, technicalMeasure } from '../../diagnostics/technicalProfile'
 
 // Native textarea: no second parser, renderer, dependency, or editable model.
 // It owns the source while active; every stable publication uses the ordinary
@@ -34,10 +36,11 @@ export function SourceEditor({
   onComposition: (state: EditorComposition) => void
   onRegisterFlush: (flush: (() => boolean) | null) => void
 }) {
+  technicalMark('source-render')
   const input = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
   const pending = useRef(false)
-  const lastPublished = useRef(text.replace(/\r\n?/g, '\n'))
+  const lastPublished = useRef<string | null>(null)
   const callbacks = useRef({ onChange, onComposition })
   callbacks.current = { onChange, onComposition }
   const timer = useRef<number | undefined>(undefined)
@@ -49,7 +52,7 @@ export function SourceEditor({
     const value = input.current.value
     if (value !== lastPublished.current) {
       lastPublished.current = value
-      callbacks.current.onChange(value)
+      technicalMeasure('source-publication', () => callbacks.current.onChange(value))
     }
     return true
   }
@@ -175,10 +178,10 @@ export function SourceEditor({
             }}
           />
           <button type="button" aria-label={copy.findPrevious} onClick={() => findNext(true)}>
-            ↑
+            <ChevronUp aria-hidden="true" size={15} />
           </button>
           <button type="button" aria-label={copy.findNext} onClick={() => findNext()}>
-            ↓
+            <ChevronDown aria-hidden="true" size={15} />
           </button>
           <button
             type="button"
@@ -188,7 +191,7 @@ export function SourceEditor({
               input.current?.focus()
             }}
           >
-            ×
+            <X aria-hidden="true" size={15} />
           </button>
           {findHelp ? <small className="source-find__help">{findHelp}</small> : null}
         </div>

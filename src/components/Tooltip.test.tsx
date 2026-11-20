@@ -503,3 +503,23 @@ describe('Tooltip', async () => {
     }
   })
 })
+
+it('shares one capture listener group for 20 triggers and removes it after unmount', () => {
+  const add = vi.spyOn(document, 'addEventListener')
+  const remove = vi.spyOn(document, 'removeEventListener')
+  const view = render(multipleTooltips(Array.from({ length: 20 }, (_, i) => String(i))))
+  for (const type of ['keydown', 'pointerdown']) {
+    expect(
+      add.mock.calls.filter(([event, , capture]) => event === type && capture === true),
+    ).toHaveLength(1)
+  }
+  view.unmount()
+  for (const type of ['keydown', 'pointerdown']) {
+    const added = add.mock.calls.find(([event, , capture]) => event === type && capture === true)!
+    expect(
+      remove.mock.calls.filter(
+        ([event, listener, capture]) => event === type && listener === added[1] && capture === true,
+      ),
+    ).toHaveLength(1)
+  }
+})

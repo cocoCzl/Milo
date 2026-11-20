@@ -28,7 +28,7 @@ unsafe extern "C" fn should_terminate(
     _sender: *mut c_void,
 ) -> usize {
     if let Some(app) = APP.get() {
-        crate::request_close(app, "quit");
+        crate::request_close(app, "quit", "application-terminate");
     }
     0 // NSTerminateCancel; approved completion uses AppHandle::exit instead.
 }

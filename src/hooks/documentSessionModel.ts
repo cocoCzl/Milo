@@ -62,6 +62,7 @@ export type DocumentTab = {
   activity: DocumentActivity
   isComposing: boolean
   error: string | null
+  errorSource?: 'save' | 'image' | 'reload' | 'recovery' | 'close'
   saveError: string | null
   watchError: string | null
   watchState: WatchState

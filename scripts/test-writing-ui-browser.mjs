@@ -45,7 +45,7 @@ try {
       window.__miloOutlineTest.browseError = true
     })
     await page.keyboard.press('Meta+p')
-    await page.getByRole('button', { name: /Synthetic folder read failure/ }).waitFor()
+    await page.getByRole('alert').filter({ hasText: 'Synthetic folder read failure' }).waitFor()
     await page.screenshot({ path: `${output}/writing-${theme}-folder-error.png` })
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '源码', exact: true }).click()

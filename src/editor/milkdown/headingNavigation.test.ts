@@ -81,7 +81,7 @@ describe('scroll navigation', () => {
   })
 })
 
-it('validates references once per pass and rebuilds after DOM replacement or document updates', () => {
+it('validates only accessed references and rebuilds after DOM replacement or document updates', () => {
   const schema = new Schema({
     nodes: {
       doc: { content: 'heading+' },
@@ -106,7 +106,7 @@ it('validates references once per pass and rebuilds after DOM replacement or doc
   const contains = vi.spyOn(dom, 'contains')
   const resolve = headingElementResolver(asView())
   for (let i = 0; i < 20; i++) expect(resolve(heading)).toBe(first)
-  expect(contains).toHaveBeenCalledTimes(1)
+  expect(contains.mock.calls.length).toBeLessThanOrEqual(40)
   dom.innerHTML = '<h2 id="same">重复中文标题</h2>'
   const rebuilt = headingElementResolver(asView())(heading)
   expect(rebuilt).toBe(dom.firstElementChild)
@@ -116,4 +116,29 @@ it('validates references once per pass and rebuilds after DOM replacement or doc
   const updated = headingElementResolver(asView())
   expect(updated(heading)).toBeNull()
   expect(updated({ ...heading, text: '编辑后的标题' })).toBe(dom.firstElementChild)
+})
+
+it('does not validate all cached headings on a steady scroll pass', () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'heading+' },
+      heading: { content: 'text*', attrs: { id: { default: '' }, level: { default: 2 } } },
+      text: {},
+    },
+  })
+  const nodes = Array.from({ length: 1000 }, (_, i) =>
+    schema.nodes.heading.create({ id: `h${i}`, level: 2 }, schema.text(`章节 ${i}`)),
+  )
+  const state = EditorState.create({ schema, doc: schema.nodes.doc.create(null, nodes) })
+  const dom = document.createElement('div')
+  dom.innerHTML = nodes.map((n) => `<h2 id="${n.attrs.id}">${n.textContent}</h2>`).join('')
+  const view = { dom, state } as unknown as EditorView
+  headingElementResolver(view)
+  const contains = vi.spyOn(dom, 'contains')
+  const resolve = headingElementResolver(view)
+  expect(contains).not.toHaveBeenCalled()
+  expect(resolve({ id: 'h0', key: 'h0', pos: 0, level: 2, text: '章节 0' })).toBe(
+    dom.firstElementChild,
+  )
+  expect(contains.mock.calls.length).toBeLessThanOrEqual(2)
 })

@@ -48,3 +48,24 @@ it('ignores a late page after cancellation and bounds results', async () => {
     ),
   ).toHaveLength(100)
 })
+
+it('continues other directories after a later page fails and reports incomplete results', async () => {
+  const file = (path: string) => ({
+    path,
+    name: path.split('/').at(-1),
+    isDirectory: false,
+    children: [],
+  })
+  browse
+    .mockResolvedValueOnce({
+      children: [{ ...file('/chosen/nested'), isDirectory: true }, file('/chosen/first.md')],
+      nextOffset: 200,
+    })
+    .mockRejectedValueOnce(new Error('page unavailable'))
+    .mockResolvedValueOnce({ children: [file('/chosen/nested/目标.md')], nextOffset: null })
+  const publish = vi.fn()
+  const result = await collectFolderFiles('/chosen', new AbortController().signal, publish)
+  expect(result.incomplete).toBe(true)
+  expect(result.files.map((f) => f.name)).toEqual(['first.md', '目标.md'])
+  expect(publish).toHaveBeenCalledTimes(3)
+})

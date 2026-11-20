@@ -1,4 +1,12 @@
 import { markLifecycle } from '../../diagnostics/profileClock'
+import {
+  isInputTraceDocument,
+  registerInputTraceTarget,
+  inputTraceVersion,
+  scopedInputText,
+  traceInput,
+} from '../../diagnostics/inputTrace'
+import { registerTechnicalInputTarget } from '../../diagnostics/technicalProfile'
 import { isSupportedLink, type NavigationTarget } from '../../file-system/documentLink'
 import { createOpenProfilePlugin } from '../../diagnostics/editorOpenProfile'
 import { editorResourcePlugins, profileNodeView } from '../../diagnostics/editorResources'
@@ -45,7 +53,7 @@ import { Plugin, TextSelection, type Command } from '@milkdown/prose/state'
 import { deleteColumn, deleteRow, TableView } from '@milkdown/prose/tables'
 import type { EditorView, NodeViewConstructor } from '@milkdown/prose/view'
 import { callCommand } from '@milkdown/utils'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PastedImage } from '../../file-system/nativeMarkdownFile'
 import type { PresentationMode } from '../../app/presentationMode'
@@ -64,7 +72,7 @@ import {
   type EditorCommands,
   type EditorSelectionSnapshot,
 } from './editorCommands'
-import { focusEditorViewPreservingSelection } from './editorFocus'
+import { focusEditorViewPreservingSelection, registerEditorFocusTarget } from './editorFocus'
 import { SelectionToolbar } from './SelectionToolbar'
 import {
   createSafariCompositionHardbreakPlugin,
@@ -331,6 +339,14 @@ export function MilkdownEditor({
         if (hasPendingComposition(view)) return false
         if (publishedDoc !== view.state.doc) {
           publishedDoc = view.state.doc
+          traceInput('wys:publish', {
+            editorId,
+            docVersion: inputTraceVersion(view.state.doc),
+            text: scopedInputText(
+              isInputTraceDocument(documentPathRef.current),
+              view.state.doc.textContent,
+            ),
+          })
           onMarkdownChangeRef.current?.(serialize(view, ctx))
         }
         return true
@@ -462,6 +478,8 @@ export function MilkdownEditor({
     if (profile) editor.use(createOpenProfilePlugin(profile))
     editorRef.current = editor
     let stopResourceProbe = () => {}
+    let stopFocusTarget = () => {}
+    let stopInputTrace = () => {}
     markProfile(profile, 'milkdown-create-start')
     void editor
       .create()
@@ -488,11 +506,37 @@ export function MilkdownEditor({
           }),
         )
 
-        const proseMirror = editorRoot.querySelector<HTMLElement>('.ProseMirror')
+        // StrictMode can leave an earlier async mount in this root until its
+        // destroy completes. Focus only the view owned by this editor.
+        const proseMirror = editor.action((ctx) => ctx.get(editorViewCtx).dom)
+        stopInputTrace = registerInputTraceTarget(proseMirror, () => documentPathRef.current)
+        stopFocusTarget = editor.action((ctx) => registerEditorFocusTarget(ctx.get(editorViewCtx)))
+        registerTechnicalInputTarget(proseMirror, (text) =>
+          editor.action(
+            (ctx) =>
+              ctx.get(editorViewCtx).state.doc.firstChild?.textContent.includes(text) ?? false,
+          ),
+        )
 
-        proseMirror?.setAttribute('aria-label', ariaLabelRef.current)
-        proseMirror?.setAttribute('tabindex', '0')
-        proseMirror?.focus()
+        editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx)
+          const attributes = view.props.attributes
+          // Install once: ProseMirror owns these attributes across setProps.
+          // Removing a manually assigned tabindex can drop focus in WebKit.
+          view.setProps({
+            attributes: (state) => ({
+              ...(typeof attributes === 'function' ? attributes(state) : attributes),
+              'aria-label': ariaLabelRef.current,
+              tabindex: '0',
+            }),
+          })
+        })
+        // A delayed editor mount must not steal focus from a newer modal.
+        if (
+          activeRef.current &&
+          !editorRoot.ownerDocument.querySelector('[role="dialog"], [role="alertdialog"]')
+        )
+          editor.action((ctx) => focusEditorViewPreservingSelection(ctx.get(editorViewCtx)))
         editor.action((ctx) => {
           const editorState = ctx.get(editorViewCtx).state
           originalDoc = editorState.doc
@@ -523,6 +567,8 @@ export function MilkdownEditor({
     return () => {
       disposed = true
       stopResourceProbe()
+      stopFocusTarget()
+      stopInputTrace()
       window.clearTimeout(publishTimer)
       window.clearTimeout(maxPublishTimer)
       onRegisterFlushRef.current?.(null)
@@ -531,6 +577,22 @@ export function MilkdownEditor({
       void editor.destroy()
     }
   }, [creationAttempt, editorId])
+
+  useLayoutEffect(() => {
+    if (!active || !isReady) return
+    const owner = editorRootRef.current?.ownerDocument
+    if (!owner || owner.querySelector('[role="dialog"], [role="alertdialog"]')) return
+    const focused = owner.activeElement
+    // Hiding the outgoing panel drops WebKit's focus onto the page. Restore
+    // the incoming view's model selection before the next key, but keep tab
+    // buttons/menus focused when the user is navigating those controls.
+    if (
+      focused === owner.body ||
+      focused === owner.documentElement ||
+      focused?.closest('.document-panel[hidden]')
+    )
+      editorRef.current?.action((ctx) => focusEditorViewPreservingSelection(ctx.get(editorViewCtx)))
+  }, [active, isReady])
 
   useEffect(() => {
     editorRootRef.current
@@ -577,7 +639,7 @@ export function MilkdownEditor({
       setLinkSelection(null)
       setLinkAnchor(null)
     }
-  }, [isReady, presentationMode])
+  }, [isReady, presentationMode, ariaLabel])
 
   useEffect(() => {
     if (!contextMenu) return

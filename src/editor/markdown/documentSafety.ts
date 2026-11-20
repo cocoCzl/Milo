@@ -25,6 +25,8 @@ export function inspectMarkdownDocument(markdown: string): MarkdownDocumentBound
 }
 
 function findProtectionReason(markdown: string): string | null {
+  // Only the raw-HTML check is skipped. Other document guards stay independent.
+  if (!markdown.includes('<')) return null
   const tree = markdownParser.parse(markdown) as MarkdownNode
 
   return containsHtml(tree)

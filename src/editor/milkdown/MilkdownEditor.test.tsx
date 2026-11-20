@@ -336,7 +336,7 @@ describe('MilkdownEditor workspace', () => {
   })
 
   it('uses localized editor labels and empty-state copy', async () => {
-    const { container, getByText } = render(
+    const { container, getByText, rerender } = render(
       <MilkdownEditor
         ariaLabel="未命名 Markdown 文档"
         initialMarkdown=""
@@ -351,6 +351,31 @@ describe('MilkdownEditor workspace', () => {
       )
     })
     expect(getByText('从一个想法开始…')).toBeVisible()
+    rerender(
+      <MilkdownEditor
+        ariaLabel="新名称 Markdown 文档"
+        initialMarkdown=""
+        presentationMode="read"
+      />,
+    )
+    await waitFor(() =>
+      expect(container.querySelector('.ProseMirror')).toHaveAttribute('aria-readonly', 'true'),
+    )
+    rerender(
+      <MilkdownEditor
+        ariaLabel="新名称 Markdown 文档"
+        initialMarkdown=""
+        presentationMode="edit"
+      />,
+    )
+    await waitFor(() => {
+      expect(container.querySelector('.ProseMirror')).toHaveAttribute(
+        'aria-label',
+        '新名称 Markdown 文档',
+      )
+      expect(container.querySelector('.ProseMirror')).toHaveAttribute('tabindex', '0')
+      expect(container.querySelector('.ProseMirror')).toHaveAttribute('aria-readonly', 'false')
+    })
   })
 
   it('uses one contextual Block Handle and menu instead of the fixed toolbar', async () => {

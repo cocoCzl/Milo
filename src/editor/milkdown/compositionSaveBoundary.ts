@@ -1,12 +1,41 @@
 import { Plugin } from '@milkdown/prose/state'
 import type { EditorView } from '@milkdown/prose/view'
-import { traceInput } from '../../diagnostics/inputTrace'
+import {
+  inputTraceEnabled,
+  inputTraceVersion,
+  isScopedInputTarget,
+  scopedInputText,
+  traceInput,
+} from '../../diagnostics/inputTrace'
 import { isNonCompositionInput } from '../inputBoundary'
 
 export type EditorComposition = { phase: 'composing' } | { phase: 'settled'; markdown: string }
 
 const pendingViews = new WeakSet<EditorView>()
 export const hasPendingComposition = (view: EditorView) => view.composing || pendingViews.has(view)
+
+function traceView(view: EditorView, phase: string, dataLength: number | null = null) {
+  if (!inputTraceEnabled) return
+  const selection = view.dom.ownerDocument.getSelection()
+  const focus = selection?.focusNode
+  const element = focus instanceof Element ? focus : focus?.parentElement
+  const block = element?.closest('pre, p, h1, h2, h3, h4, h5, h6, td, th')
+  const parent = view.state.selection.$from.parent
+  traceInput(`wys:block-${phase}`, {
+    panel: view.dom.closest('.document-panel')?.id ?? '',
+    stateVersion: inputTraceVersion(view.state),
+    docVersion: inputTraceVersion(view.state.doc),
+    parent: parent.type.name,
+    modelLength: parent.textContent.length,
+    domLength: block?.textContent?.length ?? -1,
+    modelMatchesDOM: block != null && block.textContent === parent.textContent,
+    focused: view.hasFocus(),
+    composing: view.composing,
+    dataLength,
+    modelText: scopedInputText(isScopedInputTarget(view.dom), parent.textContent),
+    domText: scopedInputText(isScopedInputTarget(view.dom), block?.textContent),
+  })
+}
 
 // Timers keep working when WKWebView suspends animation frames. A timer is
 // only a sampling opportunity, never permission to save: both the immutable
@@ -38,6 +67,7 @@ export function createCompositionSaveBoundary(
     previousDoc = view.state.doc
     previousGeneration = generation
     if (stableSamples >= 2) {
+      traceView(view, 'settled')
       traceInput('wys:settled', { composing: view.composing, generation })
       ending = false
       pendingViews.delete(view)
@@ -45,6 +75,7 @@ export function createCompositionSaveBoundary(
     } else timer = window.setTimeout(() => settle(view), 20)
   }
   const start = (view: EditorView) => {
+    traceView(view, 'start')
     traceInput('wys:start', { composing: view.composing, ending, pending: pendingViews.has(view) })
     cancel()
     ending = false
@@ -61,7 +92,8 @@ export function createCompositionSaveBoundary(
       handleDOMEvents: {
         compositionstart: start,
         compositionupdate: start,
-        compositionend: (view) => {
+        compositionend: (view, event) => {
+          traceView(view, 'end', (event as CompositionEvent).data?.length ?? 0)
           traceInput('wys:end', {
             composing: view.composing,
             ending,
@@ -76,6 +108,7 @@ export function createCompositionSaveBoundary(
           return false
         },
         input: (view, event) => {
+          traceView(view, 'input', (event as InputEvent).data?.length ?? 0)
           traceInput('wys:input', {
             composing: view.composing,
             ending,
@@ -105,6 +138,7 @@ export function createCompositionSaveBoundary(
           return false
         },
         blur: (view) => {
+          traceView(view, 'blur')
           traceInput('wys:blur', {
             composing: view.composing,
             ending,
@@ -119,7 +153,10 @@ export function createCompositionSaveBoundary(
       observer.observe(view.dom, { childList: true, subtree: true, characterData: true })
       return {
         update: (_view, previous) => {
-          if (previous.doc !== view.state.doc) changed()
+          if (previous.doc !== view.state.doc) {
+            changed()
+            traceView(view, 'transaction')
+          }
         },
         destroy: () => {
           destroyed = true

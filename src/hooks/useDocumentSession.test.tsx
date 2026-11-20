@@ -97,6 +97,84 @@ describe('useDocumentSession', () => {
     return session
   }
 
+  it('cancels Quick Open A without surfacing its late failure', async () => {
+    const session = renderHook(() => useDocumentSession())
+    const controller = new AbortController()
+    let reject!: (reason: Error) => void
+    mocks.recoverAndReadMarkdownFile.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail
+        }),
+    )
+    let opening!: Promise<boolean>
+    act(() => {
+      opening = session.result.current.openDocumentAtPath('/A.md', {
+        signal: controller.signal,
+        reportError: false,
+      })
+    })
+    controller.abort()
+    await act(async () => {
+      reject(new Error('late failure'))
+      expect(await opening).toBe(false)
+    })
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.openError).toBeNull()
+  })
+
+  it('keeps B active when cancelled A finally succeeds, preserving independent opens', async () => {
+    const session = renderHook(() => useDocumentSession())
+    const controller = new AbortController()
+    let resolve!: (file: {
+      path: string
+      markdown: string
+      lineEnding: 'lf'
+      hasBom: boolean
+    }) => void
+    mocks.recoverAndReadMarkdownFile
+      .mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolve = done
+          }),
+      )
+      .mockResolvedValueOnce({ path: '/B.md', markdown: '# B', lineEnding: 'lf', hasBom: false })
+    let opening!: Promise<boolean>
+    act(() => {
+      opening = session.result.current.openDocumentAtPath('/A.md', {
+        signal: controller.signal,
+        reportError: false,
+      })
+    })
+    controller.abort()
+    await act(async () => {
+      await session.result.current.openDocumentAtPath('/B.md')
+    })
+    const b = session.result.current.activeTabId
+    await act(async () => {
+      resolve({ path: '/A.md', markdown: '# A', lineEnding: 'lf', hasBom: false })
+      expect(await opening).toBe(false)
+    })
+    expect(session.result.current.activeTabId).toBe(b)
+    expect(session.result.current.tabs.map((t) => t.document.path)).toEqual(['/B.md'])
+    expect(session.result.current.openError).toBeNull()
+  })
+
+  it('reports a Finder startup failure without creating a savable empty tab', async () => {
+    const session = renderHook(() => useDocumentSession())
+    mocks.recoverAndReadMarkdownFile.mockRejectedValueOnce(new Error('missing launch file'))
+    await act(async () => {
+      await session.result.current.restoreStartupSession(
+        { openDocumentPaths: [], activeDocumentPath: null },
+        '/missing.md',
+      )
+    })
+    expect(session.result.current.tabs).toHaveLength(0)
+    expect(session.result.current.openError).toContain('/missing.md')
+    expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+  })
+
   it('cancels Source close back to its input, preserves composition protection, then resumes the pending save on settlement', async () => {
     const session = await openSavedDocument()
     const id = session.result.current.activeTabId!
@@ -1701,6 +1779,48 @@ describe('useDocumentSession', () => {
     })
   })
 
+  it('does not let a cancelled Save-and-close approve a newer decision for the same document', async () => {
+    const session = renderHook(() => useDocumentSession())
+    act(() => session.result.current.createNewDocument())
+    act(() => updateActive(session, '```text\n代码输入：中文\n```\n'))
+    const id = session.result.current.activeTabId!
+    const first = vi.fn().mockResolvedValue(undefined)
+    const second = vi.fn().mockResolvedValue(undefined)
+    let choose!: (path: string) => void
+    mocks.pickMarkdownSavePath.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          choose = resolve
+        }),
+    )
+    act(() => {
+      session.result.current.requestCloseAll(first)
+    })
+    let oldSave!: Promise<void>
+    act(() => {
+      oldSave = session.result.current.saveAndCloseTab()
+    })
+    await waitFor(() => expect(choose).toBeTypeOf('function'))
+    act(() => {
+      session.result.current.cancelCloseTab()
+      session.result.current.requestCloseAll(second)
+    })
+    expect(session.result.current.closingTabId).toBe(id)
+    await act(async () => {
+      choose('/tmp/confirmed-code.md')
+      await oldSave
+    })
+    expect(fileOnDisk).toBe('```text\n代码输入：中文\n```\n')
+    expect(first).not.toHaveBeenCalled()
+    expect(second).not.toHaveBeenCalled()
+    expect(session.result.current.closingTabId).toBe(id)
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    expect(second).toHaveBeenCalledOnce()
+    expect(mocks.writeMarkdownFile).toHaveBeenCalledOnce()
+  })
+
   it('keeps a clean document guarded while its Save As panel is unresolved', async () => {
     const session = await openSavedDocument()
     let choose!: (path: string) => void
@@ -1770,6 +1890,152 @@ describe('useDocumentSession', () => {
     expect(session.result.current.document.isDirty).toBe(false)
   })
 
+  it.each([false, true])(
+    'waits for confirmed input before native close (Source=%s)',
+    async (source) => {
+      const session = await openSavedDocument()
+      const id = session.result.current.activeTabId!
+      if (source)
+        await act(async () => {
+          await session.result.current.setSourceMode(id, true)
+        })
+      const origin = originFor(session, id)
+      const complete = vi.fn().mockResolvedValue(undefined)
+      act(() => {
+        session.result.current.updateComposition(origin, { phase: 'composing' })
+        expect(session.result.current.requestCloseAll(complete)).toBe(true)
+      })
+      expect(session.result.current.closePending).toBe(true)
+      expect(session.result.current.closingTabId).toBeNull()
+      expect(complete).not.toHaveBeenCalled()
+      expect(mocks.writeMarkdownFile).not.toHaveBeenCalled()
+      await act(async () => {
+        if (source) session.result.current.updateSource(origin, '# Before中文\n')
+        session.result.current.updateComposition(origin, {
+          phase: 'settled',
+          markdown: '# Before中文\n',
+        })
+      })
+      expect(session.result.current.closingTabId).toBeNull()
+      expect(fileOnDisk).toBe('# Before中文\n')
+      expect(complete).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('does not resume a cancelled native quit when its composition later settles', async () => {
+    const session = await openSavedDocument()
+    const origin = originFor(session, session.result.current.activeTabId!)
+    const complete = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      session.result.current.updateComposition(origin, { phase: 'composing' })
+      session.result.current.requestCloseAll(complete)
+      session.result.current.cancelCloseTab()
+    })
+    await act(async () => {
+      session.result.current.updateComposition(origin, {
+        phase: 'settled',
+        markdown: '# Before中文\n',
+      })
+    })
+    expect(complete).not.toHaveBeenCalled()
+    expect(session.result.current.closePending).toBe(false)
+    expect(session.result.current.closingTabId).toBeNull()
+    expect(session.result.current.document.markdown).toBe('# Before中文\n')
+  })
+
+  it('drains named dirty content without presenting a decision that autosave would revoke', async () => {
+    const session = await openSavedDocument()
+    const complete = vi.fn().mockResolvedValue(undefined)
+    await act(async () => {
+      updateActive(session, '# Confirmed中文')
+      session.result.current.requestCloseAll(complete)
+    })
+    expect(fileOnDisk).toBe('# Confirmed中文')
+    expect(session.result.current.closingTabId).toBeNull()
+    expect(complete).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a real failed-save decision open until the user chooses, even if another Save succeeds', async () => {
+    const session = await openSavedDocument()
+    mocks.writeMarkdownFile.mockRejectedValueOnce(new Error('Permission denied (os error 13)'))
+    const complete = vi.fn().mockResolvedValue(undefined)
+    await act(async () => {
+      updateActive(session, '# Retained中文')
+      session.result.current.requestCloseAll(complete)
+    })
+    const id = session.result.current.activeTabId
+    expect(session.result.current.closingTabId).toBe(id)
+    expect(complete).not.toHaveBeenCalled()
+    await act(async () => {
+      await session.result.current.saveDocument()
+    })
+    expect(session.result.current.closingTabId).toBe(id)
+    expect(complete).not.toHaveBeenCalled()
+    await act(async () => {
+      await session.result.current.saveAndCloseTab()
+    })
+    expect(complete).toHaveBeenCalledOnce()
+    expect(fileOnDisk).toBe('# Retained中文')
+  })
+
+  it('cancels while the latest close save is in flight without exiting when it finishes', async () => {
+    const session = await openSavedDocument()
+    let release!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fileOnDisk = document.markdown
+      return document
+    })
+    const complete = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      updateActive(session, '# Keep open中文')
+      session.result.current.requestCloseAll(complete)
+    })
+    await waitFor(() => expect(release).toBeTypeOf('function'))
+    expect(session.result.current.closeWaiting).toBe('saving')
+    act(() => session.result.current.cancelCloseTab())
+    await act(async () => {
+      release()
+    })
+    expect(fileOnDisk).toBe('# Keep open中文')
+    expect(complete).not.toHaveBeenCalled()
+    expect(session.result.current.closePending).toBe(false)
+    expect(session.result.current.tabs).toHaveLength(1)
+  })
+
+  it('waits for a pending save then quits without showing an obsolete dirty prompt', async () => {
+    const session = await openSavedDocument()
+    let release!: () => void
+    mocks.writeMarkdownFile.mockImplementationOnce(async (document) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fileOnDisk = document.markdown
+      return document
+    })
+    act(() => updateActive(session, '# Confirmed中文'))
+    let save!: Promise<boolean>
+    act(() => {
+      save = session.result.current.saveDocument()
+    })
+    await waitFor(() => expect(release).toBeTypeOf('function'))
+    const complete = vi.fn().mockResolvedValue(undefined)
+    act(() => {
+      session.result.current.requestCloseAll(complete)
+    })
+    expect(session.result.current.closingTabId).toBeNull()
+    expect(complete).not.toHaveBeenCalled()
+    await act(async () => {
+      release()
+      await save
+    })
+    expect(fileOnDisk).toBe('# Confirmed中文')
+    expect(session.result.current.closingTabId).toBeNull()
+    expect(complete).toHaveBeenCalledOnce()
+  })
+
   it.each(['autosave then Quit', 'manual Save then window close'])(
     'waits for both old and latest stable writes: %s',
     async (scenario) => {
@@ -1796,21 +2062,22 @@ describe('useDocumentSession', () => {
         expect(session.result.current.requestCloseAll(complete)).toBe(false)
         updateActive(session, '# Newest stable snapshot')
       })
-      let close!: Promise<void>
-      act(() => {
-        close = session.result.current.saveAndCloseTab()
-      })
+      // The native close now waits for the in-flight write before deciding
+      // whether the newer content still needs a dirty-document prompt.
+      expect(session.result.current.closingTabId).toBeNull()
       expect(complete).not.toHaveBeenCalled()
       await act(async () => {
         releases[0]()
       })
+      expect(session.result.current.closingTabId).toBeNull()
+      expect(session.result.current.closeWaiting).toBe('saving')
+      await act(async () => undefined)
       expect(releases).toHaveLength(2)
       expect(fileOnDisk).toBe('# Old stable snapshot')
       expect(session.result.current.document.isDirty).toBe(true)
       expect(complete).not.toHaveBeenCalled()
       await act(async () => {
         releases[1]()
-        await close
       })
       expect(fileOnDisk).toBe('# Newest stable snapshot')
       expect(session.result.current.document.isDirty).toBe(false)

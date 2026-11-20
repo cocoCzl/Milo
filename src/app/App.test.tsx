@@ -132,6 +132,24 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('App', () => {
+  it('keeps only the active tab and its close button in sequential keyboard traversal', () => {
+    render(<App />)
+    const create = screen.getByRole('button', { name: 'New document' })
+    for (let i = 0; i < 20; i++) fireEvent.click(create)
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1)
+    expect(
+      screen
+        .getAllByRole('button', { name: 'Close Untitled' })
+        .filter((button) => button.tabIndex === 0),
+    ).toHaveLength(1)
+    fireEvent.keyDown(tabs.at(-1)!, { key: 'Home' })
+    expect(screen.getAllByRole('tab')[0]).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('tab')[0]).toHaveFocus()
+    fireEvent.keyDown(screen.getAllByRole('tab')[0], { key: 'Delete' })
+    expect(screen.getAllByRole('tab')).toHaveLength(19)
+  })
+
   it('does not flash the no-document call to action while startup state is unresolved', async () => {
     let resolveSettings!: (settings: Record<string, unknown>) => void
     preferenceMocks.load.mockReturnValue(
@@ -259,8 +277,8 @@ describe('App', () => {
     ).not.toBeInTheDocument()
     expect(editorMocks.markdownChanges.size).toBe(0)
     expect(screen.queryByRole('button', { name: 'Save document' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Read' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Read' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More actions' })).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Open outline' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open document' })).toBeVisible()
@@ -381,6 +399,27 @@ describe('App', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getAllByRole('tab')).toHaveLength(1)
     expect(screen.getByRole('textbox')).toHaveAttribute('data-markdown', 'Active draft')
+  })
+
+  it('keeps the editor interactive while native Quit waits for composition, then guards confirmed changes', async () => {
+    const { container } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
+    const firstComposition = editorMocks.compositionChanges.values().next().value!
+    act(() => {
+      firstComposition({ phase: 'composing' })
+      nativeCloseMocks.receive?.('quit')
+    })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(container.querySelector('.app-workspace')).not.toHaveAttribute('inert')
+    expect(screen.getByRole('status')).toHaveTextContent('Confirm or cancel the current input')
+    await act(async () => {
+      firstComposition({ phase: 'settled', markdown: 'Confirmed中文' })
+    })
+    expect(screen.getByRole('alertdialog')).toBeVisible()
+    expect(container.querySelector('.app-workspace')).toHaveAttribute('inert')
+    expect(
+      screen.queryByText('Confirm or cancel the current input to continue closing.'),
+    ).not.toBeInTheDocument()
   })
 
   it('routes an editor composition to its document close guard without blocking a clean second tab', () => {

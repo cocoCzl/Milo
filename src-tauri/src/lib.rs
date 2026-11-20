@@ -3,6 +3,8 @@ mod draft_recovery;
 mod file_open;
 mod file_system;
 #[cfg(target_os = "macos")]
+mod macos_commands;
+#[cfg(target_os = "macos")]
 mod macos_safe_save;
 #[cfg(target_os = "macos")]
 mod macos_termination;
@@ -23,22 +25,72 @@ struct CloseState {
     pending: Option<String>,
     approved_exit: bool,
     frontend_ready: bool,
+    #[cfg(feature = "diagnostics")]
+    trace_sequence: u64,
+    #[cfg(feature = "diagnostics")]
+    trace_id: String,
 }
 
-fn request_close(app: &tauri::AppHandle, kind: &str) {
+fn request_close(app: &tauri::AppHandle, kind: &str, source: &str) {
     let state = app.state::<CloseCoordinator>();
     let mut state = state.0.lock().unwrap();
     if state.pending.is_some() {
+        open_profile::input_event(
+            "close-request-coalesced",
+            serde_json::json!({"source": source, "closeId": close_trace_id(&state)}),
+        );
         return;
     }
+    #[cfg(feature = "diagnostics")]
+    {
+        state.trace_sequence += 1;
+        state.trace_id = format!("native-{}-{}", std::process::id(), state.trace_sequence);
+    }
+    open_profile::input_event(
+        "close-request-accepted",
+        serde_json::json!({"kind": kind, "source": source,
+        "closeId": close_trace_id(&state)}),
+    );
     state.pending = Some(kind.to_owned());
     if state.frontend_ready {
-        let _ = app.emit("milo://request-close", kind);
+        emit_close(app, &state, kind);
     }
     drop(state);
     if let Some(window) = app.get_webview_window("main") {
+        open_profile::input_event(
+            "close-window-focus-request",
+            serde_json::json!({
+                "focused": window.is_focused().ok(), "visible": window.is_visible().ok(),
+                "closeId": close_trace_id(&app.state::<CloseCoordinator>().0.lock().unwrap())
+            }),
+        );
         let _ = window.show();
         let _ = window.set_focus();
+    }
+}
+
+fn close_trace_id(state: &CloseState) -> &str {
+    #[cfg(feature = "diagnostics")]
+    {
+        &state.trace_id
+    }
+    #[cfg(not(feature = "diagnostics"))]
+    {
+        let _ = state;
+        ""
+    }
+}
+
+fn emit_close(app: &tauri::AppHandle, state: &CloseState, kind: &str) {
+    #[cfg(feature = "diagnostics")]
+    let _ = app.emit(
+        "milo://request-close",
+        serde_json::json!({"kind": kind, "traceId": close_trace_id(state)}),
+    );
+    #[cfg(not(feature = "diagnostics"))]
+    {
+        let _ = state;
+        let _ = app.emit("milo://request-close", kind);
     }
 }
 
@@ -48,13 +100,18 @@ fn close_coordinator_ready(app: tauri::AppHandle) {
     let mut state = coordinator.0.lock().unwrap();
     state.frontend_ready = true;
     if let Some(kind) = &state.pending {
-        let _ = app.emit("milo://request-close", kind);
+        emit_close(&app, &state, kind);
     }
 }
 
 #[tauri::command]
 fn cancel_close(state: tauri::State<'_, CloseCoordinator>) {
-    state.0.lock().unwrap().pending = None;
+    let mut state = state.0.lock().unwrap();
+    open_profile::input_event(
+        "close-cancelled",
+        serde_json::json!({"closeId": close_trace_id(&state)}),
+    );
+    state.pending = None;
 }
 
 #[tauri::command]
@@ -64,6 +121,13 @@ fn complete_close(app: tauri::AppHandle, kind: String) -> Result<(), String> {
     if state.pending.as_deref() != Some(kind.as_str()) {
         return Err("No matching close request.".into());
     }
+    #[cfg(feature = "diagnostics")]
+    let _ = open_profile::record(
+        &app,
+        serde_json::json!({"kind":"native-input", "event":"exit-approved", "closeId": close_trace_id(&state),
+        "unixMs": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default().as_secs_f64() * 1000.0}),
+    );
     state.pending = None;
     if kind == "quit" {
         state.approved_exit = true;
@@ -87,7 +151,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                request_close(window.app_handle(), "window");
+                request_close(window.app_handle(), "window", "window-close");
             }
         })
         .manage(LaunchMarkdownFile(launch_markdown_file()))
@@ -109,6 +173,8 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             macos_termination::install(app.handle()).map_err(std::io::Error::other)?;
+            #[cfg(target_os = "macos")]
+            macos_commands::install(app.handle()).map_err(std::io::Error::other)?;
             let file = SubmenuBuilder::new(app, "File")
                 .item(&menu_item(
                     app,
@@ -226,7 +292,7 @@ pub fn run() {
                 .approved_exit
             {
                 api.prevent_exit();
-                request_close(app, "quit");
+                request_close(app, "quit", "tauri-exit");
             }
         }
         #[cfg(target_os = "macos")]

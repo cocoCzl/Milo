@@ -1,5 +1,7 @@
+import { SaveErrorMessage } from './SaveErrorMessage'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { QuickOpen } from '../components/QuickOpen'
+import { focusEditorElement } from '../editor/milkdown/editorFocus'
 import { emitRuntimeSnapshot } from '../diagnostics/openProfile'
 import { markLifecycle } from '../diagnostics/profileClock'
 import { installInputTrace } from '../diagnostics/inputTrace'
@@ -139,8 +141,8 @@ export function App() {
   useEffect(() => {
     let disposed = false
     let stop: (() => void) | undefined
-    void listenForNativeClose((kind) => {
-      if (!disposed) nativeClose.request(kind)
+    void listenForNativeClose((kind, traceId) => {
+      if (!disposed) nativeClose.request(kind, traceId)
     })
       .then((unlisten) => {
         if (disposed) unlisten()
@@ -201,7 +203,11 @@ export function App() {
   const [outlineInlineMount, setOutlineInlineMount] = useState<HTMLElement | null>(null)
   const [preferencesDialogMount, setPreferencesDialogMount] = useState<HTMLElement | null>(null)
   const [contextualOverlayMount, setContextualOverlayMount] = useState<HTMLElement | null>(null)
+  const [feedbackMount, setFeedbackMount] = useState<HTMLElement | null>(null)
   const closingTab = session.tabs.find((tab) => tab.id === session.closingTabId) ?? null
+  const waitingForCloseComposition = session.closePending && session.closeWaiting === 'input'
+  const closeBlocksWorkspace =
+    (session.closePending && !waitingForCloseComposition) || Boolean(closingTab)
   const [recoveryError, setRecoveryError] = useState<string | null>(null)
   const draftsRecoveredRef = useRef(false)
   useEffect(() => {
@@ -631,14 +637,28 @@ export function App() {
         target: { token: ++navigationToken.current, scrollTop: previous.scrollTop },
       })
   }
-  const openQuick = () => {
-    if (!settings.currentFolder) {
-      void chooseCurrentFolder()
-      return
-    }
+  const quickChoosing = useRef(false)
+  const openQuick = async () => {
+    if (quickOpen || quickChoosing.current || preferencesOpen || session.closePending) return
+    quickChoosing.current = true
     quickReturnFocus.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
-    setQuickOpen(true)
+    try {
+      if (!settings.currentFolder) {
+        const folder = await pickMarkdownFolder()
+        if (!folder) {
+          quickReturnFocus.current?.focus()
+          return
+        }
+        setCurrentFolder(folder)
+      }
+      setQuickOpen(true)
+    } catch (reason) {
+      setFileActionError(String(reason))
+      quickReturnFocus.current?.focus()
+    } finally {
+      quickChoosing.current = false
+    }
   }
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
@@ -646,12 +666,13 @@ export function App() {
         return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'p') {
         event.preventDefault()
-        openQuick()
+        void openQuick()
       }
       if (event.ctrlKey && event.key === 'Tab' && session.tabs.length) {
+        if (quickOpen) return
         event.preventDefault()
-        const index = session.tabs.findIndex((tab) => tab.id === session.activeTabId)
-        session.selectTab(
+        const index = session.tabs.findIndex((tab) => tab.id === session.getActiveTabId())
+        selectTab(
           session.tabs[
             (index + (event.shiftKey ? -1 : 1) + session.tabs.length) % session.tabs.length
           ].id,
@@ -665,7 +686,7 @@ export function App() {
   useNativeCommandListener((command) => {
     switch (command) {
       case 'quick-open':
-        openQuick()
+        void openQuick()
         break
       case 'new-document':
         createNewDocument()
@@ -790,27 +811,40 @@ export function App() {
     >
       {quickOpen && settings.currentFolder ? (
         <QuickOpen
+          key={settings.currentFolder}
           folder={settings.currentFolder}
           label={copy.quickOpen}
           placeholder={copy.quickOpenHint}
-          loading={copy.loadingDocument}
+          loading={copy.quickSearching}
           limited={copy.quickOpenLimited}
           retry={copy.retryAction}
           noResults={copy.quickOpenEmpty}
           rootLabel={copy.sidebar.currentFolder}
           keyboardHint={copy.quickOpenKeys}
-          openFailed={copy.editor.linkOpenFailed}
+          openFailed={copy.quickOpeningFailed}
+          scanFailed={copy.quickScanFailed}
+          partialSearch={copy.quickPartialSearch}
+          cancelLabel={copy.editor.cancel}
           onOpen={session.openDocumentAtPath}
-          onClose={() => {
-            setQuickOpen(false)
-            queueMicrotask(() => quickReturnFocus.current?.focus())
+          onClose={() => setQuickOpen(false)}
+          onClosed={(opened) => {
+            if (opened) {
+              if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+              const panel = document.getElementById(`document-panel-${session.getActiveTabId()}`)
+              panel
+                ?.querySelector<HTMLElement>(
+                  '.source-editor:not([hidden]) textarea, .document-view-host:not([hidden]) .ProseMirror',
+                )
+                ?.focus()
+            } else {
+              const target = quickReturnFocus.current
+              if (target?.isConnected) focusEditorElement(target)
+              else document.querySelector<HTMLElement>('.application-bar__new-document')?.focus()
+            }
           }}
         />
       ) : null}
-      <header
-        inert={session.closePending || Boolean(closingTab)}
-        className="application-bar window-bar"
-      >
+      <header inert={closeBlocksWorkspace} className="application-bar window-bar">
         <div className="application-bar__tabs">
           {navigationHistory.length ? (
             <button
@@ -832,11 +866,18 @@ export function App() {
                 <button
                   type="button"
                   role="tab"
+                  tabIndex={tab.id === session.activeTabId ? 0 : -1}
                   aria-selected={tab.id === session.activeTabId}
                   aria-controls={`document-panel-${tab.id}`}
                   title={tab.document.path ?? copy.untitled}
                   onClick={() => selectTab(tab.id)}
                   onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+                    if (event.key === 'Delete' || event.key === 'Backspace') {
+                      event.preventDefault()
+                      session.requestCloseTab(tab.id)
+                      return
+                    }
                     if (
                       event.key === 'ArrowRight' ||
                       event.key === 'ArrowLeft' ||
@@ -893,6 +934,7 @@ export function App() {
                 </button>
                 <button
                   className="document-tab__close"
+                  tabIndex={tab.id === session.activeTabId ? 0 : -1}
                   type="button"
                   aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
                   onClick={() => session.requestCloseTab(tab.id)}
@@ -925,30 +967,32 @@ export function App() {
             />
           ) : null}
 
-          <div className="application-bar__group application-bar__group--primary">
-            <ModeSwitch
-              disabled={!hasActiveDocument}
-              sourceLabel={copy.source}
-              editLabel={copy.edit}
-              mode={activePresentationMode}
-              readLabel={copy.read}
-              onChange={(mode) => {
-                if (activeTabId === null) return
-                const id = activeTabId
-                if (Boolean(activeTab?.document.sourceMode) === (mode === 'source')) {
-                  setPresentationModes((current) => ({ ...current, [id]: mode }))
-                  return
-                }
-                void session.setSourceMode(id, mode === 'source').then((changed) => {
-                  if (changed)
-                    setPresentationModes((current) => ({
-                      ...current,
-                      [id]: mode === 'source' ? 'edit' : mode,
-                    }))
-                })
-              }}
-            />
-          </div>
+          {hasActiveDocument ? (
+            <div className="application-bar__group application-bar__group--primary">
+              <ModeSwitch
+                disabled={!hasActiveDocument}
+                sourceLabel={copy.source}
+                editLabel={copy.edit}
+                mode={activePresentationMode}
+                readLabel={copy.read}
+                onChange={(mode) => {
+                  if (activeTabId === null) return
+                  const id = activeTabId
+                  if (Boolean(activeTab?.document.sourceMode) === (mode === 'source')) {
+                    setPresentationModes((current) => ({ ...current, [id]: mode }))
+                    return
+                  }
+                  void session.setSourceMode(id, mode === 'source').then((changed) => {
+                    if (changed)
+                      setPresentationModes((current) => ({
+                        ...current,
+                        [id]: mode === 'source' ? 'edit' : mode,
+                      }))
+                  })
+                }}
+              />
+            </div>
+          ) : null}
           <div className="application-bar__group application-bar__group--layout">
             <IconButton
               className="application-bar__sidebar-toggle"
@@ -1001,8 +1045,8 @@ export function App() {
           </div>
           <div className="preferences-menu application-bar__group application-bar__group--overflow">
             <ApplicationMoreMenu
-              fileActions={
-                activeTab?.document.path
+              fileActions={[
+                ...(activeTab?.document.path
                   ? [
                       {
                         label: copy.revealInFinder,
@@ -1027,8 +1071,32 @@ export function App() {
                         },
                       },
                     ]
-                  : []
-              }
+                  : []),
+                {
+                  label: settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar,
+                  onSelect: () =>
+                    updateWorkspaceSettings({
+                      ...workspaceSettings(settings),
+                      sidebarVisible: !settings.sidebarVisible,
+                    }),
+                },
+                ...(activeTabId !== null && !activeDocumentIsProtected
+                  ? [
+                      {
+                        label: activeOutlineOpen ? copy.editor.closeOutline : copy.openOutline,
+                        onSelect: () =>
+                          setOutlineOpen((current) => ({
+                            ...current,
+                            [activeTabId]: !activeOutlineOpen,
+                          })),
+                      },
+                    ]
+                  : []),
+                {
+                  label: focusMode ? copy.exitFocusMode : copy.enterFocusMode,
+                  onSelect: toggleFocusMode,
+                },
+              ]}
               dismissed={focusMode}
               labels={{
                 more: copy.moreActions,
@@ -1049,7 +1117,7 @@ export function App() {
           </div>
         </div>
       </header>
-      <section inert={session.closePending || Boolean(closingTab)} className="app-workspace">
+      <section inert={closeBlocksWorkspace} className="app-workspace">
         {sidebarVisible ? (
           <FileSidebar
             copy={copy.sidebar}
@@ -1121,7 +1189,11 @@ export function App() {
                 <strong>{copy.emptyDocumentTitle}</strong>
                 <p>{copy.emptyDocumentDescription}</p>
                 <div className="document-empty-state__actions">
-                  <button type="button" onClick={openDocument}>
+                  <button
+                    className="document-empty-state__primary"
+                    type="button"
+                    onClick={openDocument}
+                  >
                     <FolderOpen aria-hidden="true" size={15} strokeWidth={1.7} />
                     {copy.openDocument}
                   </button>
@@ -1140,6 +1212,8 @@ export function App() {
                 }
                 key={tab.id}
                 tab={tab}
+                errorInDialog={tab.id === session.closingTabId}
+                feedbackMount={feedbackMount}
                 actions={panelActions}
                 copy={copy}
                 title={displayDocumentTitle(tab, copy)}
@@ -1156,6 +1230,7 @@ export function App() {
               />
             ))}
           </section>
+          <div className="document-feedback-layer" ref={setFeedbackMount} />
           {/* Share the stage's grid tracks, but not its scrolling coordinate
               space. The available grid row bounds the outline at every size. */}
           <div
@@ -1223,7 +1298,22 @@ export function App() {
         returnFocusRef={preferencesReturnFocusRef}
         theme={colorScheme}
       />
-      {fileActionNotice ? (
+      {session.closePending && session.closeWaiting ? (
+        <div className="document-notice document-close-wait" role="status">
+          <span>
+            {waitingForCloseComposition ? copy.finishInputBeforeClose : copy.savingBeforeClose}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              session.cancelCloseTab()
+              void nativeClose.cancel().catch(() => undefined)
+            }}
+          >
+            {copy.keepEditing}
+          </button>
+        </div>
+      ) : fileActionNotice ? (
         <div className="document-notice" role="status">
           {fileActionNotice}
         </div>
@@ -1258,9 +1348,11 @@ export function App() {
             }
             if (event.key === 'Tab') {
               const buttons = [
-                ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+                ...event.currentTarget.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled), summary',
+                ),
               ]
-              const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+              const index = buttons.indexOf(document.activeElement as HTMLElement)
               event.preventDefault()
               buttons[
                 (index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length
@@ -1272,9 +1364,11 @@ export function App() {
           <strong id="close-confirmation-title">
             {copy.closeConfirmation(displayDocumentTitle(closingTab, copy))}
           </strong>
-          <span>
-            {closingTab.saveError ? copy.lastSaveFailed : (closingTab.error ?? copy.unsavedChanges)}
-          </span>
+          {closingTab.saveError ? (
+            <SaveErrorMessage error={closingTab.saveError} copy={copy} />
+          ) : (
+            <span>{closingTab.error ?? copy.unsavedChanges}</span>
+          )}
           {session.closePending ? (
             <small role="status">
               {copy.closeRemainingDocuments(
@@ -1289,8 +1383,19 @@ export function App() {
               )}
             </small>
           ) : null}
+          {closingTab.saveError ? (
+            <button
+              className="action-button"
+              type="button"
+              disabled={session.closeSavePending}
+              onClick={() => void session.saveAsDocument(closingTab.id)}
+            >
+              {copy.saveAs}
+            </button>
+          ) : null}
           <div className="close-confirmation__actions">
             <button
+              className="action-button action-button--danger"
               type="button"
               disabled={closingTab.activity === 'saving' || session.closeSavePending}
               onClick={() => void session.discardAndCloseTab()}
@@ -1298,6 +1403,7 @@ export function App() {
               {copy.discardChanges}
             </button>
             <button
+              className="action-button action-button--primary"
               type="button"
               disabled={
                 closingTab.isComposing ||
@@ -1306,9 +1412,10 @@ export function App() {
               }
               onClick={() => void session.saveAndCloseTab()}
             >
-              {copy.saveAndClose}
+              {closingTab.saveError ? copy.retryAction : copy.saveAndClose}
             </button>
             <button
+              className="action-button"
               type="button"
               disabled={session.discardPending}
               onClick={() => {

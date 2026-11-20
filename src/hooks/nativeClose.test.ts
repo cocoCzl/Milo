@@ -37,6 +37,14 @@ describe('native close event bridge', () => {
     await expect(listenForNativeClose(vi.fn())).rejects.toThrow('bridge unavailable')
     expect(stop).toHaveBeenCalledOnce()
   })
+
+  it('preserves the native diagnostic request identity without changing normal kind routing', async () => {
+    mocks.listen.mockResolvedValue(vi.fn())
+    const handler = vi.fn()
+    await listenForNativeClose(handler)
+    mocks.listen.mock.calls[0][1]({ payload: { kind: 'quit', traceId: 'native-42-1' } })
+    expect(handler).toHaveBeenCalledWith('quit', 'native-42-1')
+  })
 })
 
 describe('replayed native close requests', () => {
@@ -57,4 +65,23 @@ describe('replayed native close requests', () => {
     coordinator.request('quit')
     expect(requestAll).toHaveBeenCalledTimes(3)
   })
+})
+
+it('does not exit after cancellation during the settings flush or a newer close request', async () => {
+  let release!: () => void
+  const requestAll = vi.fn().mockReturnValue(true)
+  const flush = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+  )
+  const coordinator = createNativeCloseHandler(requestAll, flush)
+  coordinator.request('quit')
+  const finishing = requestAll.mock.calls[0][0]()
+  await coordinator.cancel()
+  coordinator.request('window')
+  release()
+  await finishing
+  expect(mocks.invoke).not.toHaveBeenCalledWith('complete_close', expect.anything())
 })

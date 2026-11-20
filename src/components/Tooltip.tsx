@@ -34,6 +34,41 @@ type TooltipRequest = { dismiss: () => void }
 // Visible and pending hints share one slot in their window's document.
 const activeRequests = new WeakMap<Document, TooltipRequest>()
 
+type DocumentInteraction = { pointerFocus: boolean; subscribers: number; dispose: () => void }
+const interactions = new WeakMap<Document, DocumentInteraction>()
+function subscribeInteraction(owner: Document) {
+  let shared = interactions.get(owner)
+  if (!shared) {
+    const state: DocumentInteraction = { pointerFocus: false, subscribers: 0, dispose: () => {} }
+    const pointer = () => {
+      state.pointerFocus = true
+      activeRequests.get(owner)?.dismiss()
+    }
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') state.pointerFocus = false
+      if (event.key === 'Escape') activeRequests.get(owner)?.dismiss()
+    }
+    const blur = () => activeRequests.get(owner)?.dismiss()
+    owner.addEventListener('pointerdown', pointer, true)
+    owner.addEventListener('keydown', key, true)
+    owner.defaultView?.addEventListener('blur', blur)
+    state.dispose = () => {
+      owner.removeEventListener('pointerdown', pointer, true)
+      owner.removeEventListener('keydown', key, true)
+      owner.defaultView?.removeEventListener('blur', blur)
+    }
+    shared = state
+    interactions.set(owner, shared)
+  }
+  shared.subscribers++
+  return () => {
+    if (--shared.subscribers === 0) {
+      shared.dispose()
+      interactions.delete(owner)
+    }
+  }
+}
+
 export function Tooltip({ children, content, delay = 350, disabled = false }: TooltipProps) {
   const inactive = disabled || children.props.disabled === true
   const tooltipId = useId()
@@ -42,7 +77,6 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestRef = useRef<{ document: Document; request: TooltipRequest } | null>(null)
   const focusedRef = useRef(false)
-  const pointerFocusRef = useRef(false)
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState<TooltipPosition | null>(null)
 
@@ -140,28 +174,9 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
   useEffect(() => hide, [hide])
 
   useEffect(() => {
-    const onPointerDown = () => {
-      pointerFocusRef.current = true
-      focusedRef.current = false
-      hide()
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Tab') pointerFocusRef.current = false
-      if (event.key === 'Escape') hide()
-    }
-    const onWindowBlur = () => {
-      focusedRef.current = false
-      hide()
-    }
-    document.addEventListener('pointerdown', onPointerDown, true)
-    document.addEventListener('keydown', onKeyDown, true)
-    window.addEventListener('blur', onWindowBlur)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true)
-      document.removeEventListener('keydown', onKeyDown, true)
-      window.removeEventListener('blur', onWindowBlur)
-    }
-  }, [hide])
+    const owner = triggerRef.current?.ownerDocument
+    return owner ? subscribeInteraction(owner) : undefined
+  }, [])
 
   useEffect(() => {
     if (inactive) hide()
@@ -180,7 +195,7 @@ export function Tooltip({ children, content, delay = 350, disabled = false }: To
     },
     onFocus: (event) => {
       childProps.onFocus?.(event)
-      focusedRef.current = !pointerFocusRef.current
+      focusedRef.current = !interactions.get(event.currentTarget.ownerDocument)?.pointerFocus
       if (focusedRef.current) showAfterDelay()
     },
     onClick: (event) => {

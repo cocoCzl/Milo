@@ -18,7 +18,11 @@ export function ModeSwitch({
   sourceLabel,
 }: ModeSwitchProps) {
   return (
-    <div className="mode-switch" aria-label={`${editLabel} / ${readLabel}`} role="group">
+    <div
+      className="mode-switch"
+      aria-label={[editLabel, readLabel, sourceLabel].filter(Boolean).join(' / ')}
+      role="group"
+    >
       <button
         aria-pressed={mode === 'edit'}
         disabled={disabled}

@@ -77,8 +77,14 @@ async function open({
       const test = {
         setFile: (path, content) => files.set(path, content),
         writes: [],
+        reads: [],
+        browseCalls: [],
+        pickCalls: 0,
+        pickedFolder: '/test',
         profiles: [],
+        commands: [],
         command: (payload) => emit('milo://command', payload),
+        requestClose: (kind = 'quit') => emit('milo://request-close', kind),
         open: (path) => {
           openRequests.push({ id: ++openId, path })
           emit('milo://open-file', null)
@@ -109,6 +115,7 @@ async function open({
           callbacks.delete(callbackId)
         },
         async invoke(cmd, args = {}) {
+          test.commands.push(cmd)
           if (cmd === 'load_application_settings')
             return {
               settingsVersion: 5,
@@ -133,7 +140,14 @@ async function open({
             test.profiles.push(args.record)
             return null
           }
+          if (cmd === 'plugin:dialog|open') {
+            test.pickCalls++
+            return test.pickedFolder
+          }
+          if (cmd === 'plugin:dialog|save') return test.savePath ?? null
           if (cmd === 'browse_markdown_folder') {
+            test.browseCalls.push(args)
+            if (test.browse) return test.browse(args)
             if (test.browseError) throw new Error('Synthetic folder read failure')
             return {
               path: args.path,
@@ -160,6 +174,8 @@ async function open({
             return null
           if (cmd === 'save_application_settings') return args.settings
           if (cmd === 'read_markdown_document') {
+            test.reads.push(args.path)
+            if (test.read) return test.read(args.path)
             if (!files.has(args.path)) throw new Error('Test file does not exist')
             return {
               path: args.path,
@@ -169,7 +185,12 @@ async function open({
             }
           }
           if (cmd.startsWith('write_markdown_document')) {
-            if (test.writeError) throw new Error('Synthetic disk write failure')
+            if (test.writeError)
+              throw new Error(
+                typeof test.writeError === 'string'
+                  ? test.writeError
+                  : 'Synthetic disk write failure',
+              )
             files.set(args.request.path, args.request.markdown)
             test.writes.push(args.request)
             return args.request
