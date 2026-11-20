@@ -259,7 +259,7 @@ const chineseCopy = {
   sourceDocument: (title: string) => `${title} Markdown 源码（完整文件）`,
   read: '阅读',
   emptyDocumentTitle: '打开一篇文档',
-  emptyDocumentDescription: '打开现有 Markdown 文件或文件夹，开始继续写作。',
+  emptyDocumentDescription: '打开 Markdown 文件或文件夹，继续写作。',
   enterFocusMode: '进入专注模式',
   exitFocusMode: '退出专注模式',
   hideSidebar: '隐藏侧边栏',

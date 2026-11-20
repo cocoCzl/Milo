@@ -1226,7 +1226,8 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   grid-column: 1 / -1;
   align-self: center;
   justify-self: center;
-  max-width: 360px;
+  width: min(560px, 100%);
+  min-width: 0;
   padding: 28px;
   color: var(--muted-ink);
   text-align: center;
