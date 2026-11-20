@@ -1,6 +1,6 @@
 [package]
 name = "milo"
-version = "0.3.1"
+version = "0.3.2"
 description = "A local-first Markdown editor"
 authors = ["Milo contributors"]
 edition = "2021"
