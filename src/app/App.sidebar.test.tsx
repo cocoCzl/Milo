@@ -88,13 +88,15 @@ describe('sidebar folder and recent integration', () => {
       expect.objectContaining({ currentFolder: '/test/notes', recentFolders: ['/test/notes'] }),
     )
     mocks.save.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Folder actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change folder…' }))
     await waitFor(() => expect(mocks.pick).toHaveBeenCalledTimes(3))
     expect(mocks.save).not.toHaveBeenCalled()
     expect(screen.getByRole('region', { name: 'Folder' })).toHaveTextContent('notes')
 
     mocks.pick.mockResolvedValueOnce('/test/archive')
-    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Folder actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change folder…' }))
     await waitFor(() => expect(mocks.browse).toHaveBeenLastCalledWith('/test/archive'))
     expect(mocks.save).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -117,7 +119,7 @@ describe('sidebar folder and recent integration', () => {
     expect(screen.queryByText('Browse documents in a folder.')).not.toBeInTheDocument()
     await act(async () => resolveTree({ ...tree, children: [] }))
     expect(await screen.findByText('No Markdown files in this folder.')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Change' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Folder actions' })).toBeVisible()
   })
 
   it('keeps a read failure distinct from an unselected folder', async () => {
@@ -164,7 +166,7 @@ describe('sidebar folder and recent integration', () => {
         }),
       ),
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear recent records' }))
     await waitFor(() =>
       expect(mocks.save).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -183,5 +185,49 @@ describe('sidebar folder and recent integration', () => {
       '# Test document',
     )
     expect(mocks.read).toHaveBeenCalledOnce()
+  })
+  it.each([true, false])(
+    'retries a root failure with sidebar visible: %s without removing its folder',
+    async (sidebarVisible) => {
+      mocks.load.mockResolvedValue({
+        locale: 'en',
+        currentFolder: '/test/notes',
+        recentFolders: ['/test/notes'],
+        sidebarVisible,
+      })
+      mocks.browse
+        .mockRejectedValueOnce(new Error('Cannot read this folder.'))
+        .mockResolvedValueOnce(tree)
+      render(<App />)
+      expect(await screen.findByText('Cannot read this folder.')).toBeVisible()
+      expect(mocks.save).not.toHaveBeenCalledWith(expect.objectContaining({ currentFolder: null }))
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      if (sidebarVisible)
+        expect(await screen.findByRole('button', { name: 'one.md' })).toBeVisible()
+      else
+        await waitFor(() =>
+          expect(screen.queryByText('Cannot read this folder.')).not.toBeInTheDocument(),
+        )
+      expect(mocks.browse).toHaveBeenLastCalledWith('/test/notes')
+    },
+  )
+  it('keeps expanded directories when interface preferences change', async () => {
+    mocks.load.mockResolvedValue({ locale: 'en', currentFolder: '/test/notes' })
+    mocks.browse.mockResolvedValue({
+      ...tree,
+      children: [
+        { path: '/test/notes/sub', name: 'sub', isDirectory: true, children: [tree.children[0]] },
+      ],
+    })
+    render(<App />)
+    const sub = await screen.findByRole('button', { name: 'sub' })
+    fireEvent.click(sub)
+    expect(sub).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Increase interface size' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
+    expect(screen.getByRole('button', { name: 'sub' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'one.md' })).toBeVisible()
+    expect(mocks.browse).toHaveBeenCalledExactlyOnceWith('/test/notes')
   })
 })

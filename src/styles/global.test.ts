@@ -178,7 +178,7 @@ describe('application shell foundation', () => {
 
   it('separates application, context, and editor surfaces with the compact navigation range', () => {
     declarations('.app-shell', {
-      '--application-bar-height': '48px',
+      '--application-bar-height': 'max(44px, calc(var(--ui-font-md) * 3.4))',
       '--document-context-height': '0px',
     })
     declarations('.document-area', {
@@ -195,7 +195,7 @@ describe('application shell foundation', () => {
     const footerBorders = rulesFor('.file-sidebar__footer').flatMap((rule) =>
       rule.nodes.filter((node) => node.type === 'decl' && node.prop === 'border-top'),
     )
-    expect(footerBorders).toHaveLength(1)
+    expect(footerBorders).toHaveLength(0)
     declarations('.file-sidebar__resize-handle:focus-visible::after', {
       background: 'var(--focus-ring)',
     })

@@ -1,9 +1,10 @@
-import type { ButtonHTMLAttributes, PropsWithChildren } from 'react'
+import type { ButtonHTMLAttributes, PropsWithChildren, Ref } from 'react'
 
 import { Tooltip } from './Tooltip'
 
 type IconButtonProps = PropsWithChildren<
   ButtonHTMLAttributes<HTMLButtonElement> & {
+    ref?: Ref<HTMLButtonElement>
     label: string
   }
 >

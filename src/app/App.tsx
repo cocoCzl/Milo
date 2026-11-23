@@ -174,6 +174,7 @@ export function App() {
   const quickReturnFocus = useRef<HTMLElement | null>(null)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [folderTree, setFolderTree] = useState<MarkdownTreeNode | null>(null)
+  const [folderReload, setFolderReload] = useState(0)
   const [folderError, setFolderError] = useState<string | null>(null)
   const [startupSessionRestored, setStartupSessionRestored] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -492,23 +493,12 @@ export function App() {
           setFolderError(
             reason instanceof Error && reason.message ? reason.message : copy.folderBrowseFailed,
           )
-          updateWorkspaceSettings({
-            currentFolder: null,
-            recentFolders: settings.recentFolders.filter(
-              (folder) => folder !== settings.currentFolder,
-            ),
-          })
         }
       })
     return () => {
       disposed = true
     }
-  }, [
-    copy.folderBrowseFailed,
-    settings.currentFolder,
-    settings.recentFolders,
-    updateWorkspaceSettings,
-  ])
+  }, [copy.folderBrowseFailed, folderReload, settings.currentFolder])
 
   useEffect(() => {
     const path = session.document.path
@@ -844,7 +834,10 @@ export function App() {
           }}
         />
       ) : null}
-      <header inert={closeBlocksWorkspace} className="application-bar window-bar">
+      <header
+        inert={closeBlocksWorkspace}
+        className={`application-bar window-bar${hasActiveDocument ? '' : ' application-bar--home'}`}
+      >
         <div className="application-bar__tabs">
           {navigationHistory.length ? (
             <button
@@ -857,100 +850,114 @@ export function App() {
               ←
             </button>
           ) : null}
-          <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
-            {session.tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  tabIndex={tab.id === session.activeTabId ? 0 : -1}
-                  aria-selected={tab.id === session.activeTabId}
-                  aria-controls={`document-panel-${tab.id}`}
-                  title={tab.document.path ?? copy.untitled}
-                  onClick={() => selectTab(tab.id)}
-                  onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing || event.keyCode === 229) return
-                    if (event.key === 'Delete' || event.key === 'Backspace') {
-                      event.preventDefault()
-                      session.requestCloseTab(tab.id)
-                      return
-                    }
-                    if (
-                      event.key === 'ArrowRight' ||
-                      event.key === 'ArrowLeft' ||
-                      event.key === 'Home' ||
-                      event.key === 'End'
-                    ) {
-                      event.preventDefault()
-                      const index = session.tabs.findIndex((item) => item.id === tab.id)
-                      const target =
-                        event.key === 'Home'
-                          ? 0
-                          : event.key === 'End'
-                            ? session.tabs.length - 1
-                            : (index +
-                                (event.key === 'ArrowRight' ? 1 : -1) +
-                                session.tabs.length) %
-                              session.tabs.length
-                      selectTab(session.tabs[target].id)
-                      document
-                        .querySelector<HTMLButtonElement>(
-                          `[aria-controls="document-panel-${session.tabs[target].id}"]`,
-                        )
-                        ?.focus()
-                    }
-                  }}
+          {session.tabs.length > 0 ? (
+            <nav className="tab-strip" aria-label={copy.openDocuments} role="tablist">
+              {session.tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className={`document-tab${tab.id === session.activeTabId ? ' document-tab--active' : ''}`}
                 >
-                  <FileText
-                    aria-hidden="true"
-                    className="document-tab__icon"
-                    size={14}
-                    strokeWidth={1.7}
-                  />
-                  <span className="document-tab__dirty" aria-hidden="true">
-                    {tab.document.isDirty ? '•' : ''}
-                  </span>
-                  <span className="document-tab__title">
-                    {displayDocumentTitle(tab, copy)}
-                    {session.tabs.some(
-                      (other) => other.id !== tab.id && other.document.title === tab.document.title,
-                    ) && tab.document.path ? (
-                      <small className="document-tab__path">
-                        {tab.document.path.split('/').slice(-2, -1)[0]}
-                      </small>
-                    ) : null}
-                  </span>
-                  {tab.saveError || tab.externalChange ? (
-                    <span
-                      className="document-tab__warning"
-                      aria-label={tab.saveError ? copy.saveFailed : copy.externalChange}
-                    >
-                      !
+                  <button
+                    type="button"
+                    role="tab"
+                    tabIndex={tab.id === session.activeTabId ? 0 : -1}
+                    aria-selected={tab.id === session.activeTabId}
+                    aria-controls={`document-panel-${tab.id}`}
+                    title={tab.document.path ?? copy.untitled}
+                    onClick={() => selectTab(tab.id)}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing || event.keyCode === 229) return
+                      if (event.key === 'Delete' || event.key === 'Backspace') {
+                        event.preventDefault()
+                        session.requestCloseTab(tab.id)
+                        return
+                      }
+                      if (
+                        event.key === 'ArrowRight' ||
+                        event.key === 'ArrowLeft' ||
+                        event.key === 'Home' ||
+                        event.key === 'End'
+                      ) {
+                        event.preventDefault()
+                        const index = session.tabs.findIndex((item) => item.id === tab.id)
+                        const target =
+                          event.key === 'Home'
+                            ? 0
+                            : event.key === 'End'
+                              ? session.tabs.length - 1
+                              : (index +
+                                  (event.key === 'ArrowRight' ? 1 : -1) +
+                                  session.tabs.length) %
+                                session.tabs.length
+                        selectTab(session.tabs[target].id)
+                        document
+                          .querySelector<HTMLButtonElement>(
+                            `[aria-controls="document-panel-${session.tabs[target].id}"]`,
+                          )
+                          ?.focus()
+                      }
+                    }}
+                  >
+                    <FileText
+                      aria-hidden="true"
+                      className="document-tab__icon"
+                      size={14}
+                      strokeWidth={1.7}
+                    />
+                    <span className="document-tab__dirty" aria-hidden="true">
+                      {tab.document.isDirty ? '•' : ''}
                     </span>
-                  ) : null}
-                </button>
-                <button
-                  className="document-tab__close"
-                  tabIndex={tab.id === session.activeTabId ? 0 : -1}
-                  type="button"
-                  aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
-                  onClick={() => session.requestCloseTab(tab.id)}
-                >
-                  <X aria-hidden="true" size={13} strokeWidth={1.8} />
-                </button>
-              </div>
-            ))}
-          </nav>
-          <IconButton
-            className="application-bar__new-document"
-            label={copy.newDocument}
-            onClick={createNewDocument}
-          >
-            <Plus aria-hidden="true" size={16} strokeWidth={1.8} />
-          </IconButton>
+                    <span className="document-tab__title">
+                      {displayDocumentTitle(tab, copy)}
+                      {session.tabs.some(
+                        (other) =>
+                          other.id !== tab.id && other.document.title === tab.document.title,
+                      ) && tab.document.path ? (
+                        <small className="document-tab__path">
+                          {tab.document.path.split('/').slice(-2, -1)[0]}
+                        </small>
+                      ) : null}
+                    </span>
+                    {tab.saveError || tab.externalChange ? (
+                      <span
+                        className="document-tab__warning"
+                        aria-label={tab.saveError ? copy.saveFailed : copy.externalChange}
+                      >
+                        !
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    className="document-tab__close"
+                    tabIndex={tab.id === session.activeTabId ? 0 : -1}
+                    type="button"
+                    aria-label={copy.closeDocument(displayDocumentTitle(tab, copy))}
+                    onClick={() => session.requestCloseTab(tab.id)}
+                  >
+                    <X aria-hidden="true" size={13} strokeWidth={1.8} />
+                  </button>
+                </div>
+              ))}
+            </nav>
+          ) : null}
+          {hasActiveDocument ? (
+            <IconButton
+              className="application-bar__new-document"
+              label={copy.newDocument}
+              onClick={createNewDocument}
+            >
+              <Plus aria-hidden="true" size={16} strokeWidth={1.8} />
+            </IconButton>
+          ) : (
+            <button
+              className="action-button application-bar__new-document"
+              type="button"
+              onClick={createNewDocument}
+            >
+              <Plus aria-hidden="true" size={16} strokeWidth={1.8} />
+              <span>{copy.newDocument}</span>
+            </button>
+          )}
         </div>
         <div className="window-bar__actions">
           {activeTabId !== null && activeTab ? (
@@ -1035,13 +1042,16 @@ export function App() {
                 }
               />
             ) : null}
-            <IconButton
-              className="application-bar__focus-toggle"
-              label={focusMode ? copy.exitFocusMode : copy.enterFocusMode}
-              onClick={toggleFocusMode}
-            >
-              <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
-            </IconButton>
+            {hasActiveDocument ? (
+              <IconButton
+                aria-pressed={focusMode}
+                className="application-bar__focus-toggle"
+                label={focusMode ? copy.exitFocusMode : copy.enterFocusMode}
+                onClick={toggleFocusMode}
+              >
+                <Focus aria-hidden="true" size={16} strokeWidth={1.7} />
+              </IconButton>
+            ) : null}
           </div>
           <div className="preferences-menu application-bar__group application-bar__group--overflow">
             <ApplicationMoreMenu
@@ -1092,10 +1102,14 @@ export function App() {
                       },
                     ]
                   : []),
-                {
-                  label: focusMode ? copy.exitFocusMode : copy.enterFocusMode,
-                  onSelect: toggleFocusMode,
-                },
+                ...(hasActiveDocument
+                  ? [
+                      {
+                        label: focusMode ? copy.exitFocusMode : copy.enterFocusMode,
+                        onSelect: toggleFocusMode,
+                      },
+                    ]
+                  : []),
               ]}
               dismissed={focusMode}
               labels={{
@@ -1127,6 +1141,7 @@ export function App() {
             folderError={folderError}
             width={settings.sidebarWidth}
             onChooseFolder={() => void chooseCurrentFolder()}
+            onRetryFolder={() => setFolderReload((version) => version + 1)}
             onClearRecent={clearRecent}
             onOpenFile={(path) => void openSidebarFile(path)}
             onOpenFolder={setCurrentFolder}
@@ -1145,6 +1160,13 @@ export function App() {
         {folderError && !sidebarVisible ? (
           <div className="folder-error" role="status">
             {folderError}
+            <button
+              className="action-button"
+              type="button"
+              onClick={() => setFolderReload((version) => version + 1)}
+            >
+              {copy.sidebar.retry}
+            </button>
           </div>
         ) : null}
         <section

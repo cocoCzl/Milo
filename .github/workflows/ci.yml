@@ -50,6 +50,7 @@ jobs:
           node scripts/test-quick-open-browser.mjs
           node scripts/test-close-recovery-browser.mjs
           node scripts/test-ui-polish-browser.mjs
+          node scripts/test-sidebar-toolbar-browser.mjs
           node scripts/test-tab-input-browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()

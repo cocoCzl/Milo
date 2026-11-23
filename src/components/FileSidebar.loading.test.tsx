@@ -49,9 +49,8 @@ describe('folder expansion and request lifetimes', () => {
       />,
     )
     expect(mocks.browseMarkdownFolder).not.toHaveBeenCalled()
-    const branch = container.querySelector('.file-sidebar__directory') as HTMLDetailsElement
-    branch.open = true
-    fireEvent(branch, new Event('toggle'))
+    const branch = container.querySelector('.file-sidebar__directory-toggle')!
+    fireEvent.click(branch)
     expect(await screen.findByRole('alert')).toHaveTextContent('permission denied')
     expect(screen.getByRole('button', { name: 'visible.md' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -105,12 +104,95 @@ describe('folder expansion and request lifetimes', () => {
       )
       .mockResolvedValueOnce(folder('/new', [folder('/new/node_modules')]))
     const { rerender } = render(<FileSidebar {...props} folder="/old" tree={folder('/old')} />)
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Show dependency and build folders' }))
-    await waitFor(() => expect(mocks.browseMarkdownFolder).toHaveBeenCalledWith('/old', true))
+    fireEvent.click(screen.getByRole('button', { name: 'Folder actions' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Show filtered folders' }))
+    await waitFor(() => expect(mocks.browseMarkdownFolder).toHaveBeenCalledWith('/old', true, 0))
     rerender(<FileSidebar {...props} folder="/new" tree={folder('/new')} />)
     expect(await screen.findByText('node_modules')).toBeVisible()
     await act(async () => finish(folder('/old', [file('/old/stale.md')])))
     expect(screen.queryByText('stale.md')).not.toBeInTheDocument()
     expect(mocks.browseMarkdownFolder).toHaveBeenLastCalledWith('/new', true)
+  })
+  it('ignores a late page after refresh and keeps the selected document and expanded branch', async () => {
+    let finish!: (tree: MarkdownTreeNode) => void
+    const selected = file('/root/sub/selected.md')
+    const sub = folder('/root/sub', [selected])
+    mocks.browseMarkdownFolder
+      .mockImplementationOnce(
+        () =>
+          new Promise<MarkdownTreeNode>((resolve) => {
+            finish = resolve
+          }),
+      )
+      .mockResolvedValueOnce(folder('/root', [sub, file('/root/new.md')]))
+    render(
+      <FileSidebar
+        {...props}
+        activeFile={selected.path}
+        folder="/root"
+        tree={folder('/root', [sub], 200)}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'selected.md' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Load more…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh folder' }))
+    expect(await screen.findByRole('button', { name: 'new.md' })).toBeVisible()
+    await act(async () => finish(folder('/root', [file('/root/stale.md')], 400)))
+    expect(screen.queryByRole('button', { name: 'stale.md' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'selected.md' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(screen.getByRole('button', { name: 'sub' })).toHaveAttribute('aria-expanded', 'true')
+    expect(mocks.browseMarkdownFolder.mock.calls).toEqual([
+      ['/root', false, 200],
+      ['/root', false, 0],
+    ])
+  })
+
+  it('retries a failed next page at its original offset without losing earlier results', async () => {
+    mocks.browseMarkdownFolder
+      .mockRejectedValueOnce(new Error('page unavailable'))
+      .mockResolvedValueOnce(folder('/root', [file('/root/second.md')]))
+    render(
+      <FileSidebar
+        {...props}
+        folder="/root"
+        tree={folder('/root', [file('/root/first.md')], 200)}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Load more…' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('page unavailable')
+    expect(screen.getByRole('button', { name: 'first.md' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('button', { name: 'second.md' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'first.md' })).toBeVisible()
+    expect(mocks.browseMarkdownFolder.mock.calls).toEqual([
+      ['/root', false, 200],
+      ['/root', false, 200],
+    ])
+  })
+
+  it('refreshes only the named subdirectory', async () => {
+    mocks.browseMarkdownFolder.mockResolvedValueOnce(
+      folder('/root/sub', [file('/root/sub/new.md')]),
+    )
+    render(
+      <FileSidebar
+        {...props}
+        folder="/root"
+        tree={folder('/root', [
+          folder('/root/sub', [file('/root/sub/old.md')]),
+          file('/root/sibling.md'),
+        ])}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh sub' }))
+    expect(await screen.findByRole('button', { name: 'new.md' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'sibling.md' })).toBeVisible()
+    expect(mocks.browseMarkdownFolder).toHaveBeenCalledExactlyOnceWith('/root/sub', false, 0)
   })
 })

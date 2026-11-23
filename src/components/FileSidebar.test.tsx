@@ -1,12 +1,14 @@
 import { cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { FileSidebar } from './FileSidebar'
+import { interfaceCopy } from '../app/interfaceCopy'
 
 const copy = {
+  ...interfaceCopy('en').sidebar,
   changeFolder: 'Change folder',
   chooseFolder: 'Choose folder…',
-  clearRecent: 'Clear',
   currentFolder: 'Current folder',
   empty: 'Browse documents in a folder.',
   emptyDirectory: 'No Markdown files in this folder.',
@@ -49,7 +51,8 @@ describe('FileSidebar', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Change folder' }))
+    fireEvent.click(screen.getByRole('button', { name: copy.folderActions }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change folder' }))
 
     expect(onChooseFolder).toHaveBeenCalledOnce()
   })
@@ -83,7 +86,7 @@ describe('FileSidebar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove one.md from recent' }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove archive from recent' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear recent records' }))
 
     expect(onRemoveRecentFile).toHaveBeenCalledWith('/notes/one.md')
     expect(onRemoveRecentFolder).toHaveBeenCalledWith('/notes/archive')
@@ -208,12 +211,12 @@ describe('FileSidebar', () => {
       (button) => button.getAttribute('aria-label') ?? button.textContent,
     )
     expect(buttons).toEqual([
-      ...(folder ? ['Change folder', 'Refresh folder', 'one.md'] : ['Choose folder…']),
-      'Clear',
+      ...(folder ? ['Refresh folder', copy.folderActions, 'one.md'] : ['Choose folder…']),
       'one.md',
       'Remove one.md from recent',
       'archive',
       'Remove archive from recent',
+      copy.clearRecent,
       'Settings',
     ])
     // Native buttons stay in their DOM order in sequential keyboard navigation.
@@ -227,8 +230,9 @@ describe('FileSidebar', () => {
     expect(container.querySelectorAll('[tabindex="-1"]')).toHaveLength(0)
     expect(container.querySelectorAll('[tabindex]')).toHaveLength(1)
     fireEvent.click(
-      screen.getByRole('button', { name: folder ? 'Change folder' : 'Choose folder…' }),
+      screen.getByRole('button', { name: folder ? copy.folderActions : 'Choose folder…' }),
     )
+    if (folder) fireEvent.click(screen.getByRole('menuitem', { name: 'Change folder' }))
     expect(onChooseFolder).toHaveBeenCalledOnce()
     const recent = screen.getByRole('region', { name: 'Recent files and folders' })
     const details = recent.querySelector('details')!
@@ -283,7 +287,7 @@ describe('FileSidebar', () => {
     expect(folder).toHaveTextContent(message)
     expect(folder).not.toHaveTextContent(copy.empty)
     expect(screen.queryByRole('button', { name: 'Choose folder…' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Change folder' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: copy.folderActions })).toBeEnabled()
   })
 
   it('supports pointer and keyboard resizing within the product range', () => {
@@ -382,3 +386,82 @@ describe('FileSidebar', () => {
     expect(onWidthChange).toHaveBeenLastCalledWith(320)
   })
 })
+
+it('keeps folder filtering in a keyboard menu and restores focus on Escape', () => {
+  render(
+    <FileSidebar
+      activeFile={null}
+      copy={copy}
+      folder="/notes"
+      tree={{ path: '/notes', name: 'notes', isDirectory: true, children: [] }}
+      width={224}
+      recentFiles={[]}
+      recentFolders={[]}
+      onChooseFolder={vi.fn()}
+      onClearRecent={vi.fn()}
+      onOpenFile={vi.fn()}
+      onOpenFolder={vi.fn()}
+      onOpenPreferences={vi.fn()}
+      onRemoveRecentFile={vi.fn()}
+      onRemoveRecentFolder={vi.fn()}
+      onWidthChange={vi.fn()}
+    />,
+  )
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  const trigger = screen.getByRole('button', { name: copy.folderActions })
+  fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+  expect(screen.getByRole('menuitem', { name: 'Change folder' })).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
+  expect(screen.getByRole('menuitemcheckbox')).toHaveFocus()
+  expect(screen.getByRole('menuitemcheckbox')).toHaveAttribute('aria-checked', 'false')
+  expect(screen.getByRole('menuitemcheckbox')).toHaveAccessibleDescription(copy.filterDescription)
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+  expect(trigger).toHaveFocus()
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+})
+
+it.each([true, false])(
+  'returns focus after clearing recent records while expanded=%s',
+  (expanded) => {
+    const clear = vi.fn()
+    const open = vi.fn()
+    function RecentSidebar() {
+      const [records, setRecords] = useState(['/notes/a.md'])
+      return (
+        <FileSidebar
+          activeFile="/notes/a.md"
+          copy={copy}
+          folder={expanded ? null : '/notes'}
+          tree={null}
+          width={224}
+          recentFiles={records}
+          recentFolders={[]}
+          onChooseFolder={vi.fn()}
+          onClearRecent={() => {
+            clear()
+            setRecords([])
+          }}
+          onOpenFile={open}
+          onOpenFolder={open}
+          onOpenPreferences={vi.fn()}
+          onRemoveRecentFile={vi.fn()}
+          onRemoveRecentFolder={vi.fn()}
+          onWidthChange={vi.fn()}
+        />
+      )
+    }
+    const { container } = render(<RecentSidebar />)
+    const details = container.querySelector('details')!
+    const summary = details.querySelector('summary')!
+    const button = screen.getByRole('button', { name: copy.clearRecent })
+    expect(details.open).toBe(expanded)
+    expect(button.querySelector('.lucide-eraser')).toBeInTheDocument()
+    button.focus()
+    fireEvent.click(button)
+    expect(screen.queryByRole('button', { name: copy.clearRecent })).not.toBeInTheDocument()
+    expect(summary).toHaveFocus()
+    expect(details.open).toBe(expanded)
+    expect(clear).toHaveBeenCalledOnce()
+    expect(open).not.toHaveBeenCalled()
+  },
+)

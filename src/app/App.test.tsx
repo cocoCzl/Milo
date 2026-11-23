@@ -134,8 +134,8 @@ afterEach(cleanup)
 describe('App', () => {
   it('keeps only the active tab and its close button in sequential keyboard traversal', () => {
     render(<App />)
-    const create = screen.getByRole('button', { name: 'New document' })
-    for (let i = 0; i < 20; i++) fireEvent.click(create)
+    for (let i = 0; i < 20; i++)
+      fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     const tabs = screen.getAllByRole('tab')
     expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1)
     expect(
@@ -287,7 +287,9 @@ describe('App', () => {
     expect(newDocument).toBeVisible()
     expect(
       newDocument.closest('.application-bar__tabs')?.querySelector('.tab-strip'),
-    ).toBeInTheDocument()
+    ).not.toBeInTheDocument()
+    expect(newDocument).toHaveTextContent('New document')
+    expect(screen.queryByRole('button', { name: 'Enter focus mode' })).not.toBeInTheDocument()
 
     fireEvent.click(newDocument)
     expect(screen.getByRole('tab', { name: 'Untitled' })).toBeVisible()
@@ -581,7 +583,7 @@ describe('App', () => {
       screen.queryByRole('button', { name: 'Remove one.md from recent' }),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear recent records' }))
     await waitFor(() =>
       expect(preferenceMocks.save).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -619,6 +621,7 @@ describe('App', () => {
   it('enters a distraction-free focus mode and exits with Escape', () => {
     render(<App />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
     fireEvent.click(screen.getByRole('button', { name: 'Enter focus mode' }))
     expect(screen.getByRole('main', { name: 'Milo Markdown editor' })).toHaveClass(
       'app-shell--focus-mode',
