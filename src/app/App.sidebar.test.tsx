@@ -141,7 +141,7 @@ describe('sidebar folder and recent integration', () => {
       recentFolders: ['/test/notes', '/test/archive'],
     })
     render(<App />)
-    const recent = await screen.findByRole('region', { name: 'Recent files and folders' })
+    const recent = () => screen.getByRole('region', { name: 'Recent files and folders' })
     await waitFor(() =>
       expect(
         within(screen.getByRole('region', { name: 'Folder' })).getByRole('button', {
@@ -149,13 +149,15 @@ describe('sidebar folder and recent integration', () => {
         }),
       ).toBeVisible(),
     )
-    fireEvent.click(within(recent).getByRole('button', { name: 'one.md' }))
+    fireEvent.click(recent().querySelector('summary')!)
+    fireEvent.click(within(recent()).getByRole('button', { name: 'one.md' }))
     expect(await screen.findByRole('tab', { name: 'one.md' })).toBeVisible()
     expect(screen.getByRole('textbox', { name: 'one.md Markdown document' })).toHaveTextContent(
       '# Test document',
     )
-    fireEvent.click(within(recent).getByRole('button', { name: 'archive' }))
+    fireEvent.click(within(recent()).getByRole('button', { name: 'archive' }))
     await waitFor(() => expect(mocks.browse).toHaveBeenLastCalledWith('/test/archive'))
+    fireEvent.click(recent().querySelector('summary')!)
     fireEvent.click(screen.getByRole('button', { name: 'Remove notes from recent' }))
     await waitFor(() =>
       expect(mocks.save).toHaveBeenLastCalledWith(

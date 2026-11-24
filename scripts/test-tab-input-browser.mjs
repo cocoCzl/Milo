@@ -1,11 +1,11 @@
 // Real keyboard events: never refocus the body after changing tabs.
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
-import { open, browser, output } from './browserHarness.mjs'
+import { open, browser, output, core } from './browserHarness.mjs'
 const samples = []
 try {
-  const p = await open({ tabs: 20, content: '# Target\n\nfirst body\n\nlast body' })
-  for (let i = 0; i < 20; i++) {
+  const p = await open({ tabs: core ? 5 : 20, content: '# Target\n\nfirst body\n\nlast body' })
+  for (let i = 0; i < (core ? 5 : 20); i++) {
     await p.getByRole('tab').nth(i).click()
     const el = p.locator('.document-panel:not([hidden]) .ProseMirror')
     await el.waitFor()
@@ -21,11 +21,11 @@ try {
       { text: 'last body', offset: 3 },
     )
   }
-  for (let round = 0; round < 3; round++)
+  for (let round = 0; round < (core ? 1 : 3); round++)
     for (const scenario of ['recent-pair', 'old-tab', 'rapid-aba'])
-      for (let n = 0; n < 10; n++) {
+      for (let n = 0; n < (core ? 2 : 10); n++) {
         if (scenario === 'old-tab')
-          for (let j = 0; j < 19; j++) await p.keyboard.press('Control+Tab')
+          for (let j = 0; j < (core ? 4 : 19); j++) await p.keyboard.press('Control+Tab')
         const previous = await p
           .locator('[role=tab][aria-selected=true]')
           .getAttribute('aria-controls')

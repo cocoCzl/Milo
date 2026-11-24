@@ -273,6 +273,7 @@ pub fn run() {
             file_system::write_markdown_document_safe_v2,
             file_system::recover_markdown_document_safe_v2,
             file_system::browse_markdown_folder,
+            file_system::validate_markdown_directory,
             file_system::write_image_asset,
             file_system::write_image_asset_binary,
             settings::load_application_settings,

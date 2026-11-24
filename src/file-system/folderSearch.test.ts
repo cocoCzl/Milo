@@ -15,6 +15,7 @@ it('stays within the chosen folder, follows pages serially and returns filename 
       return {
         children: [{ ...file('/chosen/nested'), isDirectory: true }, file('/chosen/中文.md')],
         nextOffset: 200,
+        snapshotId: 'chosen-snapshot',
       }
     if (path === '/chosen') return { children: [file('/chosen/other.md')], nextOffset: null }
     return { children: [file('/chosen/nested/file.md')], nextOffset: null }
@@ -24,7 +25,7 @@ it('stays within the chosen folder, follows pages serially and returns filename 
   expect(result.files.map((f) => f.relativePath)).toEqual(['中文.md', 'other.md', 'nested/file.md'])
   expect(browse.mock.calls).toEqual([
     ['/chosen', false, 0],
-    ['/chosen', false, 200],
+    ['/chosen', false, 200, 'chosen-snapshot'],
     ['/chosen/nested', false, 0],
   ])
   expect(filterFolderFiles(result.files, 'NESTED file')).toEqual([result.files[2]])

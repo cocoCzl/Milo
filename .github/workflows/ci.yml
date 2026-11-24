@@ -35,7 +35,7 @@ jobs:
       - run: npm run test
       - run: npm run lint -- --max-warnings=0
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - name: Browser layout and interaction regressions
         env:
           MILO_OUTLINE_ARTIFACTS: /private/tmp/milo-outline-regression
@@ -52,6 +52,19 @@ jobs:
           node scripts/test-ui-polish-browser.mjs
           node scripts/test-sidebar-toolbar-browser.mjs
           node scripts/test-tab-input-browser.mjs
+      - name: WebKit core interaction regressions
+        env:
+          MILO_BROWSER: webkit
+          MILO_BROWSER_CORE: '1'
+          MILO_OUTLINE_ARTIFACTS: /private/tmp/milo-outline-regression/webkit-core
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/milo-webkit-vite.log 2>&1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          node --input-type=module -e 'for (let i=0;i<100;i++) { try { await fetch("http://127.0.0.1:1420"); process.exit(0) } catch {} await new Promise(r=>setTimeout(r,100)) } process.exit(1)'
+          node scripts/test-tab-input-browser.mjs
+          node scripts/test-quick-open-browser.mjs
+          node scripts/test-sidebar-toolbar-browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

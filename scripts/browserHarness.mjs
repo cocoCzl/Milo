@@ -12,6 +12,7 @@ await mkdir(output, { recursive: true })
 const browser = await (process.env.MILO_BROWSER === 'webkit' ? webkit : chromium).launch({
   headless: true,
 })
+const core = process.env.MILO_BROWSER_CORE === '1'
 const errors = []
 
 async function settle(page) {
@@ -234,4 +235,4 @@ async function open({
   return page
 }
 
-export { open, settle, browser, errors, output, markdown }
+export { open, settle, browser, errors, output, markdown, core }

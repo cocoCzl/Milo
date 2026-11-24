@@ -136,6 +136,11 @@ const englishCopy = {
     retry: 'Retry',
     loadingFolder: 'Loading folder…',
     folderWidth: 'Folder width',
+    pageExpired: 'Folder changed or paging expired. Retry to reload this folder.',
+    entryLimit:
+      'This folder has more than 100,000 entries. Choose a smaller subfolder, or reduce its entries and retry. No incomplete list is shown.',
+    byteLimit:
+      'This folder exceeds the 8 MiB listing budget. Choose a smaller subfolder, or reduce its entries and retry. No incomplete list is shown.',
     emptyDirectory: 'No Markdown files in this folder.',
     emptyRecent: 'No recent items yet.',
     recent: 'Recent',
@@ -343,6 +348,11 @@ const chineseCopy = {
     retry: '重试',
     loadingFolder: '正在读取文件夹…',
     folderWidth: '文件夹区域宽度',
+    pageExpired: '目录已变化或分页已过期，请重试重新读取此文件夹。',
+    entryLimit:
+      '此文件夹超过 100,000 个条目的扫描上限。请更换为较小的子目录，或减少条目后重试；当前未显示截断列表。',
+    byteLimit:
+      '此文件夹超过 8 MiB 的列表预算。请更换为较小的子目录，或减少条目后重试；当前未显示截断列表。',
     emptyDirectory: '此文件夹中没有 Markdown 文件。',
     emptyRecent: '还没有最近使用的项目。',
     recent: '最近使用',

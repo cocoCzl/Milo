@@ -54,6 +54,8 @@ pub struct MarkdownTreeNode {
     pub is_directory: bool,
     pub children: Vec<MarkdownTreeNode>,
     pub next_offset: Option<usize>,
+    pub snapshot_id: Option<String>,
+    pub directory_version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -76,15 +78,41 @@ pub async fn browse_markdown_folder(
     path: String,
     excluded_names: Option<Vec<String>>,
     offset: Option<usize>,
+    snapshot_id: Option<String>,
 ) -> Result<MarkdownTreeNode, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = PathBuf::from(path);
         let excluded = excluded_names
             .unwrap_or_else(|| DEFAULT_EXCLUDED.iter().map(|s| (*s).to_owned()).collect());
-        read_markdown_directory(&root, &excluded, offset.unwrap_or(0))
+        read_markdown_directory(
+            &root,
+            &excluded,
+            offset.unwrap_or(0),
+            snapshot_id.as_deref(),
+        )
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn validate_markdown_directory(path: String, version: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        directory_modified(Path::new(&path)).map(|modified| directory_version(modified) == version)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn directory_version(modified: SystemTime) -> String {
+    match modified.duration_since(UNIX_EPOCH) {
+        Ok(time) => format!("{}:{}", time.as_secs(), time.subsec_nanos()),
+        Err(error) => format!(
+            "-{}:{}",
+            error.duration().as_secs(),
+            error.duration().subsec_nanos()
+        ),
+    }
 }
 
 const DEFAULT_EXCLUDED: &[&str] = &[
@@ -455,13 +483,26 @@ fn markdown_path(path: String) -> Result<PathBuf, String> {
     }
 }
 
-#[derive(Clone)]
-struct DirectorySnapshot {
-    modified: SystemTime,
-    created: std::time::Instant,
-    children: Vec<MarkdownTreeNode>,
+struct DirectoryEntry {
+    path: String,
+    name: String,
+    lower_name: String,
+    is_directory: bool,
 }
-type DirectoryCache = std::collections::HashMap<(PathBuf, Vec<String>), DirectorySnapshot>;
+struct DirectorySnapshot {
+    path: PathBuf,
+    excluded: Vec<String>,
+    modified: SystemTime,
+    used: std::time::Instant,
+    bytes: usize,
+    children: Vec<DirectoryEntry>,
+}
+type DirectoryCache = std::collections::HashMap<String, DirectorySnapshot>;
+const DIRECTORY_CACHE_BYTES: usize = 16 * 1024 * 1024;
+const DIRECTORY_SCAN_BYTES: usize = 8 * 1024 * 1024;
+const DIRECTORY_SCAN_ENTRIES: usize = 100_000;
+const DIRECTORY_SNAPSHOT_STALE: &str =
+    "DIRECTORY_SNAPSHOT_STALE: Folder changed or paging expired. Refresh this folder.";
 fn directory_cache() -> &'static std::sync::Mutex<DirectoryCache> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<DirectoryCache>> =
         std::sync::OnceLock::new();
@@ -472,37 +513,59 @@ fn read_markdown_directory(
     path: &Path,
     excluded: &[String],
     offset: usize,
+    snapshot_id: Option<&str>,
 ) -> Result<MarkdownTreeNode, String> {
-    let modified = fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map_err(|e| format!("Could not inspect this folder: {e}"))?;
-    let key = (path.to_path_buf(), excluded.to_vec());
-    if offset > 0 {
-        if let Some(snapshot) = directory_cache()
-            .lock()
-            .map_err(|e| e.to_string())?
-            .get(&key)
-        {
-            if snapshot.modified != modified {
-                return Err(
-                    "Folder changed. Refresh the folder before loading more entries.".into(),
-                );
-            }
-            if snapshot.created.elapsed() < std::time::Duration::from_secs(30) {
-                return Ok(directory_page(path, &snapshot.children, offset));
-            }
-        }
-    }
-    let mut children = Vec::new();
-    let entries =
-        fs::read_dir(path).map_err(|error| format!("Could not read this folder: {error}"))?;
+    read_directory_with_cache(path, excluded, offset, snapshot_id, directory_cache())
+}
 
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("Could not read a folder entry: {error}"))?;
-        let entry_path = entry.path();
+fn read_directory_with_cache(
+    path: &Path,
+    excluded: &[String],
+    offset: usize,
+    snapshot_id: Option<&str>,
+    cache: &std::sync::Mutex<DirectoryCache>,
+) -> Result<MarkdownTreeNode, String> {
+    let modified = directory_modified(path)?;
+    if offset > 0 {
+        let id = snapshot_id.ok_or(DIRECTORY_SNAPSHOT_STALE)?;
+        let mut cache = cache.lock().map_err(|e| e.to_string())?;
+        let snapshot = cache.get_mut(id).ok_or(DIRECTORY_SNAPSHOT_STALE)?;
+        if snapshot.path != path
+            || snapshot.excluded != excluded
+            || snapshot.modified != modified
+            || snapshot.used.elapsed() >= std::time::Duration::from_secs(30)
+            || offset % DIRECTORY_PAGE_SIZE != 0
+            || offset >= snapshot.children.len()
+        {
+            return Err(DIRECTORY_SNAPSHOT_STALE.into());
+        }
+        snapshot.used = std::time::Instant::now();
+        return Ok(directory_page(
+            path,
+            &snapshot.children,
+            offset,
+            Some(id),
+            snapshot.modified,
+        ));
+    }
+    // Serialize scans only, independently of save/settings lanes. Cache hits do
+    // not take this guard; at most one bounded sort workspace is live at once.
+    static SCAN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _scan = SCAN.lock().map_err(|e| e.to_string())?;
+    let mut children = Vec::new();
+    let mut bytes = path.as_os_str().len() + excluded.iter().map(|s| s.len()).sum::<usize>() + 256;
+    let entries = fs::read_dir(path).map_err(|e| format!("Could not read this folder: {e}"))?;
+    for (index, entry) in entries.enumerate() {
+        if index >= DIRECTORY_SCAN_ENTRIES {
+            return Err(
+                "DIRECTORY_ENTRY_LIMIT: Folder exceeds the 100,000-entry browsing limit. Open a smaller subfolder.".into(),
+            );
+        }
+        let entry = entry.map_err(|e| format!("Could not read a folder entry: {e}"))?;
         let file_type = entry
             .file_type()
-            .map_err(|error| format!("Could not inspect a folder entry: {error}"))?;
+            .map_err(|e| format!("Could not inspect a folder entry: {e}"))?;
+        let entry_path = entry.path();
         if file_type.is_dir() {
             if excluded
                 .iter()
@@ -510,56 +573,96 @@ fn read_markdown_directory(
             {
                 continue;
             }
-            children.push(MarkdownTreeNode {
-                path: entry_path.to_string_lossy().into_owned(),
-                name: entry.file_name().to_string_lossy().into_owned(),
-                is_directory: true,
-                children: Vec::new(),
-                next_offset: None,
-            });
-        } else if file_type.is_file() && is_markdown_path(&entry_path) {
-            children.push(MarkdownTreeNode {
-                path: entry_path.to_string_lossy().into_owned(),
-                name: entry.file_name().to_string_lossy().into_owned(),
-                is_directory: false,
-                children: Vec::new(),
-                next_offset: None,
-            });
+        } else if !file_type.is_file() || !is_markdown_path(&entry_path) {
+            continue;
         }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let child = DirectoryEntry {
+            path: entry_path.to_string_lossy().into_owned(),
+            lower_name: name.to_lowercase(),
+            name,
+            is_directory: file_type.is_dir(),
+        };
+        // Includes all retained strings, entry storage and conservative Vec slack.
+        bytes += 2 * std::mem::size_of::<DirectoryEntry>()
+            + child.path.capacity()
+            + child.name.capacity()
+            + child.lower_name.capacity();
+        if bytes > DIRECTORY_SCAN_BYTES {
+            return Err(
+                "DIRECTORY_BYTE_LIMIT: Folder exceeds the 8 MiB browsing snapshot limit. Open a smaller subfolder."
+                    .into(),
+            );
+        }
+        children.push(child);
     }
-    children.sort_by(|left, right| {
+    children.sort_unstable_by(|left, right| {
         right
             .is_directory
             .cmp(&left.is_directory)
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.lower_name.cmp(&right.lower_name))
+            .then_with(|| left.name.cmp(&right.name))
     });
-    if children.len() <= 10000 {
-        let mut cache = directory_cache().lock().map_err(|e| e.to_string())?;
-        if cache.len() >= 8 {
-            if let Some(oldest) = cache
-                .iter()
-                .min_by_key(|(_, value)| value.created)
-                .map(|(key, _)| key.clone())
-            {
-                cache.remove(&oldest);
-            }
-        }
-        cache.insert(
-            key,
-            DirectorySnapshot {
-                modified,
-                created: std::time::Instant::now(),
-                children: children.clone(),
-            },
-        );
+    if directory_modified(path)? != modified {
+        return Err(DIRECTORY_SNAPSHOT_STALE.into());
     }
-    Ok(directory_page(path, &children, offset))
+    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = NEXT_ID
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        .to_string();
+    let result = directory_page(path, &children, 0, Some(&id), modified);
+    let mut cache = cache.lock().map_err(|e| e.to_string())?;
+    insert_directory_snapshot(
+        &mut cache,
+        id,
+        DirectorySnapshot {
+            path: path.to_owned(),
+            excluded: excluded.to_vec(),
+            modified,
+            used: std::time::Instant::now(),
+            bytes,
+            children,
+        },
+    );
+    Ok(result)
 }
 
-fn directory_page(path: &Path, children: &[MarkdownTreeNode], offset: usize) -> MarkdownTreeNode {
+fn insert_directory_snapshot(cache: &mut DirectoryCache, id: String, snapshot: DirectorySnapshot) {
+    cache.retain(|_, snapshot| snapshot.used.elapsed() < std::time::Duration::from_secs(30));
+    while cache.len() >= 8
+        || cache.values().map(|s| s.bytes).sum::<usize>() + snapshot.bytes > DIRECTORY_CACHE_BYTES
+    {
+        let oldest = cache
+            .iter()
+            .min_by_key(|(_, s)| s.used)
+            .map(|(key, _)| key.clone());
+        if let Some(oldest) = oldest {
+            cache.remove(&oldest);
+        } else {
+            break;
+        }
+    }
+    cache.insert(id, snapshot);
+}
+
+fn directory_modified(path: &Path) -> Result<SystemTime, String> {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_err(|e| format!("Could not inspect this folder: {e}"))
+}
+
+fn directory_page(
+    path: &Path,
+    children: &[DirectoryEntry],
+    offset: usize,
+    snapshot_id: Option<&str>,
+    modified: SystemTime,
+) -> MarkdownTreeNode {
     MarkdownTreeNode {
         next_offset: (offset + DIRECTORY_PAGE_SIZE < children.len())
             .then_some(offset + DIRECTORY_PAGE_SIZE),
+        snapshot_id: snapshot_id.map(str::to_owned),
+        directory_version: Some(directory_version(modified)),
         path: path.to_string_lossy().into_owned(),
         name: path
             .file_name()
@@ -571,7 +674,15 @@ fn directory_page(path: &Path, children: &[MarkdownTreeNode], offset: usize) -> 
             .iter()
             .skip(offset)
             .take(DIRECTORY_PAGE_SIZE)
-            .cloned()
+            .map(|entry| MarkdownTreeNode {
+                path: entry.path.clone(),
+                name: entry.name.clone(),
+                is_directory: entry.is_directory,
+                children: Vec::new(),
+                next_offset: None,
+                snapshot_id: None,
+                directory_version: None,
+            })
             .collect(),
     }
 }
@@ -722,7 +833,8 @@ mod tests {
         LineEnding,
     };
     use std::{
-        fs,
+        fs::{self, File},
+        path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -918,7 +1030,7 @@ mod tests {
         fs::write(directory.join("assets/image.png"), "not an image").unwrap();
         fs::write(directory.join("readme.txt"), "not markdown").unwrap();
 
-        let tree = read_markdown_directory(&directory, &["target".into()], 0).unwrap();
+        let tree = read_markdown_directory(&directory, &["target".into()], 0, None).unwrap();
 
         assert_eq!(tree.children.len(), 3);
         assert!(tree.children.iter().any(|child| child.name == "note.md"));
@@ -928,7 +1040,7 @@ mod tests {
             .find(|child| child.name == "nested")
             .unwrap();
         assert!(nested.children.is_empty());
-        let nested = read_markdown_directory(&directory.join("nested"), &[], 0).unwrap();
+        let nested = read_markdown_directory(&directory.join("nested"), &[], 0, None).unwrap();
         assert_eq!(nested.children[0].name, "plan.markdown");
         assert!(tree.children.iter().any(|child| child.name == "assets"));
         fs::remove_dir_all(directory).unwrap();
@@ -948,14 +1060,24 @@ mod tests {
             fs::write(directory.join(format!("{index:04}.md")), "# Note").unwrap();
         }
         let excluded = vec!["target".to_owned()];
-        let first = read_markdown_directory(&directory, &excluded, 0).unwrap();
+        let first = read_markdown_directory(&directory, &excluded, 0, None).unwrap();
         assert_eq!(first.children.len(), 200);
         assert_eq!(first.next_offset, Some(200));
-        let second =
-            read_markdown_directory(&directory, &excluded, first.next_offset.unwrap()).unwrap();
+        let second = read_markdown_directory(
+            &directory,
+            &excluded,
+            first.next_offset.unwrap(),
+            first.snapshot_id.as_deref(),
+        )
+        .unwrap();
         assert_eq!(second.children[0].name, "0200.md");
-        let third =
-            read_markdown_directory(&directory, &excluded, second.next_offset.unwrap()).unwrap();
+        let third = read_markdown_directory(
+            &directory,
+            &excluded,
+            second.next_offset.unwrap(),
+            second.snapshot_id.as_deref(),
+        )
+        .unwrap();
         assert_eq!(third.children.len(), 50);
         assert_eq!(third.next_offset, None);
         fs::write(directory.join("new.md"), "# Added").unwrap();
@@ -965,13 +1087,182 @@ mod tests {
             .unwrap()
             .set_modified(now)
             .unwrap();
-        assert!(read_markdown_directory(&directory, &excluded, 200)
-            .unwrap_err()
-            .contains("Folder changed"));
-        let fresh = read_markdown_directory(&directory, &excluded, 0).unwrap();
+        assert!(
+            read_markdown_directory(&directory, &excluded, 200, first.snapshot_id.as_deref())
+                .unwrap_err()
+                .contains("Folder changed")
+        );
+        let fresh = read_markdown_directory(&directory, &excluded, 0, None).unwrap();
         assert_eq!(fresh.children.len(), 200);
-        assert!(read_markdown_directory(&directory.join("missing"), &excluded, 0).is_err());
+        assert!(read_markdown_directory(&directory.join("missing"), &excluded, 0, None).is_err());
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    fn paging_fixture(label: &str, count: usize) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "milo-snapshot-{label}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        for index in 0..count {
+            fs::write(path.join(format!("{index:05}.md")), "").unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn directory_snapshot_handles_more_than_ten_thousand_entries_without_rescanning() {
+        let path = paging_fixture("large", 10_050);
+        let cache = std::sync::Mutex::new(super::DirectoryCache::new());
+        let first = super::read_directory_with_cache(&path, &[], 0, None, &cache).unwrap();
+        let original_modified = fs::metadata(&path).unwrap().modified().unwrap();
+        // Even an undetected/coarse-mtime change cannot turn an old offset into
+        // a slice of a newly scanned list: the original snapshot is immutable.
+        fs::write(path.join("00000-before.md"), "").unwrap();
+        File::open(&path)
+            .unwrap()
+            .set_modified(original_modified)
+            .unwrap();
+        let second =
+            super::read_directory_with_cache(&path, &[], 200, first.snapshot_id.as_deref(), &cache)
+                .unwrap();
+        assert_eq!(second.children[0].name, "00200.md");
+        assert_eq!(second.snapshot_id, first.snapshot_id);
+        assert_eq!(
+            cache
+                .lock()
+                .unwrap()
+                .values()
+                .next()
+                .unwrap()
+                .children
+                .len(),
+            10_050
+        );
+        let refreshed = super::read_directory_with_cache(&path, &[], 0, None, &cache).unwrap();
+        assert_ne!(refreshed.snapshot_id, first.snapshot_id);
+        let old =
+            super::read_directory_with_cache(&path, &[], 400, first.snapshot_id.as_deref(), &cache)
+                .unwrap();
+        let new = super::read_directory_with_cache(
+            &path,
+            &[],
+            200,
+            refreshed.snapshot_id.as_deref(),
+            &cache,
+        )
+        .unwrap();
+        assert_eq!(old.children[0].name, "00400.md");
+        assert_eq!(new.children[0].name, "00199.md");
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn directory_snapshot_rejects_eviction_expiry_wrong_scope_and_missing_tokens() {
+        let path = paging_fixture("expiry", 450);
+        let cache = std::sync::Mutex::new(super::DirectoryCache::new());
+        let first = super::read_directory_with_cache(&path, &[], 0, None, &cache).unwrap();
+        let id = first.snapshot_id.as_deref();
+        assert!(
+            super::read_directory_with_cache(&path, &[], 200, None, &cache)
+                .unwrap_err()
+                .starts_with("DIRECTORY_SNAPSHOT_STALE:")
+        );
+        assert!(
+            super::read_directory_with_cache(&path, &["target".into()], 200, id, &cache).is_err()
+        );
+        assert!(super::read_directory_with_cache(&path, &[], usize::MAX, id, &cache).is_err());
+        fs::create_dir(path.join("other")).unwrap();
+        let modified = cache.lock().unwrap().get(id.unwrap()).unwrap().modified;
+        File::open(&path).unwrap().set_modified(modified).unwrap();
+        File::open(path.join("other"))
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+        assert!(
+            super::read_directory_with_cache(&path.join("other"), &[], 200, id, &cache).is_err()
+        );
+        cache.lock().unwrap().get_mut(id.unwrap()).unwrap().used -=
+            std::time::Duration::from_secs(31);
+        assert!(super::read_directory_with_cache(&path, &[], 200, id, &cache).is_err());
+        let fresh = super::read_directory_with_cache(&path, &[], 0, None, &cache).unwrap();
+        for _ in 0..8 {
+            super::read_directory_with_cache(&path, &[], 0, None, &cache).unwrap();
+        }
+        assert_eq!(cache.lock().unwrap().len(), 8);
+        assert!(!cache
+            .lock()
+            .unwrap()
+            .contains_key(fresh.snapshot_id.as_ref().unwrap()));
+        let count = cache.lock().unwrap().len();
+        assert!(super::read_directory_with_cache(
+            &path,
+            &[],
+            200,
+            fresh.snapshot_id.as_deref(),
+            &cache
+        )
+        .unwrap_err()
+        .starts_with("DIRECTORY_SNAPSHOT_STALE:"));
+        assert_eq!(
+            cache.lock().unwrap().len(),
+            count,
+            "an evicted continuation must not scan/insert a replacement list"
+        );
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn validates_listing_metadata_after_paging_cache_eviction_and_detects_change_or_deletion() {
+        let path = paging_fixture("validation", 1);
+        let cache = std::sync::Mutex::new(super::DirectoryCache::new());
+        let first = super::read_directory_with_cache(&path, &[], 0, None, &cache).unwrap();
+        let version = first.directory_version.unwrap();
+        cache.lock().unwrap().clear();
+        let validate = || {
+            tauri::async_runtime::block_on(super::validate_markdown_directory(
+                path.to_string_lossy().into_owned(),
+                version.clone(),
+            ))
+        };
+        assert!(
+            validate().unwrap(),
+            "cache eviction must not invalidate unchanged cached rows"
+        );
+        fs::write(path.join("new.md"), "").unwrap();
+        File::open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() + std::time::Duration::from_secs(2))
+            .unwrap();
+        assert!(!validate().unwrap());
+        fs::remove_dir_all(&path).unwrap();
+        assert!(validate().is_err());
+    }
+
+    #[test]
+    fn directory_snapshot_byte_budget_evicts_oldest_without_exceeding_limits() {
+        let mut cache = super::DirectoryCache::new();
+        for index in 0..4 {
+            super::insert_directory_snapshot(
+                &mut cache,
+                index.to_string(),
+                super::DirectorySnapshot {
+                    path: PathBuf::from("/synthetic"),
+                    excluded: vec![],
+                    modified: SystemTime::now(),
+                    used: std::time::Instant::now(),
+                    bytes: super::DIRECTORY_SCAN_BYTES,
+                    children: vec![],
+                },
+            );
+            assert!(cache.values().map(|s| s.bytes).sum::<usize>() <= super::DIRECTORY_CACHE_BYTES);
+        }
+        assert_eq!(cache.len(), 2);
+        assert!(!cache.contains_key("0"));
+        assert!(cache.contains_key("3"));
     }
 
     #[test]

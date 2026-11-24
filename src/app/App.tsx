@@ -30,7 +30,9 @@ import {
 } from 'react'
 
 import { ApplicationMoreMenu } from '../components/ApplicationMoreMenu'
+import { directoryBrowseError } from '../file-system/directoryBrowseError'
 import { FileSidebar } from '../components/FileSidebar'
+import { SidebarStateStore, directoryRootPreview } from '../components/sidebarState'
 import { IconButton } from '../components/IconButton'
 import { ModeSwitch } from '../components/ModeSwitch'
 import { OutlineToggle } from '../components/OutlineToggle'
@@ -173,8 +175,10 @@ export function App() {
   const navigationToken = useRef(0)
   const quickReturnFocus = useRef<HTMLElement | null>(null)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [sidebarStateStore] = useState(() => new SidebarStateStore())
   const [folderTree, setFolderTree] = useState<MarkdownTreeNode | null>(null)
   const [folderReload, setFolderReload] = useState(0)
+  const previousFolderReload = useRef(0)
   const [folderError, setFolderError] = useState<string | null>(null)
   const [startupSessionRestored, setStartupSessionRestored] = useState(false)
   const [focusMode, setFocusMode] = useState(false)
@@ -479,26 +483,46 @@ export function App() {
       return
     }
     let disposed = false
+    const force = previousFolderReload.current !== folderReload
+    previousFolderReload.current = folderReload
+    const viewState = sidebarStateStore.folder(settings.currentFolder)
+    const showExcluded = viewState.showExcluded
+    const cached = sidebarStateStore.listing(
+      viewState,
+      settings.currentFolder,
+      viewState.showExcluded,
+    )
     setFolderError(null)
+    if (cached && !force) {
+      setFolderTree((current) =>
+        current?.path === settings.currentFolder ? current : directoryRootPreview(cached.page),
+      )
+      return
+    }
     setFolderTree(null)
-    void browseMarkdownFolder(settings.currentFolder)
+    void browseMarkdownFolder(settings.currentFolder, ...(showExcluded ? [true] : []))
       .then((tree) => {
         if (!disposed) {
           setFolderTree(tree)
+          sidebarStateStore.remember(viewState, tree.path, showExcluded, {
+            page: tree,
+            error: null,
+            failedOffset: null,
+          })
           setFolderError(null)
         }
       })
       .catch((reason) => {
         if (!disposed) {
           setFolderError(
-            reason instanceof Error && reason.message ? reason.message : copy.folderBrowseFailed,
+            reason instanceof Error ? reason.message : String(reason ?? copy.folderBrowseFailed),
           )
         }
       })
     return () => {
       disposed = true
     }
-  }, [copy.folderBrowseFailed, folderReload, settings.currentFolder])
+  }, [copy.folderBrowseFailed, folderReload, settings.currentFolder, sidebarStateStore])
 
   useEffect(() => {
     const path = session.document.path
@@ -813,6 +837,7 @@ export function App() {
           keyboardHint={copy.quickOpenKeys}
           openFailed={copy.quickOpeningFailed}
           scanFailed={copy.quickScanFailed}
+          formatScanError={(reason) => directoryBrowseError(reason, copy.sidebar)}
           partialSearch={copy.quickPartialSearch}
           cancelLabel={copy.editor.cancel}
           onOpen={session.openDocumentAtPath}
@@ -1134,6 +1159,7 @@ export function App() {
       <section inert={closeBlocksWorkspace} className="app-workspace">
         {sidebarVisible ? (
           <FileSidebar
+            stateStore={sidebarStateStore}
             copy={copy.sidebar}
             folder={settings.currentFolder}
             activeFile={session.document.path}
@@ -1159,7 +1185,7 @@ export function App() {
         ) : null}
         {folderError && !sidebarVisible ? (
           <div className="folder-error" role="status">
-            {folderError}
+            {directoryBrowseError(folderError, copy.sidebar)}
             <button
               className="action-button"
               type="button"

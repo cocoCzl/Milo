@@ -21,6 +21,7 @@ export function QuickOpen({
   keyboardHint,
   openFailed,
   scanFailed,
+  formatScanError,
   partialSearch,
   cancelLabel,
   onClose,
@@ -38,6 +39,7 @@ export function QuickOpen({
   keyboardHint: string
   openFailed: string
   scanFailed: string
+  formatScanError?: (reason: unknown) => string
   partialSearch: string
   cancelLabel: string
   onClose: () => void
@@ -221,7 +223,7 @@ export function QuickOpen({
             <div className="quick-open__error" role="alert">
               <span>
                 {error.kind === 'scan'
-                  ? `${scanFailed} · ${error.message}`
+                  ? `${scanFailed} · ${formatScanError ? formatScanError(error.message) : error.message}`
                   : `${openFailed}: ${error.path}`}
               </span>
               <button

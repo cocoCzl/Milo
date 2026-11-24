@@ -7,20 +7,21 @@ try {
   await p.evaluate(() => {
     const t = window.__miloOutlineTest
     t.browse = async ({ path, offset }) => {
-      if (path === '/test' && !offset)
-        return {
-          children: [
-            { path: '/test/无权限', name: '无权限', isDirectory: true },
-            { path: '/test/研究笔记', name: '研究笔记', isDirectory: true },
-            { path: '/test/归档', name: '归档', isDirectory: true },
-          ],
-          nextOffset: null,
-        }
-      if (path === '/test/无权限') throw Error('权限不足')
-      return {
-        children: [{ path: `${path}/同名文档.md`, name: '同名文档.md', isDirectory: false }],
+      const tree = (children) => ({
+        path,
+        name: path.split('/').at(-1),
+        isDirectory: true,
+        children: children.map((child) => ({ ...child, children: [] })),
         nextOffset: null,
-      }
+      })
+      if (path === '/test' && !offset)
+        return tree([
+          { path: '/test/无权限', name: '无权限', isDirectory: true },
+          { path: '/test/研究笔记', name: '研究笔记', isDirectory: true },
+          { path: '/test/归档', name: '归档', isDirectory: true },
+        ])
+      if (path === '/test/无权限') throw Error('权限不足')
+      return tree([{ path: `${path}/同名文档.md`, name: '同名文档.md', isDirectory: false }])
     }
     t.setFile('/test/研究笔记/同名文档.md', '# 目标文档\n\n继续写作。')
     t.setFile('/test/归档/同名文档.md', '# 归档')
@@ -113,11 +114,15 @@ try {
     const t = window.__miloOutlineTest
     t.setFile('/test/A.md', '# A')
     t.setFile('/test/B.md', '# B')
-    t.browse = async () => ({
+    t.browse = async ({ path }) => ({
+      path,
+      name: path.split('/').at(-1),
+      isDirectory: true,
       children: ['A', 'B'].map((n) => ({
         path: `/test/${n}.md`,
         name: `${n}.md`,
         isDirectory: false,
+        children: [],
       })),
       nextOffset: null,
     })
@@ -177,6 +182,7 @@ try {
     await p.getByRole('tab', { name: 'B.md', exact: true }).getAttribute('aria-selected'),
     'true',
   )
+  assert.equal(await p.locator('.folder-error').count(), 0)
   await p.close()
   assert.deepEqual(errors, [])
   console.log(

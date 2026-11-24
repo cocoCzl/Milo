@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import {
   useId,
+  useCallback,
+  useLayoutEffect,
   useRef,
   useState,
   useEffect,
@@ -17,18 +19,28 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 
+import { directoryBrowseError } from '../file-system/directoryBrowseError'
 import { ActionMenu } from './ActionMenu'
 import { IconButton } from './IconButton'
-import { browseMarkdownFolder, type MarkdownTreeNode } from '../file-system/nativeMarkdownFile'
+import { SidebarStateStore, type FolderViewState } from './sidebarState'
+import {
+  browseMarkdownFolder,
+  validateMarkdownDirectory,
+  type MarkdownTreeNode,
+} from '../file-system/nativeMarkdownFile'
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from '../settings/applicationSettings'
 
 type FileSidebarProps = {
   activeFile: string | null
+  stateStore?: SidebarStateStore
   copy: {
     changeFolder: string
     chooseFolder: string
     currentFolder: string
     empty: string
+    pageExpired: string
+    entryLimit: string
+    byteLimit: string
     emptyDirectory: string
     showExcluded: string
     folderActions: string
@@ -65,9 +77,21 @@ type FileSidebarProps = {
   width: number
 }
 
-export function FileSidebar({
+export function FileSidebar(props: FileSidebarProps) {
+  const [localStore] = useState(() => new SidebarStateStore())
+  return (
+    <FileSidebarView
+      key={props.folder ?? ''}
+      {...props}
+      stateStore={props.stateStore ?? localStore}
+    />
+  )
+}
+
+function FileSidebarView({
   activeFile,
   copy,
+  stateStore,
   folder,
   folderError = null,
   onChooseFolder,
@@ -83,11 +107,17 @@ export function FileSidebar({
   recentFolders,
   tree,
   width,
-}: FileSidebarProps) {
-  const [showExcluded, setShowExcluded] = useState(false)
+}: FileSidebarProps & { stateStore: SidebarStateStore }) {
+  const [viewState] = useState(() => stateStore.folder(folder))
+  const [showExcluded, setShowExcluded] = useState(viewState.showExcluded)
   const [refreshVersion, setRefreshVersion] = useState(0)
   const sidebarRef = useRef<HTMLElement>(null)
   const recentSummaryRef = useRef<HTMLElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const ready = !folder || tree?.path === folder
+  useLayoutEffect(() => {
+    if (ready && scrollRef.current) scrollRef.current.scrollTop = viewState.scrollTop
+  }, [viewState, ready])
 
   const commitVisualWidth = (nextWidth: number) => {
     const clampedWidth = Math.min(
@@ -148,7 +178,13 @@ export function FileSidebar({
           <strong>Milo</strong>
         </span>
       </header>
-      <div className="file-sidebar__body">
+      <div
+        className="file-sidebar__body"
+        ref={scrollRef}
+        onScroll={(event) => {
+          if (ready) viewState.scrollTop = event.currentTarget.scrollTop
+        }}
+      >
         <section
           className="file-sidebar__section file-sidebar__workspace"
           aria-label={copy.workspace}
@@ -185,7 +221,10 @@ export function FileSidebar({
                       checked: showExcluded,
                       description: copy.filterDescription,
                       separatorBefore: true,
-                      onSelect: () => setShowExcluded((value) => !value),
+                      onSelect: () => {
+                        viewState.showExcluded = !showExcluded
+                        setShowExcluded(!showExcluded)
+                      },
                     },
                   ]}
                 />
@@ -194,7 +233,7 @@ export function FileSidebar({
           ) : null}
           {folderError ? (
             <p className="file-sidebar__empty-note" role="status">
-              {folderError}
+              {directoryBrowseError(folderError, copy)}
               {onRetryFolder ? (
                 <button className="action-button" type="button" onClick={onRetryFolder}>
                   {copy.retry}
@@ -221,6 +260,8 @@ export function FileSidebar({
                 showExcluded={showExcluded}
                 refreshVersion={refreshVersion}
                 reload={showExcluded}
+                viewState={viewState}
+                stateStore={stateStore}
               />
             </div>
           ) : (
@@ -234,7 +275,12 @@ export function FileSidebar({
           aria-label={copy.recentLabel}
         >
           <div className="file-sidebar__recent-header">
-            <details open={!folder}>
+            <details
+              open={viewState.recentOpen}
+              onToggle={(event) => {
+                viewState.recentOpen = event.currentTarget.open
+              }}
+            >
               <summary ref={recentSummaryRef} className="file-sidebar__section-header">
                 <ChevronRight aria-hidden="true" size={13} />
                 <span>{copy.recent}</span>
@@ -334,13 +380,23 @@ function fileName(path: string) {
 type TreeProps = {
   copy: Pick<
     FileSidebarProps['copy'],
-    'loadMore' | 'retry' | 'refresh' | 'refreshDirectory' | 'loadingFolder' | 'emptyDirectory'
+    | 'loadMore'
+    | 'retry'
+    | 'refresh'
+    | 'refreshDirectory'
+    | 'loadingFolder'
+    | 'emptyDirectory'
+    | 'pageExpired'
+    | 'entryLimit'
+    | 'byteLimit'
   >
   activeFile: string | null
   depth: number
   node: MarkdownTreeNode
   onOpenFile: (path: string) => void
   showExcluded: boolean
+  viewState: FolderViewState
+  stateStore: SidebarStateStore
 }
 
 function DirectoryListing({
@@ -350,47 +406,141 @@ function DirectoryListing({
   depth,
   onOpenFile,
   showExcluded,
+  viewState,
+  stateStore,
   reload = false,
   refreshVersion = 0,
 }: TreeProps & { reload?: boolean; refreshVersion?: number }) {
-  const [page, setPage] = useState(node)
+  const initial = useRef(stateStore.listing(viewState, node.path, showExcluded))
+  const initialContext = useRef({ node, showExcluded, refreshVersion })
+  const [page, setPage] = useState(initial.current?.page ?? node)
+  const pageRef = useRef(page)
+  const showPage = useCallback((next: MarkdownTreeNode) => {
+    pageRef.current = next
+    setPage(next)
+  }, [])
   const [retryVersion, setRetryVersion] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initial.current?.error ?? null)
   const [loading, setLoading] = useState(false)
-  const failedPage = useRef<number | null>(null)
+  const failedPage = useRef<number | null>(initial.current?.failedOffset ?? null)
   const generation = useRef({ value: 0 })
   const previousFilter = useRef(showExcluded)
+  const verify = useCallback(async () => {
+    const current = pageRef.current
+    if (!current.directoryVersion) return
+    const request = generation.current.value
+    try {
+      const valid = await validateMarkdownDirectory(node.path, current.directoryVersion)
+      if (valid || request !== generation.current.value) return
+      throw new Error('DIRECTORY_SNAPSHOT_STALE: Directory changed')
+    } catch (reason) {
+      if (request !== generation.current.value) return
+      // An invalid listing cannot keep deleted/changed rows looking current.
+      generation.current.value++
+      const empty = {
+        ...current,
+        children: [],
+        nextOffset: null,
+        snapshotId: null,
+        directoryVersion: null,
+      }
+      showPage(empty)
+      const message = String(reason)
+      failedPage.current = null
+      setError(message)
+      setLoading(false)
+      stateStore.remember(viewState, node.path, showExcluded, {
+        page: empty,
+        error: message,
+        failedOffset: null,
+      })
+    }
+  }, [node.path, showExcluded, showPage, stateStore, viewState])
+  useEffect(() => {
+    const focus = () => {
+      void verify()
+    }
+    window.addEventListener('focus', focus)
+    return () => window.removeEventListener('focus', focus)
+  }, [verify])
   useEffect(() => {
     const lifetime = generation.current
     const request = ++lifetime.value
     const filterChanged = previousFilter.current !== showExcluded
     previousFilter.current = showExcluded
+    if (
+      initial.current &&
+      node === initialContext.current.node &&
+      showExcluded === initialContext.current.showExcluded &&
+      refreshVersion === initialContext.current.refreshVersion &&
+      retryVersion === 0
+    ) {
+      void verify()
+      return () => {
+        lifetime.value++
+      }
+    }
+    initial.current = undefined
     setError(null)
     failedPage.current = null
-    if (reload || refreshVersion || retryVersion || filterChanged) {
+    // The root request can finish after the user changed the filter while it
+    // was loading. Its data stays bound to the filter captured by App.
+    const wrongFilter = stateStore.listing(viewState, node.path, !showExcluded)?.page === node
+    if (reload || refreshVersion || retryVersion || filterChanged || wrongFilter) {
       setLoading(true)
       void browseMarkdownFolder(
         node.path,
         showExcluded,
-        ...(refreshVersion || retryVersion || filterChanged ? [0] : []),
+        ...(refreshVersion || retryVersion || filterChanged || wrongFilter ? [0] : []),
       )
         .then((result) => {
-          if (lifetime.value === request) setPage(result)
+          if (lifetime.value === request) {
+            showPage(result)
+            stateStore.remember(viewState, node.path, showExcluded, {
+              page: result,
+              error: null,
+              failedOffset: null,
+            })
+          }
         })
         .catch((reason) => {
-          if (lifetime.value === request) setError(String(reason))
+          if (lifetime.value === request) {
+            const message = String(reason)
+            setError(message)
+            stateStore.remember(viewState, node.path, showExcluded, {
+              page: pageRef.current,
+              error: message,
+              failedOffset: null,
+            })
+          }
         })
         .finally(() => {
           if (lifetime.value === request) setLoading(false)
         })
     } else {
-      setPage(node)
+      showPage(node)
+      stateStore.remember(viewState, node.path, showExcluded, {
+        page: node,
+        error: null,
+        failedOffset: null,
+      })
       setLoading(false)
+      void verify()
     }
     return () => {
       lifetime.value++
     }
-  }, [node, reload, showExcluded, refreshVersion, retryVersion])
+  }, [
+    node,
+    reload,
+    showExcluded,
+    refreshVersion,
+    retryVersion,
+    stateStore,
+    viewState,
+    showPage,
+    verify,
+  ])
   const more = async (offset = page.nextOffset ?? 0) => {
     if (loading) return
     const request = ++generation.current.value
@@ -398,21 +548,42 @@ function DirectoryListing({
     setError(null)
     failedPage.current = null
     try {
-      const result = await browseMarkdownFolder(node.path, showExcluded, offset)
-      if (generation.current.value === request)
-        setPage((current) => ({
+      const result = await browseMarkdownFolder(
+        node.path,
+        showExcluded,
+        offset,
+        ...(page.snapshotId ? [page.snapshotId] : []),
+      )
+      if (page.snapshotId && result.snapshotId !== page.snapshotId)
+        throw new Error('DIRECTORY_SNAPSHOT_STALE: Mismatched continuation')
+      if (generation.current.value === request) {
+        const next = {
           ...result,
           children: [
-            ...current.children,
+            ...page.children,
             ...result.children.filter(
-              (child) => !current.children.some((existing) => existing.path === child.path),
+              (child) => !page.children.some((existing) => existing.path === child.path),
             ),
           ],
-        }))
+        }
+        showPage(next)
+        stateStore.remember(viewState, node.path, showExcluded, {
+          page: next,
+          error: null,
+          failedOffset: null,
+        })
+      }
     } catch (reason) {
       if (generation.current.value === request) {
-        failedPage.current = offset
-        setError(String(reason))
+        const stale = String(reason).includes('DIRECTORY_SNAPSHOT_STALE:')
+        failedPage.current = stale ? null : offset
+        const message = String(reason)
+        setError(message)
+        stateStore.remember(viewState, node.path, showExcluded, {
+          page,
+          error: message,
+          failedOffset: failedPage.current,
+        })
       }
     } finally {
       if (generation.current.value === request) setLoading(false)
@@ -429,6 +600,8 @@ function DirectoryListing({
           depth={depth}
           onOpenFile={onOpenFile}
           showExcluded={showExcluded}
+          stateStore={stateStore}
+          viewState={viewState}
         />
       ))}
       {loading ? (
@@ -441,7 +614,7 @@ function DirectoryListing({
       ) : null}
       {error ? (
         <div className="file-sidebar__load-error" role="alert">
-          <span>{error}</span>
+          <span>{directoryBrowseError(error, copy)}</span>
           <button
             className="action-button"
             type="button"
@@ -472,13 +645,33 @@ function DirectoryListing({
   )
 }
 
-function TreeBranch({ copy, activeFile, node, depth, onOpenFile, showExcluded }: TreeProps) {
-  const [expanded, setExpanded] = useState(Boolean(activeFile?.startsWith(`${node.path}/`)))
+function TreeBranch({
+  copy,
+  activeFile,
+  node,
+  depth,
+  onOpenFile,
+  showExcluded,
+  stateStore,
+  viewState,
+}: TreeProps) {
+  const [expanded, setExpanded] = useState(
+    viewState.expanded.get(node.path) ?? Boolean(activeFile?.startsWith(`${node.path}/`)),
+  )
+  const previousActive = useRef(activeFile)
+  const expand = (value: boolean) => {
+    stateStore.expand(viewState, node.path, value)
+    setExpanded(value)
+  }
   const [refreshVersion, setRefreshVersion] = useState(0)
   const id = useId()
   useEffect(() => {
-    if (activeFile?.startsWith(`${node.path}/`)) setExpanded(true)
-  }, [activeFile, node.path])
+    if (previousActive.current !== activeFile && activeFile?.startsWith(`${node.path}/`)) {
+      stateStore.expand(viewState, node.path, true)
+      setExpanded(true)
+    }
+    previousActive.current = activeFile
+  }, [activeFile, node.path, stateStore, viewState])
   if (!node.isDirectory)
     return (
       <button
@@ -503,7 +696,7 @@ function TreeBranch({ copy, activeFile, node, depth, onOpenFile, showExcluded }:
           title={node.path}
           type="button"
           style={{ paddingLeft: 7 + depth * 16 }}
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => expand(!expanded)}
         >
           <ChevronRight
             className="file-sidebar__chevron"
@@ -519,7 +712,7 @@ function TreeBranch({ copy, activeFile, node, depth, onOpenFile, showExcluded }:
           label={copy.refreshDirectory(node.name)}
           title={`${copy.refreshDirectory(node.name)} — ${node.path}`}
           onClick={() => {
-            setExpanded(true)
+            expand(true)
             setRefreshVersion((version) => version + 1)
           }}
         >
@@ -537,6 +730,8 @@ function TreeBranch({ copy, activeFile, node, depth, onOpenFile, showExcluded }:
             showExcluded={showExcluded}
             reload={node.children.length === 0}
             refreshVersion={refreshVersion}
+            stateStore={stateStore}
+            viewState={viewState}
           />
         ) : null}
       </div>

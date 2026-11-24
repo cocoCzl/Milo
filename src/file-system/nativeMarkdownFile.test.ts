@@ -9,6 +9,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn(), save: vi.fn() }))
 
 import {
   ensureMarkdownExtension,
+  browseMarkdownFolder,
   recoverAndReadMarkdownFile,
   writeImageAsset,
   writeMarkdownFile,
@@ -114,5 +115,15 @@ describe('ensureMarkdownExtension', () => {
       'Milo detected an unfinished file recovery state',
     )
     expect(mocks.invoke).toHaveBeenCalledTimes(1)
+  })
+})
+
+it('binds a continuation offset to its opaque native directory snapshot', async () => {
+  await browseMarkdownFolder('/notes', true, 200, 'snapshot-abc')
+  expect(mocks.invoke).toHaveBeenLastCalledWith('browse_markdown_folder', {
+    path: '/notes',
+    excludedNames: [],
+    offset: 200,
+    snapshotId: 'snapshot-abc',
   })
 })

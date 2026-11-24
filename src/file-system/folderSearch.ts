@@ -26,10 +26,16 @@ export async function collectFolderFiles(
     const path = directories.shift()!
     visited++
     let offset = 0
+    let snapshotId: string | null | undefined
     do {
       signal.throwIfAborted()
       try {
-        const page = await browseMarkdownFolder(path, false, offset)
+        const page = await browseMarkdownFolder(
+          path,
+          false,
+          offset,
+          ...(snapshotId ? [snapshotId] : []),
+        )
         signal.throwIfAborted()
         for (const entry of page.children) {
           if (entry.isDirectory) directories.push(entry.path)
@@ -42,6 +48,7 @@ export async function collectFolderFiles(
           if (files.length === 10000) break
         }
         offset = page.nextOffset ?? 0
+        snapshotId = page.snapshotId
         publish?.(snapshot())
       } catch (reason) {
         signal.throwIfAborted()
