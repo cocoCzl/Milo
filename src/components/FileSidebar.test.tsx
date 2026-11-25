@@ -44,7 +44,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={vi.fn()}
@@ -77,7 +76,6 @@ describe('FileSidebar', () => {
         onClearRecent={onClearRecent}
         onOpenFile={onOpenFile}
         onOpenFolder={onOpenFolder}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={onRemoveRecentFile}
         onRemoveRecentFolder={onRemoveRecentFolder}
         onWidthChange={vi.fn()}
@@ -95,8 +93,7 @@ describe('FileSidebar', () => {
     expect(onOpenFolder).not.toHaveBeenCalled()
   })
 
-  it('renders the four-level product navigation and opens existing preferences', () => {
-    const onOpenPreferences = vi.fn()
+  it('keeps folder and recent navigation without a redundant settings entry', () => {
     const { container } = render(
       <FileSidebar
         activeFile="/notes/current/one.md"
@@ -117,7 +114,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={onOpenPreferences}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={vi.fn()}
@@ -129,8 +125,7 @@ describe('FileSidebar', () => {
     const workspace = screen.getByRole('region', { name: 'Folder' })
     expect(workspace).toHaveTextContent('current')
     expect(workspace).toHaveTextContent('one.md')
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    expect(onOpenPreferences).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
   })
 
   it('keeps empty navigation sections structured', () => {
@@ -147,7 +142,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={vi.fn()}
@@ -162,10 +156,10 @@ describe('FileSidebar', () => {
     expect(screen.queryByRole('button', { name: 'Change folder' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Choose folder…' })).toBeVisible()
     expect(workspace).toHaveTextContent('Browse documents in a folder.')
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
   })
 
-  it.each([null, '/notes/current'])('keeps Folder before Recent and Settings for %s', (folder) => {
+  it.each([null, '/notes/current'])('keeps Folder before Recent for %s', (folder) => {
     const onChooseFolder = vi.fn()
     const onOpenFile = vi.fn()
     const onOpenFolder = vi.fn()
@@ -198,7 +192,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={onOpenFile}
         onOpenFolder={onOpenFolder}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={vi.fn()}
@@ -217,7 +210,6 @@ describe('FileSidebar', () => {
       'archive',
       'Remove archive from recent',
       copy.clearRecent,
-      'Settings',
     ])
     // Native buttons stay in their DOM order in sequential keyboard navigation.
     // Verify each control remains focusable rather than hiding or reordering it.
@@ -277,7 +269,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={vi.fn()}
@@ -305,7 +296,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={onWidthChange}
@@ -342,7 +332,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={onWidthChange}
@@ -365,7 +354,6 @@ describe('FileSidebar', () => {
         onClearRecent={vi.fn()}
         onOpenFile={vi.fn()}
         onOpenFolder={vi.fn()}
-        onOpenPreferences={vi.fn()}
         onRemoveRecentFile={vi.fn()}
         onRemoveRecentFolder={vi.fn()}
         onWidthChange={onWidthChange}
@@ -401,7 +389,6 @@ it('keeps folder filtering in a keyboard menu and restores focus on Escape', () 
       onClearRecent={vi.fn()}
       onOpenFile={vi.fn()}
       onOpenFolder={vi.fn()}
-      onOpenPreferences={vi.fn()}
       onRemoveRecentFile={vi.fn()}
       onRemoveRecentFolder={vi.fn()}
       onWidthChange={vi.fn()}
@@ -443,7 +430,6 @@ it.each([true, false])(
           }}
           onOpenFile={open}
           onOpenFolder={open}
-          onOpenPreferences={vi.fn()}
           onRemoveRecentFile={vi.fn()}
           onRemoveRecentFolder={vi.fn()}
           onWidthChange={vi.fn()}

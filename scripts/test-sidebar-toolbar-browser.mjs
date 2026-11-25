@@ -192,7 +192,6 @@ try {
   await p.getByRole('button', { name: '清空最近使用记录', exact: true }).click()
   assert.equal(await p.locator('.file-sidebar__recent details').getAttribute('open'), before)
   await p.keyboard.press('Tab')
-  await p.getByRole('button', { name: '设置', exact: true }).focus()
   await p.getByRole('button', { name: '刷新文件夹', exact: true }).focus()
   await p.getByRole('tooltip', { name: '刷新文件夹', exact: true }).waitFor()
   await p.close()
@@ -303,7 +302,8 @@ try {
     scroll,
   )
   const beforeLocale = await statePage.evaluate(() => window.__miloOutlineTest.browseCalls.length)
-  await statePage.getByRole('button', { name: '设置', exact: true }).click()
+  await statePage.getByRole('button', { name: '更多操作', exact: true }).click()
+  await statePage.getByRole('menuitem', { name: '设置…', exact: true }).click()
   await statePage.getByRole('combobox', { name: '语言', exact: true }).click()
   await statePage.getByRole('option', { name: 'English', exact: true }).click()
   await statePage.getByRole('button', { name: 'Close preferences', exact: true }).click()

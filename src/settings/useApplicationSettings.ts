@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { readableError } from '../lib/readableError'
+import { createSettingsSaveQueue } from './settingsSaveQueue'
 
 import {
   clampDocumentZoom,
@@ -22,16 +23,24 @@ import {
   type StartupSession,
 } from './applicationSettings'
 
+type WorkspaceSettings = Pick<
+  ApplicationSettings,
+  'currentFolder' | 'recentFiles' | 'recentFolders' | 'sidebarVisible' | 'sidebarWidth'
+>
+
 export function useApplicationSettings() {
   const [settings, setSettings] = useState(defaultApplicationSettings)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const settingsRef = useRef(settings)
   const hasLocalUpdateRef = useRef(false)
-  const pendingSaveRef = useRef(Promise.resolve())
-  const saveVersionRef = useRef(0)
-
-  settingsRef.current = settings
+  const [saveQueue] = useState(() =>
+    createSettingsSaveQueue(saveApplicationSettings, (result) => {
+      setSettingsError(
+        result.ok ? null : readableError(result.reason, 'Could not save Milo preferences.'),
+      )
+    }),
+  )
 
   useEffect(() => {
     let disposed = false
@@ -39,7 +48,9 @@ export function useApplicationSettings() {
     void loadApplicationSettings()
       .then((loadedSettings) => {
         if (!disposed && !hasLocalUpdateRef.current) {
-          setSettings(normalizeSettings(loadedSettings))
+          const normalized = normalizeSettings(loadedSettings)
+          settingsRef.current = normalized
+          setSettings(normalized)
         }
         if (!disposed) setIsLoading(false)
       })
@@ -55,25 +66,25 @@ export function useApplicationSettings() {
     }
   }, [])
 
-  const updateSettings = useCallback((update: Partial<ApplicationSettings>) => {
-    const nextSettings = normalizeSettings({ ...settingsRef.current, ...update })
-    const saveVersion = saveVersionRef.current + 1
-
-    hasLocalUpdateRef.current = true
-    saveVersionRef.current = saveVersion
-    settingsRef.current = nextSettings
-    setSettings(nextSettings)
-    setSettingsError(null)
-    pendingSaveRef.current = pendingSaveRef.current
-      .catch(() => undefined)
-      .then(() => saveApplicationSettings(nextSettings))
-      .then(() => undefined)
-      .catch((reason) => {
-        if (saveVersionRef.current === saveVersion) {
-          setSettingsError(readableError(reason, 'Could not save Milo preferences.'))
-        }
+  const updateSettings = useCallback(
+    (
+      update:
+        | Partial<ApplicationSettings>
+        | ((current: ApplicationSettings) => Partial<ApplicationSettings>),
+    ) => {
+      const current = settingsRef.current
+      const nextSettings = normalizeSettings({
+        ...current,
+        ...(typeof update === 'function' ? update(current) : update),
       })
-  }, [])
+      hasLocalUpdateRef.current = true
+      settingsRef.current = nextSettings
+      setSettings(nextSettings)
+      setSettingsError(null)
+      saveQueue.enqueue(nextSettings)
+    },
+    [saveQueue],
+  )
 
   const setAppearance = useCallback(
     (appearance: AppearancePreference) => {
@@ -126,12 +137,9 @@ export function useApplicationSettings() {
 
   const updateWorkspaceSettings = useCallback(
     (
-      update: Partial<
-        Pick<
-          ApplicationSettings,
-          'currentFolder' | 'recentFiles' | 'recentFolders' | 'sidebarVisible' | 'sidebarWidth'
-        >
-      >,
+      update:
+        | Partial<WorkspaceSettings>
+        | ((current: Readonly<ApplicationSettings>) => Partial<WorkspaceSettings>),
     ) => {
       updateSettings(update)
     },
@@ -146,7 +154,7 @@ export function useApplicationSettings() {
   )
 
   return {
-    flushSettings: () => pendingSaveRef.current,
+    flushSettings: saveQueue.flush,
     setAppearance,
     setDocumentZoom,
     setDocumentFontStyle,

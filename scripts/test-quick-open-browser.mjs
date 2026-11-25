@@ -31,8 +31,10 @@ try {
   assert.equal(await p.evaluate(() => window.__miloOutlineTest.pickCalls), 1)
   await p.getByRole('option', { name: '同名文档.md 研究笔记', exact: true }).waitFor()
   await p.locator('.quick-open__partial').waitFor()
+  await p.keyboard.press('Home')
   await p.keyboard.press('ArrowDown')
   await p.keyboard.press('ArrowUp')
+  await p.keyboard.press('ArrowDown')
   assert.equal(
     await p.locator('[role="option"][aria-selected="true"] small').textContent(),
     '研究笔记',

@@ -878,11 +878,13 @@ describe('App', () => {
     expect(document.querySelector('.preferences-dialog__portal')).toBeNull()
   })
 
-  it('opens the same modal preferences from the pinned sidebar footer and restores that trigger', async () => {
+  it('opens preferences from More without a duplicate sidebar settings entry', async () => {
     render(<App />)
 
-    const settingsTrigger = screen.getByRole('button', { name: 'Settings' })
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument()
+    const settingsTrigger = screen.getByRole('button', { name: 'More actions' })
     fireEvent.click(settingsTrigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Settings…' }))
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
     expect(screen.getByRole('dialog', { name: 'Preferences' })).toHaveAttribute(
       'aria-modal',
@@ -892,23 +894,6 @@ describe('App', () => {
     expect(document.querySelector('.application-more-menu__trigger')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Close preferences' }))
     await waitFor(() => expect(settingsTrigger).toHaveFocus())
-  })
-
-  it('opens sidebar preferences above an open outline drawer without changing drawer state', async () => {
-    const { container } = render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'New document' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open outline' }))
-    expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    expect(screen.getByRole('dialog', { name: 'Preferences' })).toBeVisible()
-    expect(container.querySelector('.editor-outline--drawer')).toBeInTheDocument()
-
-    fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Preferences' })).not.toBeInTheDocument(),
-    )
-    expect(screen.getByRole('navigation', { name: 'Outline' })).toBeVisible()
   })
 
   it('keeps an open outline drawer isolated below preferences and restores More focus without changing drawer state', async () => {

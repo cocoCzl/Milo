@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   collectFolderFiles,
   filterFolderFiles,
+  folderCandidates,
+  type FolderSearchBatch,
   type FolderMatch,
 } from '../file-system/folderSearch'
 
@@ -47,7 +49,7 @@ export function QuickOpen({
   onOpen: (path: string, options: { signal: AbortSignal; reportError: false }) => Promise<boolean>
 }) {
   const [query, setQuery] = useState('')
-  const [files, setFiles] = useState<FolderMatch[]>([])
+  const [chunks, setChunks] = useState<FolderMatch[][]>([])
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<QuickOpenError | null>(null)
   const [truncated, setTruncated] = useState(false)
@@ -58,7 +60,6 @@ export function QuickOpen({
   const openRequest = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const returnScroll = useRef(0)
   const opened = useRef(false)
   const focusRestored = useRef(false)
   useEffect(() => {
@@ -70,40 +71,66 @@ export function QuickOpen({
     setError(null)
     setIncomplete(false)
     setTruncated(false)
-    const publish = (result: Awaited<ReturnType<typeof collectFolderFiles>>) => {
+    setChunks([])
+    const batches: FolderMatch[][] = []
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let publishedFiles = false
+    let dirty = false
+    let incomplete = false
+    const commit = () => {
+      timer = undefined
+      if (controller.signal.aborted || !dirty) return
+      // Only copy chunk references. Candidate objects/arrays are immutable.
+      setChunks(batches.slice())
+      setIncomplete(incomplete)
+      publishedFiles = batches.length > 0
+      dirty = false
+    }
+    const publish = (result: FolderSearchBatch) => {
       if (controller.signal.aborted) return
-      setFiles((previous) => {
-        const fresh = new Set(result.files.map((file) => file.path))
-        return [...result.files, ...previous.filter((file) => !fresh.has(file.path))]
-      })
-      setIncomplete(result.incomplete)
+      if (result.files.length) batches.push(result.files)
+      dirty ||= result.files.length > 0 || incomplete !== result.incomplete
+      incomplete = result.incomplete
+      // The first usable batch is immediate; later updates share a short window.
+      if (!publishedFiles) commit()
+      else if (dirty) timer ??= setTimeout(commit, 50)
     }
     void collectFolderFiles(folder, controller.signal, publish)
       .then((result) => {
         if (controller.signal.aborted) return
-        setFiles(result.files)
-        setIncomplete(result.incomplete)
+        clearTimeout(timer)
+        dirty ||= incomplete !== result.incomplete
+        incomplete = result.incomplete
+        commit()
         setTruncated(result.truncated)
         setBusy(false)
       })
       .catch((reason) => {
         if (!controller.signal.aborted) {
+          clearTimeout(timer)
           setError({ kind: 'scan', message: String(reason) })
           setBusy(false)
         }
       })
     return () => {
       controller.abort()
+      clearTimeout(timer)
       openRequest.current?.abort()
     }
   }, [folder, attempt])
-  const matches = useMemo(() => filterFolderFiles(files, query), [files, query])
+  const matches = useMemo(() => filterFolderFiles(folderCandidates(chunks), query), [chunks, query])
   const current = Math.max(
     0,
     matches.findIndex((file) => file.path === selectedPath),
   )
   const selected = matches[current]
-  // A scan appends in traversal order; preserve a path, never an unstable index.
+  const retryScan = () => {
+    setAttempt((n) => n + 1)
+    // The retry button disappears on success; retain a usable keyboard target.
+    inputRef.current?.focus()
+  }
+  // Relevance can reorder streamed results; retain the selected path while it
+  // remains in the best 100, never an unstable index.
   useEffect(() => {
     if (selected) setSelectedPath(selected.path)
   }, [selected])
@@ -140,9 +167,6 @@ export function QuickOpen({
     if (selected)
       document.getElementById(`quick-file-${current}`)?.scrollIntoView?.({ block: 'nearest' })
   }, [current, selected])
-  useEffect(() => {
-    if (listRef.current && returnScroll.current) listRef.current.scrollTop = returnScroll.current
-  }, [files])
   return (
     <Dialog.Root
       open
@@ -179,7 +203,7 @@ export function QuickOpen({
             onChange={(event) => {
               setQuery(event.target.value)
               setSelectedPath(null)
-              returnScroll.current = 0
+              if (listRef.current) listRef.current.scrollTop = 0
             }}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing || event.keyCode === 229) {
@@ -230,7 +254,7 @@ export function QuickOpen({
                 type="button"
                 onClick={() => {
                   if (error.kind === 'open') void open(error.path)
-                  else setAttempt((n) => n + 1)
+                  else retryScan()
                 }}
               >
                 {retry}
@@ -240,7 +264,7 @@ export function QuickOpen({
           {incomplete ? (
             <div className="quick-open__partial" role="status">
               {partialSearch}
-              <button type="button" onClick={() => setAttempt((n) => n + 1)}>
+              <button type="button" onClick={retryScan}>
                 {retry}
               </button>
             </div>
@@ -249,15 +273,7 @@ export function QuickOpen({
             <p role="status">{noResults}</p>
           ) : null}
           {truncated ? <p role="status">{limited}</p> : null}
-          <div
-            ref={listRef}
-            id="quick-files"
-            role="listbox"
-            aria-label={label}
-            onScroll={(event) => {
-              returnScroll.current = event.currentTarget.scrollTop
-            }}
-          >
+          <div ref={listRef} id="quick-files" role="listbox" aria-label={label}>
             {matches.map((file, index) => (
               <button
                 key={file.path}

@@ -529,33 +529,26 @@ export function App() {
     if (lastRecordedRecentPathRef.current === path) return
     lastRecordedRecentPathRef.current = path
     if (!path || settings.recentFiles[0] === path) return
-    updateWorkspaceSettings({
-      currentFolder: settings.currentFolder,
-      recentFiles: [path, ...settings.recentFiles.filter((item) => item !== path)].slice(0, 12),
-      recentFolders: settings.recentFolders,
-      sidebarVisible: settings.sidebarVisible,
-      sidebarWidth: settings.sidebarWidth,
-    })
+    updateWorkspaceSettings((current) => ({
+      recentFiles: [path, ...current.recentFiles.filter((item) => item !== path)].slice(0, 12),
+    }))
   }, [session.document.path, settings, updateWorkspaceSettings])
 
   const clearRecent = () =>
     updateWorkspaceSettings({
-      ...workspaceSettings(settings),
       recentFiles: [],
       recentFolders: [],
     })
 
   const removeRecentFile = (path: string) =>
-    updateWorkspaceSettings({
-      ...workspaceSettings(settings),
-      recentFiles: settings.recentFiles.filter((file) => file !== path),
-    })
+    updateWorkspaceSettings((current) => ({
+      recentFiles: current.recentFiles.filter((file) => file !== path),
+    }))
 
   const removeRecentFolder = (path: string) =>
-    updateWorkspaceSettings({
-      ...workspaceSettings(settings),
-      recentFolders: settings.recentFolders.filter((folder) => folder !== path),
-    })
+    updateWorkspaceSettings((current) => ({
+      recentFolders: current.recentFolders.filter((folder) => folder !== path),
+    }))
 
   const chooseCurrentFolder = async () => {
     const folder = await pickMarkdownFolder()
@@ -589,24 +582,21 @@ export function App() {
   }
 
   const setCurrentFolder = (folder: string) => {
-    updateWorkspaceSettings({
+    updateWorkspaceSettings((current) => ({
       currentFolder: folder,
-      recentFiles: settings.recentFiles,
-      recentFolders: [folder, ...settings.recentFolders.filter((item) => item !== folder)].slice(
+      recentFolders: [folder, ...current.recentFolders.filter((item) => item !== folder)].slice(
         0,
         8,
       ),
       sidebarVisible: true,
-      sidebarWidth: settings.sidebarWidth,
-    })
+    }))
   }
 
   const openSidebarFile = async (path: string) => {
     if (await session.openDocumentAtPath(path)) return
-    updateWorkspaceSettings({
-      ...workspaceSettings(settings),
-      recentFiles: settings.recentFiles.filter((file) => file !== path),
-    })
+    updateWorkspaceSettings((current) => ({
+      recentFiles: current.recentFiles.filter((file) => file !== path),
+    }))
   }
 
   const navigateLink = useCallback(
@@ -718,7 +708,7 @@ export function App() {
         openFolder()
         break
       case 'toggle-sidebar':
-        updateWorkspaceSettings({ sidebarVisible: !settings.sidebarVisible })
+        updateWorkspaceSettings((current) => ({ sidebarVisible: !current.sidebarVisible }))
         break
       case 'toggle-focus-mode':
         toggleFocusMode()
@@ -1038,10 +1028,9 @@ export function App() {
                     : copy.showSidebar
               }
               onClick={() =>
-                updateWorkspaceSettings({
-                  ...workspaceSettings(settings),
-                  sidebarVisible: !settings.sidebarVisible,
-                })
+                updateWorkspaceSettings((current) => ({
+                  sidebarVisible: !current.sidebarVisible,
+                }))
               }
             >
               {sidebarVisible ? (
@@ -1110,10 +1099,9 @@ export function App() {
                 {
                   label: settings.sidebarVisible ? copy.hideSidebar : copy.showSidebar,
                   onSelect: () =>
-                    updateWorkspaceSettings({
-                      ...workspaceSettings(settings),
-                      sidebarVisible: !settings.sidebarVisible,
-                    }),
+                    updateWorkspaceSettings((current) => ({
+                      sidebarVisible: !current.sidebarVisible,
+                    })),
                 },
                 ...(activeTabId !== null && !activeDocumentIsProtected
                   ? [
@@ -1171,14 +1159,9 @@ export function App() {
             onClearRecent={clearRecent}
             onOpenFile={(path) => void openSidebarFile(path)}
             onOpenFolder={setCurrentFolder}
-            onOpenPreferences={() =>
-              openPreferences(document.querySelector<HTMLElement>('.file-sidebar__footer button'))
-            }
             onRemoveRecentFile={removeRecentFile}
             onRemoveRecentFolder={removeRecentFolder}
-            onWidthChange={(sidebarWidth) =>
-              updateWorkspaceSettings({ ...workspaceSettings(settings), sidebarWidth })
-            }
+            onWidthChange={(sidebarWidth) => updateWorkspaceSettings({ sidebarWidth })}
             recentFiles={settings.recentFiles}
             recentFolders={settings.recentFolders}
           />
@@ -1478,16 +1461,4 @@ export function App() {
       ) : null}
     </main>
   )
-}
-
-function workspaceSettings(
-  settings: import('../settings/applicationSettings').ApplicationSettings,
-) {
-  return {
-    currentFolder: settings.currentFolder,
-    recentFiles: settings.recentFiles,
-    recentFolders: settings.recentFolders,
-    sidebarVisible: settings.sidebarVisible,
-    sidebarWidth: settings.sidebarWidth,
-  }
 }

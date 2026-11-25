@@ -88,6 +88,102 @@ describe('useApplicationSettings', () => {
         }),
       ),
     )
+    expect(settingsBoundary.save).toHaveBeenCalledTimes(1)
+  })
+
+  it('merges fields during an active write and flush waits for the newest startup session', async () => {
+    const hook = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+    let release!: () => void
+    settingsBoundary.save.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+    act(() => hook.result.current.setAppearance('dark'))
+    await waitFor(() => expect(settingsBoundary.save).toHaveBeenCalledTimes(1))
+    let flush!: Promise<void>
+    act(() => {
+      flush = hook.result.current.flushSettings()
+      hook.result.current.setLocale('zh-CN')
+      hook.result.current.updateWorkspaceSettings({ sidebarVisible: false })
+      hook.result.current.setStartupSession({
+        activeDocumentPath: '/notes/final.md',
+        openDocumentPaths: ['/notes/final.md'],
+      })
+    })
+    expect(hook.result.current.settings).toMatchObject({
+      appearance: 'dark',
+      locale: 'zh-CN',
+      sidebarVisible: false,
+    })
+    await act(async () => {
+      release()
+      await flush
+    })
+    expect(settingsBoundary.save).toHaveBeenCalledTimes(2)
+    expect(settingsBoundary.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        appearance: 'dark',
+        locale: 'zh-CN',
+        sidebarVisible: false,
+        startupSession: {
+          activeDocumentPath: '/notes/final.md',
+          openDocumentPaths: ['/notes/final.md'],
+        },
+      }),
+    )
+    hook.unmount()
+  })
+
+  it('keeps failed preferences in memory and recovers by choosing the same value again', async () => {
+    const hook = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+    settingsBoundary.save.mockRejectedValueOnce('preferences denied')
+    await act(async () => {
+      hook.result.current.setAppearance('dark')
+      await hook.result.current.flushSettings()
+    })
+    expect(hook.result.current.settings.appearance).toBe('dark')
+    expect(hook.result.current.settingsError).toBe('preferences denied')
+    await act(async () => {
+      hook.result.current.setAppearance('dark')
+      await hook.result.current.flushSettings()
+    })
+    expect(hook.result.current.settingsError).toBeNull()
+    expect(settingsBoundary.save).toHaveBeenCalledTimes(2)
+    expect(settingsBoundary.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ appearance: 'dark' }),
+    )
+    hook.unmount()
+  })
+
+  it('derives consecutive workspace changes from the latest state before React rerenders', async () => {
+    const hook = renderHook(() => useApplicationSettings())
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+    await act(async () => {
+      hook.result.current.updateWorkspaceSettings({ sidebarWidth: 280, recentFiles: ['/a.md'] })
+      hook.result.current.updateWorkspaceSettings((current) => ({
+        sidebarVisible: !current.sidebarVisible,
+      }))
+      hook.result.current.updateWorkspaceSettings((current) => ({
+        recentFiles: ['/b.md', ...current.recentFiles],
+      }))
+      hook.result.current.updateWorkspaceSettings((current) => ({
+        sidebarVisible: !current.sidebarVisible,
+      }))
+      await hook.result.current.flushSettings()
+    })
+    expect(settingsBoundary.save).toHaveBeenCalledOnce()
+    expect(settingsBoundary.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sidebarWidth: 280,
+        sidebarVisible: true,
+        recentFiles: ['/b.md', '/a.md'],
+      }),
+    )
+    hook.unmount()
   })
 
   it('persists reading preferences independently from document content state', async () => {

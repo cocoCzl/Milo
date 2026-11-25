@@ -57,6 +57,34 @@ async function open({
       }
       window.__miloListenerCounts = () =>
         Object.fromEntries([...registrations].map(([key, values]) => [key, values.size]))
+      // Optional benchmark-only observer: distinguish candidate publications
+      // from text-input rerenders and visible-list changes after ranking.
+      window.__miloQuickCommits = []
+      let previousCandidates
+      window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+        supportsFiber: true,
+        renderers: new Map(),
+        inject(renderer) {
+          this.renderers.set(1, renderer)
+          return 1
+        },
+        onCommitFiberUnmount() {},
+        onCommitFiberRoot(_id, root) {
+          const visit = (fiber) => {
+            if (!fiber) return
+            if (fiber.type?.name === 'QuickOpen') {
+              const candidates = fiber.memoizedState?.next?.memoizedState
+              if (candidates?.length && candidates !== previousCandidates) {
+                window.__miloQuickCommits.push(performance.now())
+                previousCandidates = candidates
+              }
+            }
+            visit(fiber.child)
+            visit(fiber.sibling)
+          }
+          visit(root.current)
+        },
+      }
     })
   page.on('pageerror', (error) => {
     errors.push(error.message)
@@ -80,6 +108,7 @@ async function open({
         writes: [],
         reads: [],
         browseCalls: [],
+        settingsWrites: [],
         pickCalls: 0,
         pickedFolder: '/test',
         profiles: [],
@@ -173,7 +202,10 @@ async function open({
             cmd === 'complete_close'
           )
             return null
-          if (cmd === 'save_application_settings') return args.settings
+          if (cmd === 'save_application_settings') {
+            test.settingsWrites.push(args.settings)
+            return test.saveSettings ? test.saveSettings(args.settings) : args.settings
+          }
           if (cmd === 'read_markdown_document') {
             test.reads.push(args.path)
             if (test.read) return test.read(args.path)

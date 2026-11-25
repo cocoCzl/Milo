@@ -92,6 +92,7 @@ it('retries root scanning without opening a file', async () => {
   await screen.findByRole('option')
   expect(browse).toHaveBeenCalledTimes(2)
   expect(p.onOpen).not.toHaveBeenCalled()
+  expect(screen.getByRole('combobox')).toHaveFocus()
 })
 it('opens the first page before the delayed second page and ignores composition Enter', async () => {
   let finish!: (page: unknown) => void
@@ -165,4 +166,82 @@ it('ignores an old root scan after switching to a different root', async () => {
   await act(async () => finish({ children: [file('/root/旧结果.md')], nextOffset: null }))
   expect(screen.queryByRole('option', { name: /旧结果/ })).not.toBeInTheDocument()
   expect(screen.getAllByRole('option')).toHaveLength(1)
+})
+
+it('keeps a keyboard-selected path as more relevant streamed files move its index', async () => {
+  let next!: (page: unknown) => void
+  browse
+    .mockResolvedValueOnce({
+      children: [file('/root/target-one.md'), file('/root/target-two.md')],
+      nextOffset: 200,
+      snapshotId: 'same',
+    })
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          next = resolve
+        }),
+    )
+  const p = props()
+  render(<QuickOpen {...p} />)
+  const input = screen.getByRole('combobox')
+  await screen.findByRole('option', { name: /target-one/ })
+  fireEvent.change(input, { target: { value: 'target' } })
+  fireEvent.keyDown(input, { key: 'ArrowDown' })
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('target-two.md')
+  await act(async () =>
+    next({ children: [file('/root/target.md')], nextOffset: null, snapshotId: 'same' }),
+  )
+  expect(screen.getAllByRole('option')[0]).toHaveTextContent('target.md')
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('target-two.md')
+  expect(input).toHaveFocus()
+  fireEvent.keyDown(input, { key: 'Enter' })
+  await waitFor(() =>
+    expect(p.onOpen).toHaveBeenCalledWith('/root/target-two.md', expect.anything()),
+  )
+})
+
+it('replaces partial-scan candidates on retry instead of keeping removed paths', async () => {
+  browse
+    .mockResolvedValueOnce({ children: [file('/root/old.md')], nextOffset: 200 })
+    .mockRejectedValueOnce('denied')
+    .mockResolvedValueOnce({ children: [file('/root/new.md')], nextOffset: null })
+  render(<QuickOpen {...props()} />)
+  await screen.findByText('部分位置未能搜索')
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await screen.findByRole('option', { name: /new.md/ })
+  expect(screen.queryByRole('option', { name: /old.md/ })).not.toBeInTheDocument()
+  expect(screen.queryByText('部分位置未能搜索')).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox')).toHaveFocus()
+})
+
+it('does not publish a coalesced batch or late page after unmount/cancellation', async () => {
+  let second!: (page: unknown) => void
+  let third!: (page: unknown) => void
+  browse
+    .mockResolvedValueOnce({ children: [file('/root/first.md')], nextOffset: 200 })
+    .mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          second = r
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          third = r
+        }),
+    )
+  const p = props()
+  const view = render(<QuickOpen {...p} />)
+  await screen.findByRole('option')
+  await act(async () => second({ children: [file('/root/queued.md')], nextOffset: 400 }))
+  expect(screen.queryByRole('option', { name: /queued.md/ })).not.toBeInTheDocument()
+  view.unmount()
+  await act(async () => {
+    third({ children: [file('/root/late.md')], nextOffset: null })
+    await new Promise((r) => setTimeout(r, 60))
+  })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(p.onOpen).not.toHaveBeenCalled()
 })

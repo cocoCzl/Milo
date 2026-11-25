@@ -32,7 +32,6 @@ const props = {
   onClearRecent: vi.fn(),
   onOpenFile: vi.fn(),
   onOpenFolder: vi.fn(),
-  onOpenPreferences: vi.fn(),
   onRemoveRecentFile: vi.fn(),
   onRemoveRecentFolder: vi.fn(),
   onWidthChange: vi.fn(),

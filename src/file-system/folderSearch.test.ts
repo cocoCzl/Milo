@@ -70,3 +70,52 @@ it('continues other directories after a later page fails and reports incomplete 
   expect(result.files.map((f) => f.name)).toEqual(['first.md', '目标.md'])
   expect(publish).toHaveBeenCalledTimes(3)
 })
+
+const match = (relativePath: string) => ({
+  path: `/root/${relativePath}`,
+  relativePath,
+  name: relativePath.split('/').at(-1)!,
+})
+
+it('ranks the best 100 from all scanned candidates, with deterministic path ties', () => {
+  const weak = Array.from({ length: 180 }, (_, i) => match(`target/${i}.md`))
+  const best = [
+    match('z/target.md'),
+    match('a/target.markdown'),
+    match('target-prefix.md'),
+    match('my-target.md'),
+  ]
+  const ranked = filterFolderFiles([...weak, ...best], 'TARGET')
+  expect(ranked).toHaveLength(100)
+  expect(ranked.slice(0, 4)).toEqual([best[1], best[0], best[2], best[3]])
+  expect(filterFolderFiles([...best, ...weak].reverse(), 'target')).toEqual(ranked)
+  expect(filterFolderFiles(best, 'target.md')[0]).toBe(best[0])
+})
+
+it('preserves multiword path matching, preferring all filename words over path-only matches', () => {
+  const paths = [match('draft/notes.md'), match('notes-draft.md'), match('draft notes.md')]
+  expect(filterFolderFiles(paths, ' DRAFT   notes ')).toEqual([paths[2], paths[1], paths[0]])
+  expect(filterFolderFiles(paths, 'notes draft')).toEqual([paths[2], paths[1], paths[0]])
+})
+
+it('publishes immutable deltas, deduplicates once and keeps snapshot continuations', async () => {
+  const node = (path: string) => ({ ...match(path), isDirectory: false, children: [] })
+  browse
+    .mockResolvedValueOnce({
+      children: [node('one.md')],
+      nextOffset: 200,
+      snapshotId: 'snap',
+    })
+    .mockResolvedValueOnce({
+      children: [node('one.md'), node('two.md')],
+      nextOffset: null,
+      snapshotId: 'snap',
+    })
+  const batches: string[][] = []
+  const result = await collectFolderFiles('/root', new AbortController().signal, (batch) => {
+    batches.push(batch.files.map((f) => f.name))
+  })
+  expect(batches).toEqual([['one.md'], ['two.md']])
+  expect(result.files.map((f) => f.name)).toEqual(['one.md', 'two.md'])
+  expect(browse.mock.calls[1]).toEqual(['/root', false, 200, 'snap'])
+})

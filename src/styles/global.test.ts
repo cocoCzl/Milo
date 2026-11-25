@@ -186,16 +186,12 @@ describe('application shell foundation', () => {
     })
     declarations('.document-stage', { overflow: 'auto', background: 'var(--surface-editor)' })
     declarations('.file-sidebar', {
-      'grid-template-rows': 'auto minmax(0, 1fr) auto',
+      'grid-template-rows': 'auto minmax(0, 1fr)',
       'min-width': '208px',
       'max-width': '320px',
       overflow: 'hidden',
     })
     declarations('.file-sidebar__body', { overflow: 'auto' })
-    const footerBorders = rulesFor('.file-sidebar__footer').flatMap((rule) =>
-      rule.nodes.filter((node) => node.type === 'decl' && node.prop === 'border-top'),
-    )
-    expect(footerBorders).toHaveLength(0)
     declarations('.file-sidebar__resize-handle:focus-visible::after', {
       background: 'var(--focus-ring)',
     })

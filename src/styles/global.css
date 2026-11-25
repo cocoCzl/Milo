@@ -1397,7 +1397,7 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   position: relative;
   z-index: 4;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 208px;
   max-width: 320px;
   height: 100%;
@@ -1814,34 +1814,6 @@ body:has(.preferences-dialog__portal) .milo-tooltip {
   align-items: center;
   height: var(--sidebar-heading-height);
 }
-.file-sidebar__footer {
-  padding: 8px 12px 12px;
-}
-
-.file-sidebar__footer .action-button {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-height: 36px;
-  padding: 0 9px;
-  color: var(--muted-ink);
-  cursor: pointer;
-  background: var(--bg-control);
-  border: 1px solid var(--border-default);
-  border-radius: var(--control-radius);
-  font: inherit;
-  font-size: var(--sidebar-label-size);
-  text-align: left;
-}
-
-.file-sidebar__footer .action-button:hover,
-.file-sidebar__footer .action-button:focus-visible {
-  color: var(--ink);
-  background: var(--soft-fill);
-  border-color: color-mix(in srgb, var(--line) 68%, transparent);
-}
-
 .folder-error {
   position: fixed;
   z-index: 6;

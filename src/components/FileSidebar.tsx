@@ -1,13 +1,4 @@
-import {
-  ChevronRight,
-  Eraser,
-  FileText,
-  Folder,
-  FolderOpen,
-  RefreshCw,
-  Settings2,
-  X,
-} from 'lucide-react'
+import { ChevronRight, Eraser, FileText, Folder, FolderOpen, RefreshCw, X } from 'lucide-react'
 import {
   useId,
   useCallback,
@@ -57,7 +48,6 @@ type FileSidebarProps = {
     recent: string
     recentLabel: string
     removeRecent: (name: string) => string
-    settings: string
     workspace: string
   }
   folder: string | null
@@ -67,7 +57,6 @@ type FileSidebarProps = {
   onClearRecent: () => void
   onOpenFile: (path: string) => void
   onOpenFolder: (path: string) => void
-  onOpenPreferences: () => void
   onRemoveRecentFile: (path: string) => void
   onRemoveRecentFolder: (path: string) => void
   onWidthChange: (width: number) => void
@@ -99,7 +88,6 @@ function FileSidebarView({
   onClearRecent,
   onOpenFile,
   onOpenFolder,
-  onOpenPreferences,
   onRemoveRecentFile,
   onRemoveRecentFolder,
   onWidthChange,
@@ -351,12 +339,6 @@ function FileSidebarView({
           </div>
         </section>
       </div>
-      <footer className="file-sidebar__footer">
-        <button className="action-button" type="button" onClick={onOpenPreferences}>
-          <Settings2 aria-hidden="true" size={15} strokeWidth={1.7} />
-          <span>{copy.settings}</span>
-        </button>
-      </footer>
       <div
         aria-label={copy.folderWidth}
         aria-orientation="vertical"
