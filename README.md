@@ -4,7 +4,7 @@
 
 Milo is a local-first Markdown editor for macOS. Write visually or edit the source while keeping ordinary Markdown files that work in other editors.
 
-The current local development version is **0.3.5 (unreleased)**; the available public download is **v0.3.0 Pre-release**. Local changes are not a published release.
+The current local development version is **0.3.6 (unreleased)**; the available public download is **v0.3.0 Pre-release**. Local changes are not a published release.
 
 ## Features
 

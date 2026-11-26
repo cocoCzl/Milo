@@ -17,6 +17,8 @@ export type EditorCopy = BlockMenuCopy &
     linkOpenFailed: string
     anchorNotFound: string
     find: string
+    findBusy: string
+    replaceFailed: string
     findPrevious: string
     findNext: string
     closeFind: string
@@ -58,6 +60,8 @@ export const defaultEditorCopy: EditorCopy = {
   linkOpenFailed: 'Could not open this link. Try again.',
   anchorNotFound: 'Heading not found in this document.',
   find: 'Find in document',
+  findBusy: 'Processing find…',
+  replaceFailed: 'Could not replace text. Your document is retained. Try again.',
   findPrevious: 'Previous match',
   findNext: 'Next match',
   closeFind: 'Close find',

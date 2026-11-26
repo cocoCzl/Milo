@@ -49,7 +49,37 @@ export function createImageNodeView(
         .replace(/[，,]\s*.*$/, '')
         .trim() || copyRef.current.loadImageError
 
-    const showPlaceholder = (state: 'empty' | 'error', imageAlt: string, token: number) => {
+    const syncRuntimeAttributes = () => {
+      const imageAlt = String(currentNode.attrs.alt ?? '')
+      const title = String(currentNode.attrs.title ?? '')
+      if (currentImage) {
+        currentImage.alt = imageAlt
+        if (title) currentImage.title = title
+        else currentImage.removeAttribute('title')
+        return
+      }
+      const placeholder = root.querySelector<HTMLElement>('.local-image-placeholder')
+      if (!placeholder) return
+      let description = placeholder.querySelector<HTMLElement>('.local-image-placeholder__alt')
+      if (imageAlt) {
+        if (!description) {
+          description = document.createElement('span')
+          description.className = 'local-image-placeholder__alt'
+          placeholder.prepend(description)
+        }
+        description.textContent = imageAlt
+      } else description?.remove()
+      const status = placeholder.querySelector<HTMLElement>('.local-image-placeholder__status')!
+      status.textContent = failureLabel()
+      placeholder.setAttribute(
+        'aria-label',
+        imageAlt ? `${imageAlt}. ${status.textContent}` : status.textContent,
+      )
+      if (title) placeholder.title = title
+      else placeholder.removeAttribute('title')
+    }
+
+    const showPlaceholder = (state: 'empty' | 'error', token: number) => {
       if (token !== generation) return
       clearCurrentImage()
       root.dataset.imageState = state
@@ -57,21 +87,11 @@ export function createImageNodeView(
       placeholder.className = 'local-image-placeholder'
       placeholder.dataset.imageState = state
       placeholder.setAttribute('contenteditable', 'false')
-      if (imageAlt) {
-        const description = document.createElement('span')
-        description.className = 'local-image-placeholder__alt'
-        description.textContent = imageAlt
-        placeholder.append(description)
-      }
       const status = document.createElement('span')
       status.className = 'local-image-placeholder__status'
-      status.textContent = failureLabel()
       placeholder.append(status)
-      placeholder.setAttribute(
-        'aria-label',
-        imageAlt ? `${imageAlt}. ${status.textContent}` : status.textContent,
-      )
       root.replaceChildren(placeholder)
+      syncRuntimeAttributes()
     }
 
     const render = () => {
@@ -79,10 +99,8 @@ export function createImageNodeView(
       const token = generation
       clearCurrentImage()
       const nextSource = String(currentNode.attrs.src ?? '')
-      const nextAlt = String(currentNode.attrs.alt ?? '')
-      const nextTitle = String(currentNode.attrs.title ?? '')
       if (!nextSource) {
-        showPlaceholder('empty', nextAlt, token)
+        showPlaceholder('empty', token)
         return
       }
 
@@ -91,15 +109,14 @@ export function createImageNodeView(
       currentImage = image
       image.loading = 'lazy'
       image.decoding = 'async'
-      image.alt = nextAlt
-      if (nextTitle) image.title = nextTitle
+      syncRuntimeAttributes()
       image.onload = () => {
         if (token !== generation || currentImage !== image) return
         root.dataset.imageState = 'loaded'
       }
       image.onerror = () => {
         if (token !== generation || currentImage !== image) return
-        showPlaceholder('error', nextAlt, token)
+        showPlaceholder('error', token)
       }
       root.replaceChildren(image)
       image.src =
@@ -118,9 +135,11 @@ export function createImageNodeView(
           isMarkdownDocumentPath(String(nextNode.attrs.src ?? ''))
         )
           return false
-        const unchanged = nextNode.sameMarkup(currentNode)
+        const sourceChanged =
+          String(nextNode.attrs.src ?? '') !== String(currentNode.attrs.src ?? '')
         currentNode = nextNode
-        if (!unchanged) render()
+        if (sourceChanged) render()
+        else syncRuntimeAttributes()
         return true
       },
       // This atom has no contentDOM. Only mutations within its stable, inert

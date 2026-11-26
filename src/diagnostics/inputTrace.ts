@@ -105,7 +105,7 @@ export function installInputTrace() {
       commandCode:
         keyboard &&
         (keyboard.metaKey || keyboard.ctrlKey) &&
-        ['KeyS', 'KeyQ'].includes(keyboard.code)
+        ['KeyS', 'KeyQ', 'KeyZ'].includes(keyboard.code)
           ? keyboard.code
           : '',
       inputType: input?.inputType ?? '',
@@ -144,7 +144,7 @@ export function installInputTrace() {
             ? keyboard.key
             : 'other'
           : (keyboard.metaKey || keyboard.ctrlKey) &&
-              ['s', 'q'].includes(keyboard.key.toLowerCase())
+              ['s', 'q', 'z'].includes(keyboard.key.toLowerCase())
             ? keyboard.key.toLowerCase()
             : 'printable'
         : '',

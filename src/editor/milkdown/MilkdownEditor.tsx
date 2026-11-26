@@ -1,5 +1,6 @@
 import { markLifecycle } from '../../diagnostics/profileClock'
 import {
+  inputTraceEnabled,
   isInputTraceDocument,
   registerInputTraceTarget,
   inputTraceVersion,
@@ -26,6 +27,8 @@ import {
   setFindQuery,
   type FindState,
 } from './documentFind'
+import { noFindMatches } from './documentFindMatches'
+import { traceFind } from './findTrace'
 import { DocumentFindBar } from './DocumentFindBar'
 import {
   defaultValueCtx,
@@ -251,9 +254,13 @@ export function MilkdownEditor({
   const [creationAttempt, setCreationAttempt] = useState(0)
   const [findQuery, setFindQueryState] = useState('')
   const findCaseRef = useRef(false)
-  const [findResult, setFindResult] = useState<Pick<FindState, 'matches' | 'current'>>({
-    matches: [],
+  const [findResult, setFindResult] = useState<
+    Pick<FindState, 'matches' | 'current' | 'busy' | 'replacing'>
+  >({
+    matches: noFindMatches,
     current: -1,
+    busy: false,
+    replacing: false,
   })
   const [isReady, setIsReady] = useState(false)
   const openProfileRef = useRef<OpenProfile | undefined>(undefined)
@@ -339,14 +346,14 @@ export function MilkdownEditor({
         if (hasPendingComposition(view)) return false
         if (publishedDoc !== view.state.doc) {
           publishedDoc = view.state.doc
-          traceInput('wys:publish', {
-            editorId,
-            docVersion: inputTraceVersion(view.state.doc),
-            text: scopedInputText(
-              isInputTraceDocument(documentPathRef.current),
-              view.state.doc.textContent,
-            ),
-          })
+          if (inputTraceEnabled)
+            traceInput('wys:publish', {
+              editorId,
+              docVersion: inputTraceVersion(view.state.doc),
+              text: isInputTraceDocument(documentPathRef.current)
+                ? scopedInputText(true, view.state.doc.textContent)
+                : null,
+            })
           onMarkdownChangeRef.current?.(serialize(view, ctx))
         }
         return true
@@ -357,14 +364,20 @@ export function MilkdownEditor({
         ctx.set(rootCtx, editorRoot)
         ctx.set(defaultValueCtx, initialMarkdownRef.current)
         ctx.update(prosePluginsCtx, (plugins) => [
-          createDocumentFind((state) => {
-            if (!disposed)
-              setFindResult((current) =>
-                current.matches === state.matches && current.current === state.current
-                  ? current
-                  : state,
-              )
-          }),
+          createDocumentFind(
+            (state) => {
+              if (!disposed)
+                setFindResult((current) =>
+                  current.matches === state.matches &&
+                  current.current === state.current &&
+                  current.busy === state.busy &&
+                  current.replacing === state.replacing
+                    ? current
+                    : state,
+                )
+            },
+            () => activeRef.current,
+          ),
           createContextualEditorPlugin(contextualStoreRef.current!),
           createSafariCompositionHardbreakPlugin(),
           createCompositionSaveBoundary(
@@ -510,6 +523,8 @@ export function MilkdownEditor({
         // destroy completes. Focus only the view owned by this editor.
         const proseMirror = editor.action((ctx) => ctx.get(editorViewCtx).dom)
         stopInputTrace = registerInputTraceTarget(proseMirror, () => documentPathRef.current)
+        if (inputTraceEnabled)
+          editor.action((ctx) => traceFind(ctx.get(editorViewCtx), 'registered'))
         stopFocusTarget = editor.action((ctx) => registerEditorFocusTarget(ctx.get(editorViewCtx)))
         registerTechnicalInputTarget(proseMirror, (text) =>
           editor.action(
@@ -1462,6 +1477,7 @@ export function MilkdownEditor({
           query={findQuery}
           count={findResult.matches.length}
           current={findResult.current}
+          busy={findResult.busy || findResult.replacing}
           onMatchCase={(value) => {
             findCaseRef.current = value
             editorRef.current?.action((ctx) =>
@@ -1471,9 +1487,11 @@ export function MilkdownEditor({
           onReplace={
             presentationMode === 'edit'
               ? (text, all) => {
-                  editorRef.current?.action((ctx) =>
-                    replaceFindMatches(ctx.get(editorViewCtx), text, all),
-                  )
+                  editorRef.current?.action((ctx) => {
+                    void replaceFindMatches(ctx.get(editorViewCtx), text, all).catch(() =>
+                      setInteractionError(copyRef.current.replaceFailed),
+                    )
+                  })
                 }
               : undefined
           }

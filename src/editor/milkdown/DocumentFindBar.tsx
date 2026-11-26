@@ -7,6 +7,7 @@ export function DocumentFindBar({
   query,
   count,
   current,
+  busy = false,
   onQuery,
   onMove,
   onClose,
@@ -17,6 +18,7 @@ export function DocumentFindBar({
   query: string
   count: number
   current: number
+  busy?: boolean
   onQuery: (query: string) => void
   onMove: (direction: number) => void
   onReplace?: (text: string, all: boolean) => void
@@ -83,18 +85,23 @@ export function DocumentFindBar({
           Aa
         </button>
       ) : null}
-      <output aria-live="polite">
-        {count ? current + 1 : 0} / {count}
+      <output aria-live="polite" aria-busy={busy} aria-label={busy ? copy.findBusy : undefined}>
+        {busy ? '…' : `${count ? current + 1 : 0} / ${count}`}
       </output>
       <button
         type="button"
-        disabled={!count}
+        disabled={busy || !count}
         aria-label={copy.findPrevious}
         onClick={() => onMove(-1)}
       >
         <ArrowUp size={15} />
       </button>
-      <button type="button" disabled={!count} aria-label={copy.findNext} onClick={() => onMove(1)}>
+      <button
+        type="button"
+        disabled={busy || !count}
+        aria-label={copy.findNext}
+        onClick={() => onMove(1)}
+      >
         <ArrowDown size={15} />
       </button>
       {onReplace ? (
@@ -107,7 +114,7 @@ export function DocumentFindBar({
           />
           <button
             type="button"
-            disabled={!count}
+            disabled={busy || !count}
             onClick={() => {
               if (!composing.current) onReplace(replacement, false)
             }}
@@ -116,7 +123,7 @@ export function DocumentFindBar({
           </button>
           <button
             type="button"
-            disabled={!count}
+            disabled={busy || !count}
             onClick={() => {
               if (!composing.current) onReplace(replacement, true)
             }}

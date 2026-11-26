@@ -1,4 +1,4 @@
-// Real keyboard events: never refocus the body after changing tabs.
+// Keyboard-only restoration scenarios; pointer actions only establish fixture carets.
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { open, browser, output, core } from './browserHarness.mjs'
@@ -6,13 +6,32 @@ const samples = []
 try {
   const p = await open({ tabs: core ? 5 : 20, content: '# Target\n\nfirst body\n\nlast body' })
   for (let i = 0; i < (core ? 5 : 20); i++) {
-    await p.getByRole('tab').nth(i).click()
-    const el = p.locator('.document-panel:not([hidden]) .ProseMirror')
+    const tab = p.getByRole('tab').nth(i)
+    const panelId = await tab.getAttribute('aria-controls')
+    assert(panelId)
+    await tab.click()
+    const el = p.locator(
+      `#${panelId}:not([hidden]) .milkdown-editor[aria-busy="false"] .ProseMirror`,
+    )
     await el.waitFor()
-    // Establish a distinct mid-paragraph selection, not the default first node.
-    await el.focus()
-    await p.keyboard.press('Meta+ArrowDown')
-    for (let step = 0; step < 6; step++) await p.keyboard.press('ArrowLeft')
+    // Establish the fixture caret with a real pointer action. WebKit can
+    // reconcile focus during an immediate Meta+Down / ArrowLeft sequence and
+    // lose a movement before these tab-restoration scenarios even begin.
+    // Locate the fourth character geometrically; never assign the DOM/model
+    // selection, refocus, or retry input in the keyboard-only scenarios below.
+    const paragraph = el.locator(':scope > p').last()
+    const point = await paragraph.evaluate((element) => {
+      const range = document.createRange()
+      range.setStart(element.firstChild, 3)
+      range.setEnd(element.firstChild, 4)
+      const character = range.getBoundingClientRect()
+      const bounds = element.getBoundingClientRect()
+      return {
+        x: character.left - bounds.left + Math.min(1, character.width / 4),
+        y: character.top - bounds.top + character.height / 2,
+      }
+    })
+    await paragraph.click({ position: point })
     assert.deepEqual(
       await p.evaluate(() => ({
         text: getSelection().anchorNode.textContent,

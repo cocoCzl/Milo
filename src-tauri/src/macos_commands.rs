@@ -42,6 +42,37 @@ extern "C" {
     ) -> *mut c_void;
 }
 
+#[cfg(feature = "diagnostics")]
+unsafe fn key_trace_fields(event: *mut c_void) -> serde_json::Value {
+    let number: unsafe extern "C" fn(*mut c_void, *mut c_void) -> usize =
+        std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+    let key_code: unsafe extern "C" fn(*mut c_void, *mut c_void) -> u16 =
+        std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+    let flags = number(event, sel_registerName(c"modifierFlags".as_ptr()));
+    let code = key_code(event, sel_registerName(c"keyCode".as_ptr()));
+    let named_key = if flags & COMMAND != 0 {
+        match code {
+            6 if flags & (1 << 17) != 0 => "redo",
+            6 => "undo",
+            1 => "save",
+            12 => "quit",
+            3 => "find",
+            _ => "other-command",
+        }
+    } else if code == 53 {
+        "escape"
+    } else {
+        "other"
+    };
+    // eventNumber is mouse-only and throws for keyboard events. Correlation
+    // uses open_profile's existing sequence and timestamps, never that getter.
+    serde_json::json!({
+        "type": number(event, sel_registerName(c"type".as_ptr())),
+        "flags": flags,
+        "namedKey": named_key,
+    })
+}
+
 unsafe extern "C" fn send_event(
     application: *mut c_void,
     selector: *mut c_void,
@@ -69,14 +100,11 @@ unsafe extern "C" fn send_event(
                     sel(c"respondsToSelector:"),
                     sel(c"hasMarkedText"),
                 );
-            crate::open_profile::input_event(
-                "appkit:key-dispatch",
-                serde_json::json!({
-                    "type": number(event, sel(c"type")), "flags": number(event, sel(c"modifierFlags")),
-                    "markedSupported": supports_marked,
-                    "marked": supports_marked && boolean(responder, sel(c"hasMarkedText")),
-                }),
-            );
+            let mut fields = key_trace_fields(event);
+            fields["markedSupported"] = supports_marked.into();
+            fields["marked"] =
+                (supports_marked && boolean(responder, sel(c"hasMarkedText"))).into();
+            crate::open_profile::input_event("appkit:key-dispatch", fields);
         }
     }
     if number(event, sel(c"type")) == 10 {
@@ -155,6 +183,75 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn keyboard_diagnostics_read_real_appkit_events_without_mouse_properties() {
+        // API regression only: create event objects, never post or dispatch
+        // them to an application. This does not count as native user input.
+        #[repr(C)]
+        struct Point {
+            x: f64,
+            y: f64,
+        }
+        unsafe {
+            let object: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let string: unsafe extern "C" fn(
+                *mut c_void,
+                *mut c_void,
+                *const c_char,
+            ) -> *mut c_void = std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let make_event: unsafe extern "C" fn(
+                *mut c_void,
+                *mut c_void,
+                usize,
+                Point,
+                usize,
+                f64,
+                isize,
+                *mut c_void,
+                *mut c_void,
+                *mut c_void,
+                bool,
+                u16,
+            ) -> *mut c_void = std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let pool = object(
+                objc_getClass(c"NSAutoreleasePool".as_ptr()),
+                sel_registerName(c"new".as_ptr()),
+            );
+            let text = string(
+                objc_getClass(c"NSString".as_ptr()),
+                sel_registerName(c"stringWithUTF8String:".as_ptr()),
+                c"z".as_ptr(),
+            );
+            for kind in [10, 11, 12] {
+                for (code, flags, expected) in [
+                    (6, COMMAND, "undo"),
+                    (6, COMMAND | (1 << 17), "redo"),
+                    (3, COMMAND, "find"),
+                    (1, COMMAND, "save"),
+                    (12, COMMAND, "quit"),
+                    (53, 0, "escape"),
+                ] {
+                    let event = make_event(
+                        objc_getClass(c"NSEvent".as_ptr()),
+                        sel_registerName(c"keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:".as_ptr()),
+                        kind, Point { x: 0.0, y: 0.0 }, flags, 1.0, 0,
+                        std::ptr::null_mut(), text, text, false, code,
+                    );
+                    assert!(!event.is_null());
+                    let fields = key_trace_fields(event);
+                    assert_eq!(fields["type"], kind);
+                    assert_eq!(fields["flags"], flags);
+                    assert_eq!(fields["namedKey"], expected);
+                }
+            }
+            let drain: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            drain(pool, sel_registerName(c"drain".as_ptr()));
+        }
+    }
 
     #[test]
     fn routes_only_save_and_quit_with_command() {

@@ -338,3 +338,103 @@ describe('MilkdownEditor images', () => {
     expect(container.querySelector('img:not(.ProseMirror-separator)')).not.toBeInTheDocument()
   })
 })
+
+it.each(['loading', 'loaded'] as const)(
+  'reuses a %s local img and never assigns src for alt/title edits',
+  (state) => {
+    const { imageNode, view } = localImageNodeViewTestHarness('diagram.png', 'Before', 'Title')
+    const root = view.dom as HTMLElement
+    const image = root.querySelector('img')!
+    if (state === 'loaded') fireEvent.load(image)
+    const src = vi.spyOn(HTMLImageElement.prototype, 'src', 'set')
+    try {
+      const load = image.onload,
+        error = image.onerror
+      view.update?.(imageNode('diagram.png', 'After', 'New title'), [], {} as never)
+      expect(root.querySelector('img')).toBe(image)
+      expect(image).toHaveAttribute('alt', 'After')
+      expect(image).toHaveAttribute('title', 'New title')
+      expect(image.onload).toBe(load)
+      expect(image.onerror).toBe(error)
+      expect(root.dataset.imageState).toBe(state)
+      expect(src).not.toHaveBeenCalled()
+      if (state === 'loading') {
+        fireEvent.error(image)
+        expect(root.querySelector('.local-image-placeholder')).toHaveTextContent('After')
+        expect(root.querySelector('.local-image-placeholder')).not.toHaveTextContent('Before')
+      }
+    } finally {
+      src.mockRestore()
+      view.destroy?.()
+    }
+  },
+)
+
+it.each(['', 'missing.png'])(
+  'updates a local placeholder description without retrying %s',
+  (source) => {
+    const { imageNode, view } = localImageNodeViewTestHarness(source, 'Before', 'Title')
+    const root = view.dom as HTMLElement
+    if (source) fireEvent.error(root.querySelector('img')!)
+    const placeholder = root.querySelector('.local-image-placeholder')!
+    const src = vi.spyOn(HTMLImageElement.prototype, 'src', 'set')
+    try {
+      view.update?.(imageNode(source, 'After', 'Updated'), [], {} as never)
+      expect(root.querySelector('.local-image-placeholder')).toBe(placeholder)
+      expect(placeholder).toHaveAttribute('title', 'Updated')
+      expect(placeholder).toHaveAttribute('aria-label', 'After. Could not load image')
+      view.update?.(imageNode(source, '', null), [], {} as never)
+      expect(placeholder.querySelector('.local-image-placeholder__alt')).toBeNull()
+      expect(placeholder).not.toHaveAttribute('title')
+      expect(root.querySelector('img')).toBeNull()
+      expect(src).not.toHaveBeenCalled()
+    } finally {
+      src.mockRestore()
+      view.destroy?.()
+    }
+  },
+)
+
+it('keeps local img identity through real attribute undo/redo and isolates saved callbacks after src changes', async () => {
+  const { history, undo, redo } = await import('@milkdown/prose/history')
+  const { EditorState } = await import('@milkdown/prose/state')
+  const { mount, view } = imageSelectionTestView()
+  const src = vi.spyOn(HTMLImageElement.prototype, 'src', 'set')
+  try {
+    view.updateState(
+      EditorState.create({ schema: view.state.schema, doc: view.state.doc, plugins: [history()] }),
+    )
+    const root = view.dom.querySelector('.local-image-view')!
+    const image = root.querySelector('img')!
+    const oldLoad = image.onload!,
+      oldError = image.onerror!
+    const attrs = view.state.doc.nodeAt(1)!.attrs
+    view.dispatch(
+      view.state.tr.setNodeMarkup(1, undefined, { ...attrs, alt: 'Edited', title: 'Edited title' }),
+    )
+    expect(root.querySelector('img')).toBe(image)
+    expect(image).toHaveAttribute('alt', 'Edited')
+    expect(undo(view.state, view.dispatch)).toBe(true)
+    expect(root.querySelector('img')).toBe(image)
+    expect(image).toHaveAttribute('alt', 'Diagram')
+    expect(redo(view.state, view.dispatch)).toBe(true)
+    expect(root.querySelector('img')).toBe(image)
+    expect(image).toHaveAttribute('title', 'Edited title')
+    expect(src).not.toHaveBeenCalled()
+    view.dispatch(view.state.tr.setNodeMarkup(1, undefined, { ...attrs, src: 'next.png' }))
+    const next = root.querySelector('img')!
+    expect(next).not.toBe(image)
+    oldLoad.call(image, new Event('load'))
+    oldError.call(image, new Event('error'))
+    expect(root.querySelector('img')).toBe(next)
+    expect(root).toHaveAttribute('data-image-state', 'loading')
+    const nextLoad = next.onload!
+    view.destroy()
+    nextLoad.call(next, new Event('load'))
+    expect(root.childElementCount).toBe(0)
+  } finally {
+    src.mockRestore()
+    view.destroy()
+    mount.remove()
+  }
+})
